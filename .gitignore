@@ -1,0 +1,49 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.mypy_cache/
+.ruff_cache/
+
+# === Node.js ===
+node_modules/
+.next/
+out/
+.turbo/
+
+# === Environment ===
+.env
+.env.local
+.env.production
+.env.*.local
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Docker ===
+postgres_data/
+redis_data/
+
+# === Uploads ===
+uploads/
+media/
+
+# === Testing ===
+.coverage
+htmlcov/
+.pytest_cache/
+
+# === Logs ===
+*.log
