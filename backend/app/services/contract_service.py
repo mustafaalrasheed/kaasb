@@ -304,6 +304,11 @@ class ContractService:
             milestone.status = MilestoneStatus.PAID
             milestone.paid_at = datetime.now(timezone.utc)
 
+            # Release escrow if funded
+            from app.services.payment_service import PaymentService
+            payment_service = PaymentService(self.db)
+            await payment_service.release_escrow(milestone.id)
+
             # Update contract amount_paid
             full_contract = await self._get_contract(contract.id)
             full_contract.amount_paid = sum(
