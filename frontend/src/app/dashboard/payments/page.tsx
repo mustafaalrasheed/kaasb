@@ -56,7 +56,7 @@ export default function PaymentsPage() {
 
   const handleSetupAccount = async () => {
     try {
-      const data: Record<string, string> = { provider: setupProvider };
+      const data: { provider: string; wise_email?: string; wise_currency?: string } = { provider: setupProvider };
       if (setupProvider === "wise") {
         if (!wiseEmail) {
           toast.error("Wise email is required");
