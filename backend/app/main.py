@@ -24,19 +24,21 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """
     Application lifecycle manager.
-    - Startup: Initialize database tables (dev only)
+    - Startup: Ensure all database tables exist (safe: uses CREATE TABLE IF NOT EXISTS)
     - Shutdown: Close database connections
     """
     # === Startup ===
-    if settings.ENVIRONMENT == "development":
-        await init_db()
-        print(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} started in {settings.ENVIRONMENT} mode")
+    # Always run init_db so tables exist on a fresh DB (development or production).
+    # Alembic migrations track schema history; create_all() is idempotent and safe
+    # to call every boot — it skips tables that already exist.
+    await init_db()
+    print(f"{settings.APP_NAME} v{settings.APP_VERSION} started [{settings.ENVIRONMENT}]")
 
     yield
 
     # === Shutdown ===
     await engine.dispose()
-    print(f"👋 {settings.APP_NAME} shutting down...")
+    print(f"{settings.APP_NAME} shutting down.")
 
 
 def create_app() -> FastAPI:
