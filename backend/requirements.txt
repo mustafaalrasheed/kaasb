@@ -1,6 +1,7 @@
 # === Core Framework ===
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+gunicorn==21.2.0
 python-multipart==0.0.18
 
 # === Database ===

@@ -20,6 +20,7 @@ const sidebarLinks = [
   { href: "/jobs", label: "Find Work", icon: "🔍", roles: ["freelancer"] },
   { href: "/dashboard/profile/edit", label: "Edit Profile", icon: "👤", roles: ["client", "freelancer"] },
   { href: "/dashboard/settings", label: "Settings", icon: "⚙️", roles: ["client", "freelancer"] },
+  { href: "/admin", label: "Admin Panel", icon: "🛡️", roles: ["admin"] },
 ];
 
 export default function DashboardLayout({
@@ -48,7 +49,7 @@ export default function DashboardLayout({
   if (!isAuthenticated || !user) return null;
 
   const filteredLinks = sidebarLinks.filter(
-    (link) => link.roles.includes(user.primary_role)
+    (link) => link.roles.includes(user.primary_role) || user.is_superuser
   );
 
   return (
