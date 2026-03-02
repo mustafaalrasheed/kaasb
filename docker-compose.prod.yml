@@ -11,8 +11,10 @@ services:
       - "443:443"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      # Uncomment when SSL certificates are in place:
-      # - ./ssl:/etc/nginx/ssl:ro
+      # Certbot webroot (needed to obtain Let's Encrypt certificate):
+      - ./ssl/certbot/www:/var/www/certbot:ro
+      # SSL certificates — uncomment AFTER running the certbot command in the deploy guide:
+      # - ./ssl/certs/live/${DOMAIN}:/etc/nginx/ssl:ro
     depends_on:
       backend:
         condition: service_healthy
