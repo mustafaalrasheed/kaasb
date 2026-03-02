@@ -59,4 +59,5 @@ export interface UserProfile
     | "jobs_completed"
     | "is_online"
     | "created_at"
+    | "portfolio_url"
   > {}
