@@ -1,336 +1,123 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { jobsApi } from "@/lib/api";
-import { useAuthStore } from "@/lib/auth-store";
-import { toast } from "sonner";
-import type { JobDetail } from "@/types/job";
-import { DURATION_LABELS, EXPERIENCE_LABELS } from "@/types/job";
 
-function formatBudget(job: JobDetail): string {
-  if (job.job_type === "fixed" && job.fixed_price) {
-    return `$${job.fixed_price.toLocaleString()}`;
-  }
-  if (job.budget_min && job.budget_max) {
-    return `$${job.budget_min} - $${job.budget_max}/hr`;
-  }
-  if (job.budget_min) return `From $${job.budget_min}/hr`;
-  return "Budget not set";
-}
-
-export default function JobDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const jobId = params.id as string;
-  const { user } = useAuthStore();
-
-  const [job, setJob] = useState<JobDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    async function loadJob() {
-      try {
-        const response = await jobsApi.getById(jobId);
-        setJob(response.data);
-      } catch (err: any) {
-        setError(
-          err.response?.status === 404
-            ? "Job not found"
-            : "Failed to load job"
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    if (jobId) loadJob();
-  }, [jobId]);
-
-  const isOwner = user?.id === job?.client?.id;
-  const isFreelancer = user?.primary_role === "freelancer";
-
-  const handleClose = async () => {
-    if (!job || !confirm("Are you sure you want to close this job?")) return;
-    try {
-      await jobsApi.close(job.id);
-      toast.success("Job closed");
-      router.push("/dashboard");
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to close job");
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!job || !confirm("Are you sure you want to delete this job? This cannot be undone."))
-      return;
-    try {
-      await jobsApi.delete(job.id);
-      toast.success("Job deleted");
-      router.push("/dashboard");
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to delete job");
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <p className="text-gray-500">Loading job...</p>
-      </div>
-    );
-  }
-
-  if (error || !job) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl font-semibold text-gray-900">{error}</p>
-          <Link href="/jobs" className="mt-4 inline-block text-brand-500 hover:text-brand-600">
-            Browse jobs
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
+export default function HomePage() {
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col lg:flex-row gap-8">
-        {/* Main Content */}
-        <div className="flex-1 min-w-0 space-y-6">
-          {/* Header */}
-          <div className="card p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-brand-50 text-brand-700 border border-brand-200">
-                    {job.category}
-                  </span>
-                  <span
-                    className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                      job.status === "open"
-                        ? "bg-success-50 text-success-700 border border-green-200"
-                        : "bg-gray-100 text-gray-600 border border-gray-200"
-                    }`}
-                  >
-                    {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-                  </span>
-                </div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  {job.title}
-                </h1>
-              </div>
-
-              {isOwner && job.status === "open" && (
-                <div className="flex gap-2 shrink-0">
-                  <Link
-                    href={`/jobs/${job.id}/edit`}
-                    className="btn-secondary py-2 px-4 text-sm"
-                  >
-                    Edit
-                  </Link>
-                  <button
-                    onClick={handleClose}
-                    className="btn-secondary py-2 px-4 text-sm"
-                  >
-                    Close
-                  </button>
-                  {job.proposal_count === 0 && (
-                    <button
-                      onClick={handleDelete}
-                      className="btn-danger py-2 px-4 text-sm"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Meta row */}
-            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
-              <div>
-                <span className="text-gray-400">Budget:</span>{" "}
-                <span className="font-semibold text-gray-900">
-                  {formatBudget(job)}
-                </span>
-              </div>
-              <div>
-                <span className="text-gray-400">Type:</span>{" "}
-                <span className="capitalize">{job.job_type} price</span>
-              </div>
-              {job.experience_level && (
-                <div>
-                  <span className="text-gray-400">Level:</span>{" "}
-                  {EXPERIENCE_LABELS[job.experience_level]}
-                </div>
-              )}
-              {job.duration && (
-                <div>
-                  <span className="text-gray-400">Duration:</span>{" "}
-                  {DURATION_LABELS[job.duration]}
-                </div>
-              )}
-              <div>
-                <span className="text-gray-400">Posted:</span>{" "}
-                {new Date(
-                  job.published_at || job.created_at
-                ).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Description */}
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">
-              Job Description
-            </h2>
-            <div className="text-gray-700 whitespace-pre-line leading-relaxed">
-              {job.description}
-            </div>
-          </div>
-
-          {/* Skills */}
-          {job.skills_required && job.skills_required.length > 0 && (
-            <div className="card p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">
-                Skills Required
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {job.skills_required.map((skill) => (
-                  <span
-                    key={skill}
-                    className="px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-700 border border-gray-200"
-                  >
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Activity stats */}
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">
-              Activity
-            </h2>
-            <div className="flex gap-8 text-sm">
-              <div>
-                <span className="text-2xl font-bold text-gray-900">
-                  {job.proposal_count}
-                </span>
-                <p className="text-gray-500">Proposals</p>
-              </div>
-              <div>
-                <span className="text-2xl font-bold text-gray-900">
-                  {job.view_count}
-                </span>
-                <p className="text-gray-500">Views</p>
-              </div>
+    <div className="min-h-[calc(100vh-4rem)]">
+      {/* Hero Section */}
+      <section className="bg-gradient-to-br from-brand-500 via-brand-600 to-brand-800 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
+          <div className="max-w-3xl">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight">
+              Find the perfect
+              <span className="text-brand-200"> freelancer </span>
+              for your project
+            </h1>
+            <p className="mt-6 text-lg sm:text-xl text-blue-100 leading-relaxed">
+              Kaasb connects businesses with talented freelancers worldwide.
+              Post a job, review proposals, and hire the best — all in one place.
+            </p>
+            <div className="mt-10 flex flex-col sm:flex-row gap-4">
+              <Link
+                href="/auth/register"
+                className="btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"
+              >
+                Get Started Free
+              </Link>
+              <Link
+                href="/jobs"
+                className="btn-secondary border-white/30 text-white hover:bg-white/10 text-center text-lg px-8 py-3"
+              >
+                Browse Jobs
+              </Link>
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Sidebar */}
-        <div className="w-full lg:w-80 shrink-0 space-y-6">
-          {/* Apply button (for freelancers) */}
-          {isFreelancer && job.status === "open" && !isOwner && (
-            <div className="card p-5">
-              <button className="btn-primary w-full py-3 text-lg">
-                Submit Proposal
-              </button>
-              <p className="mt-2 text-xs text-center text-gray-500">
-                Proposals system coming in Step 4
-              </p>
-            </div>
-          )}
+      {/* How It Works */}
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-bold text-center text-gray-900">
+            How Kaasb Works
+          </h2>
+          <p className="mt-4 text-center text-gray-600 max-w-2xl mx-auto">
+            Getting started is simple. Whether you&apos;re hiring or freelancing,
+            Kaasb makes it easy.
+          </p>
 
-          {/* Client info */}
-          <div className="card p-5">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              About the Client
-            </h3>
-            <Link
-              href={`/profile/${job.client.username}`}
-              className="flex items-center gap-3 group"
-            >
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
-                {job.client.avatar_url ? (
-                  <img
-                    src={`http://localhost:8000${job.client.avatar_url}`}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-lg font-bold text-brand-500">
-                    {job.client.first_name[0]}
-                    {job.client.last_name[0]}
-                  </span>
-                )}
+          <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              {
+                step: "01",
+                title: "Post a Job",
+                description:
+                  "Describe your project, set your budget, and post it to thousands of freelancers.",
+                icon: "📝",
+              },
+              {
+                step: "02",
+                title: "Review Proposals",
+                description:
+                  "Receive proposals from qualified freelancers. Compare skills, rates, and reviews.",
+                icon: "🔍",
+              },
+              {
+                step: "03",
+                title: "Hire & Collaborate",
+                description:
+                  "Choose the best fit, collaborate through our platform, and pay securely.",
+                icon: "🤝",
+              },
+            ].map((item) => (
+              <div key={item.step} className="text-center">
+                <div className="text-5xl mb-4">{item.icon}</div>
+                <div className="text-sm font-bold text-brand-500 mb-2">
+                  STEP {item.step}
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900">
+                  {item.title}
+                </h3>
+                <p className="mt-3 text-gray-600">{item.description}</p>
               </div>
-              <div>
-                <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors">
-                  {job.client.display_name ||
-                    `${job.client.first_name} ${job.client.last_name}`}
-                </p>
-                {job.client.country && (
-                  <p className="text-sm text-gray-500">
-                    📍 {job.client.country}
-                  </p>
-                )}
-              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-20 bg-gray-50">
+        <div className="max-w-4xl mx-auto text-center px-4">
+          <h2 className="text-3xl font-bold text-gray-900">
+            Ready to get started?
+          </h2>
+          <p className="mt-4 text-lg text-gray-600">
+            Join thousands of freelancers and businesses on Kaasb.
+          </p>
+          <div className="mt-8 flex justify-center gap-4">
+            <Link href="/auth/register" className="btn-primary text-lg px-8 py-3">
+              Sign Up as Freelancer
             </Link>
-
-            <div className="mt-4 pt-4 border-t border-gray-100 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Total spent</span>
-                <span className="font-medium text-gray-900">
-                  ${job.client.total_spent.toLocaleString()}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Rating</span>
-                <span className="font-medium text-gray-900">
-                  {job.client.avg_rating > 0
-                    ? `⭐ ${job.client.avg_rating.toFixed(1)} (${job.client.total_reviews})`
-                    : "New client"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Member since</span>
-                <span className="font-medium text-gray-900">
-                  {new Date(job.client.created_at).toLocaleDateString("en-US", {
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </span>
-              </div>
-            </div>
+            <Link
+              href="/auth/register"
+              className="btn-secondary text-lg px-8 py-3"
+            >
+              Hire a Freelancer
+            </Link>
           </div>
-
-          {/* Deadline */}
-          {job.deadline && (
-            <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Deadline
-              </h3>
-              <p className="font-medium text-gray-900">
-                {new Date(job.deadline).toLocaleDateString("en-US", {
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </p>
-            </div>
-          )}
         </div>
-      </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-gray-400 py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-center">
+            <div className="text-2xl font-bold text-white">Kaasb</div>
+            <p className="mt-4 md:mt-0 text-sm">
+              &copy; {new Date().getFullYear()} Kaasb. All rights reserved.
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

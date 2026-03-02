@@ -23,7 +23,7 @@ class UserRegister(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
-    primary_role: str = Field(default="client", pattern=r"^(client|freelancer)$")
+    primary_role: str = Field(default="client", pattern=r"^(client|freelancer|admin)$")
 
     @field_validator("password")
     @classmethod
@@ -121,6 +121,7 @@ class UserMe(UserProfile):
 
     email: EmailStr
     is_email_verified: bool
+    is_superuser: bool = False
     timezone: Optional[str] = None
     phone: Optional[str] = None
     total_earnings: float = 0.0

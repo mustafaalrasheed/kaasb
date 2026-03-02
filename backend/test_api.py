@@ -1226,11 +1226,125 @@ def test_notifications():
         return False
 
 
+admin_token: str = ""
+
+def test_admin_setup():
+    """Test 25: Create admin user and get admin token"""
+    global admin_token
+    print_section("TEST 25: Admin Setup")
+
+    try:
+        # Register admin user
+        response = requests.post(
+            f"{BASE_URL}/auth/register",
+            json={
+                "email": "admin@kaasb.com",
+                "username": "kaasb_admin",
+                "password": "AdminPass123!",
+                "first_name": "Platform",
+                "last_name": "Admin",
+                "primary_role": "admin",
+            },
+        )
+        if response.status_code in (201, 400):
+            if response.status_code == 400:
+                print_info("Admin user already exists")
+            else:
+                print_success("Admin user registered")
+
+        # Login as admin
+        response = requests.post(
+            f"{BASE_URL}/auth/login",
+            json={"email": "admin@kaasb.com", "password": "AdminPass123!"},
+        )
+        if response.status_code == 200:
+            admin_token = response.json()["access_token"]
+            print_success("Admin logged in")
+        else:
+            print_error(f"Admin login failed: {response.status_code}")
+            return False
+
+        # Need to make user superuser via DB or toggle endpoint
+        # For testing, we'll use the admin endpoint directly and check if it's blocked
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        response = requests.get(f"{BASE_URL}/admin/stats", headers=headers)
+
+        if response.status_code == 403:
+            print_info("User is not superuser yet (expected for new registration)")
+            print_info("In production: use 'python -m scripts.create_admin' to create admin")
+            # We'll test that the endpoints correctly reject non-admin users
+            return True
+        elif response.status_code == 200:
+            print_success("Admin stats accessible")
+            return True
+        else:
+            print_error(f"Unexpected status: {response.status_code}")
+            return False
+
+    except Exception as e:
+        print_error(f"Admin setup error: {str(e)}")
+        return False
+
+
+def test_admin_endpoints():
+    """Test 26: Admin API endpoints access control"""
+    print_section("TEST 26: Admin Endpoints")
+
+    try:
+        # Non-admin user should be rejected from all admin endpoints
+        headers_fl = {"Authorization": f"Bearer {tokens['freelancer']}"}
+        headers_cl = {"Authorization": f"Bearer {tokens['client']}"}
+
+        # Test: freelancer cannot access admin stats
+        response = requests.get(f"{BASE_URL}/admin/stats", headers=headers_fl)
+        if response.status_code == 403:
+            print_success("Freelancer correctly rejected from admin/stats (403)")
+        else:
+            print_error(f"Expected 403, got {response.status_code}")
+
+        # Test: client cannot access admin users
+        response = requests.get(f"{BASE_URL}/admin/users", headers=headers_cl)
+        if response.status_code == 403:
+            print_success("Client correctly rejected from admin/users (403)")
+        else:
+            print_error(f"Expected 403, got {response.status_code}")
+
+        # Test: freelancer cannot update user status
+        response = requests.put(
+            f"{BASE_URL}/admin/users/{user_ids['client']}/status",
+            json={"status": "suspended"},
+            headers=headers_fl,
+        )
+        if response.status_code == 403:
+            print_success("Freelancer correctly rejected from admin user update (403)")
+        else:
+            print_error(f"Expected 403, got {response.status_code}")
+
+        # Test: client cannot access admin transactions
+        response = requests.get(f"{BASE_URL}/admin/transactions", headers=headers_cl)
+        if response.status_code == 403:
+            print_success("Client correctly rejected from admin/transactions (403)")
+        else:
+            print_error(f"Expected 403, got {response.status_code}")
+
+        # Test: unauthenticated access rejected
+        response = requests.get(f"{BASE_URL}/admin/stats")
+        if response.status_code in (401, 403):
+            print_success(f"Unauthenticated access correctly rejected ({response.status_code})")
+        else:
+            print_error(f"Expected 401/403, got {response.status_code}")
+
+        return True
+    except Exception as e:
+        print_error(f"Admin endpoints error: {str(e)}")
+        return False
+
+
 def run_all_tests():
     """Run all test cases"""
     print(f"\n{Colors.BLUE}{'='*60}")
     print(f"  KAASB PLATFORM - API TEST SUITE")
-    print(f"  Testing: Auth, Users, Jobs, Proposals, Contracts, Payments, Security, Messages, Reviews, Notifications")
+    print(f"  Testing: Auth, Users, Jobs, Proposals, Contracts, Payments, Security, Messages, Reviews, Notifications, Admin")
     print(f"{'='*60}{Colors.END}\n")
 
     tests = [
@@ -1258,6 +1372,8 @@ def run_all_tests():
         ("Submit Reviews", test_submit_reviews),
         ("Review Stats", test_review_stats),
         ("Notifications", test_notifications),
+        ("Admin Setup", test_admin_setup),
+        ("Admin Endpoints", test_admin_endpoints),
     ]
 
     results = []

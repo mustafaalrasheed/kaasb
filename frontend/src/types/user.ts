@@ -14,6 +14,7 @@ export interface User {
   primary_role: "client" | "freelancer" | "admin";
   status: "active" | "suspended" | "deactivated" | "pending_verification";
   is_email_verified: boolean;
+  is_superuser: boolean;
   title: string | null;
   hourly_rate: number | null;
   skills: string[] | null;

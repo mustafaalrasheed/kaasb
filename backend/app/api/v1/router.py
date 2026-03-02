@@ -15,6 +15,7 @@ from app.api.v1.endpoints.payments import router as payments_router
 from app.api.v1.endpoints.reviews import router as reviews_router
 from app.api.v1.endpoints.notifications import router as notifications_router
 from app.api.v1.endpoints.messages import router as messages_router
+from app.api.v1.endpoints.admin import router as admin_router
 
 api_router = APIRouter()
 
@@ -28,6 +29,4 @@ api_router.include_router(payments_router)
 api_router.include_router(reviews_router)
 api_router.include_router(notifications_router)
 api_router.include_router(messages_router)
-
-# Future:
-# api_router.include_router(admin_router)
+api_router.include_router(admin_router)
