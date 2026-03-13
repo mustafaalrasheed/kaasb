@@ -1,9 +1,11 @@
 """
 Kaasb Platform - Authentication Endpoints
-POST /auth/register  - Create new account
-POST /auth/login     - Get JWT tokens
-POST /auth/refresh   - Refresh JWT tokens
-GET  /auth/me        - Get current user profile
+POST /auth/register     - Create new account
+POST /auth/login        - Get JWT tokens
+POST /auth/refresh      - Refresh JWT tokens
+GET  /auth/me           - Get current user profile
+POST /auth/logout       - Revoke current refresh token
+POST /auth/logout-all   - Revoke all refresh tokens (all sessions)
 """
 
 from fastapi import APIRouter, Depends, status
@@ -83,3 +85,26 @@ async def get_me(current_user: User = Depends(get_current_user)):
     Get the authenticated user's full profile including private fields.
     """
     return current_user
+
+
+@router.post("/logout", summary="Logout (revoke current refresh token)")
+async def logout(
+    data: TokenRefresh,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Revoke the provided refresh token."""
+    service = AuthService(db)
+    await service.logout(current_user, data.refresh_token)
+    return {"message": "Logged out successfully"}
+
+
+@router.post("/logout-all", summary="Logout all sessions")
+async def logout_all(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Revoke all refresh tokens for the current user."""
+    service = AuthService(db)
+    await service.logout_all(current_user)
+    return {"message": "All sessions terminated"}

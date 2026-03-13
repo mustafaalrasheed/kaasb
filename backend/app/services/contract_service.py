@@ -3,11 +3,13 @@ Kaasb Platform - Contract Service
 Business logic for contracts and milestone management.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select, func, and_, case
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
@@ -23,6 +25,8 @@ from app.schemas.contract import (
     ContractCreate, MilestoneCreate, MilestoneUpdate,
     MilestoneSubmit, MilestoneReview,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ContractService:
@@ -99,7 +103,14 @@ class ContractService:
             deadline=job.deadline,
         )
         self.db.add(contract)
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation")
+        except SQLAlchemyError as e:
+            logger.error(f"Database error creating contract: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal server error")
+        logger.info(f"Contract created: {contract.id} for job={job.id}")
         return contract
 
     # === Add Milestones (Client) ===
@@ -150,8 +161,7 @@ class ContractService:
 
         await self.db.flush()
 
-        # Expire the contract so the identity map doesn't serve the cached
-        # empty milestones collection — force a fresh DB fetch
+        # Expire the contract so SQLAlchemy re-fetches milestones on next load
         self.db.expire(contract)
 
         # Reload
@@ -344,8 +354,18 @@ class ContractService:
 
         elif data.action == "request_revision":
             milestone.status = MilestoneStatus.REVISION_REQUESTED
+            logger.info(f"Revision requested: milestone={milestone_id} on contract={contract.id}")
 
-        await self.db.flush()
+        if data.action == "approve":
+            logger.info(f"Milestone approved: {milestone_id} on contract={contract.id}")
+
+        try:
+            await self.db.flush()
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation")
+        except SQLAlchemyError as e:
+            logger.error(f"Database error reviewing milestone: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal server error")
         await self.db.refresh(milestone)
         return milestone
 
@@ -371,6 +391,7 @@ class ContractService:
         page_size: int = 20,
     ) -> dict:
         """Get all contracts for the current user (as client or freelancer)."""
+        page_size = min(page_size, 100)
         stmt = (
             select(Contract)
             .options(

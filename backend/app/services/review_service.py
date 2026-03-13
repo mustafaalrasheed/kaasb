@@ -3,6 +3,7 @@ Kaasb Platform - Review Service
 Business logic for reviews and rating aggregation.
 """
 
+import logging
 import uuid
 from typing import Optional
 
@@ -15,6 +16,8 @@ from app.models.review import Review
 from app.models.contract import Contract, ContractStatus
 from app.models.user import User
 from app.schemas.review import ReviewCreate
+
+logger = logging.getLogger(__name__)
 
 
 class ReviewService:
@@ -86,6 +89,7 @@ class ReviewService:
         await self._update_user_rating(reviewee_id)
 
         await self.db.refresh(review, attribute_names=["reviewer", "reviewee", "contract"])
+        logger.info(f"Review submitted: {review.id} by reviewer={reviewer.id} on contract={contract_id}")
         return review
 
     async def _update_user_rating(self, user_id: uuid.UUID):
@@ -117,6 +121,7 @@ class ReviewService:
         page_size: int = 20,
     ) -> dict:
         """Get all reviews received by a user."""
+        page_size = min(page_size, 100)
         stmt = (
             select(Review)
             .options(

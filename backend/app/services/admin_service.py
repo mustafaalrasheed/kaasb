@@ -3,6 +3,7 @@ Kaasb Platform - Admin Service
 Platform administration: stats, user management, job moderation, payments.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -11,6 +12,8 @@ from sqlalchemy import select, func, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
+
+logger = logging.getLogger(__name__)
 
 from app.models.user import User, UserRole, UserStatus
 from app.models.job import Job, JobStatus
@@ -36,48 +39,45 @@ class AdminService:
         thirty_days_ago = now - timedelta(days=30)
         seven_days_ago = now - timedelta(days=7)
 
-        # User stats
-        total_users = (await self.db.execute(
-            select(func.count(User.id))
-        )).scalar() or 0
-
-        active_users_30d = (await self.db.execute(
-            select(func.count(User.id)).where(User.last_login >= thirty_days_ago)
-        )).scalar() or 0
-
-        new_users_7d = (await self.db.execute(
-            select(func.count(User.id)).where(User.created_at >= seven_days_ago)
-        )).scalar() or 0
+        # User stats — combine into one query
+        user_stats_row = (await self.db.execute(
+            select(
+                func.count(User.id),
+                func.count(User.id).filter(User.last_login >= thirty_days_ago),
+                func.count(User.id).filter(User.created_at >= seven_days_ago),
+            )
+        )).one()
+        total_users = user_stats_row[0] or 0
+        active_users_30d = user_stats_row[1] or 0
+        new_users_7d = user_stats_row[2] or 0
 
         users_by_role = dict((await self.db.execute(
             select(User.primary_role, func.count(User.id)).group_by(User.primary_role)
         )).all())
 
-        # Job stats
-        total_jobs = (await self.db.execute(
-            select(func.count(Job.id))
-        )).scalar() or 0
+        # Job stats — combine into one query
+        job_stats_row = (await self.db.execute(
+            select(
+                func.count(Job.id),
+                func.count(Job.id).filter(Job.status == JobStatus.OPEN),
+                func.count(Job.id).filter(Job.created_at >= seven_days_ago),
+            )
+        )).one()
+        total_jobs = job_stats_row[0] or 0
+        open_jobs = job_stats_row[1] or 0
+        jobs_7d = job_stats_row[2] or 0
 
-        open_jobs = (await self.db.execute(
-            select(func.count(Job.id)).where(Job.status == JobStatus.OPEN)
-        )).scalar() or 0
-
-        jobs_7d = (await self.db.execute(
-            select(func.count(Job.id)).where(Job.created_at >= seven_days_ago)
-        )).scalar() or 0
-
-        # Contract stats
-        total_contracts = (await self.db.execute(
-            select(func.count(Contract.id))
-        )).scalar() or 0
-
-        active_contracts = (await self.db.execute(
-            select(func.count(Contract.id)).where(Contract.status == ContractStatus.ACTIVE)
-        )).scalar() or 0
-
-        completed_contracts = (await self.db.execute(
-            select(func.count(Contract.id)).where(Contract.status == ContractStatus.COMPLETED)
-        )).scalar() or 0
+        # Contract stats — combine into one query
+        contract_stats_row = (await self.db.execute(
+            select(
+                func.count(Contract.id),
+                func.count(Contract.id).filter(Contract.status == ContractStatus.ACTIVE),
+                func.count(Contract.id).filter(Contract.status == ContractStatus.COMPLETED),
+            )
+        )).one()
+        total_contracts = contract_stats_row[0] or 0
+        active_contracts = contract_stats_row[1] or 0
+        completed_contracts = contract_stats_row[2] or 0
 
         # Proposal stats
         total_proposals = (await self.db.execute(
@@ -164,6 +164,7 @@ class AdminService:
         page_size: int = 20,
     ) -> dict:
         """List users with filtering."""
+        page_size = min(page_size, 100)
         stmt = select(User)
 
         if role:
@@ -240,6 +241,7 @@ class AdminService:
         page_size: int = 20,
     ) -> dict:
         """List all jobs for admin moderation."""
+        page_size = min(page_size, 100)
         stmt = select(Job).options(selectinload(Job.client))
 
         if status_filter:
@@ -293,6 +295,7 @@ class AdminService:
         page_size: int = 20,
     ) -> dict:
         """List all platform transactions."""
+        page_size = min(page_size, 100)
         stmt = select(Transaction)
 
         if type_filter:

@@ -23,7 +23,7 @@ class UserRegister(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
-    primary_role: str = Field(default="client", pattern=r"^(client|freelancer|admin)$")
+    primary_role: str = Field(default="client", pattern=r"^(client|freelancer)$")
 
     @field_validator("password")
     @classmethod

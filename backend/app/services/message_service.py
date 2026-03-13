@@ -3,6 +3,7 @@ Kaasb Platform - Message Service
 Business logic for conversations and messaging.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -16,6 +17,8 @@ from app.models.message import Conversation, Message
 from app.models.user import User
 from app.models.job import Job
 from app.schemas.message import ConversationCreate, MessageCreate
+
+logger = logging.getLogger(__name__)
 
 
 class MessageService:
@@ -129,6 +132,7 @@ class MessageService:
         page_size: int = 20,
     ) -> dict:
         """Get all conversations for a user."""
+        page_size = min(page_size, 100)
         stmt = (
             select(Conversation)
             .options(
@@ -182,6 +186,7 @@ class MessageService:
         page_size: int = 50,
     ) -> dict:
         """Get messages in a conversation. Marks messages as read."""
+        page_size = min(page_size, 100)
         conversation = await self._get_conversation(conversation_id)
 
         if user.id not in (conversation.participant_one_id, conversation.participant_two_id):

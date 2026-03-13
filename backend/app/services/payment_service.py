@@ -14,13 +14,17 @@ Production Notes:
 - Add idempotency keys for all financial operations
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
+
+logger = logging.getLogger(__name__)
 
 from app.core.config import get_settings
 from app.models.payment import (
@@ -224,7 +228,15 @@ class PaymentService:
             funded_at=datetime.now(timezone.utc),
         )
         self.db.add(escrow)
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation")
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in fund_escrow: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+        logger.info(f"Escrow funded: milestone={data.milestone_id} client={client.id} amount={fees['amount']}")
 
         return EscrowFundResponse(
             escrow_id=escrow.id,
@@ -295,7 +307,13 @@ class PaymentService:
         escrow.released_at = datetime.now(timezone.utc)
         escrow.release_transaction_id = release_tx.id
 
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in release_escrow: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+        logger.info(f"Escrow released: milestone={milestone_id} amount={escrow.freelancer_amount}")
 
         return EscrowReleaseResponse(
             escrow_id=escrow.id,
@@ -415,7 +433,13 @@ class PaymentService:
         # In dev, auto-complete the payout
         payout_tx.status = TransactionStatus.COMPLETED
         payout_tx.completed_at = datetime.now(timezone.utc)
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in request_payout: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+        logger.info(f"Payout processed: freelancer={freelancer.id} amount={data.amount} provider={account.provider.value}")
 
         return PayoutResponse(
             transaction_id=payout_tx.id,
@@ -436,6 +460,7 @@ class PaymentService:
         page_size: int = 20,
     ) -> dict:
         """Get transaction history for a user."""
+        page_size = min(page_size, 100)
         stmt = select(Transaction).where(
             (Transaction.payer_id == user.id) | (Transaction.payee_id == user.id)
         )

@@ -3,6 +3,7 @@ Kaasb Platform - Proposal Service
 Business logic for proposal submission, response, and listing.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -16,6 +17,8 @@ from app.models.proposal import Proposal, ProposalStatus
 from app.models.job import Job, JobStatus
 from app.models.user import User, UserRole
 from app.schemas.proposal import ProposalCreate, ProposalUpdate, ProposalRespond
+
+logger = logging.getLogger(__name__)
 
 
 class ProposalService:
@@ -108,6 +111,7 @@ class ProposalService:
 
         await self.db.flush()
         await self.db.refresh(proposal, attribute_names=["freelancer", "job"])
+        logger.info(f"Proposal submitted: {proposal.id} by freelancer={freelancer.id} on job={job_id}")
         return proposal
 
     # === Update Proposal (Freelancer) ===
@@ -242,6 +246,11 @@ class ProposalService:
             contract_service = ContractService(self.db)
             await contract_service.create_contract_from_proposal(job, proposal)
 
+        if new_status == ProposalStatus.ACCEPTED:
+            logger.info(f"Proposal accepted: {proposal_id} by client={client.id}")
+        elif new_status == ProposalStatus.REJECTED:
+            logger.info(f"Proposal rejected: {proposal_id} by client={client.id}")
+
         await self.db.flush()
         await self.db.refresh(proposal, attribute_names=["freelancer", "job"])
         return proposal
@@ -277,6 +286,7 @@ class ProposalService:
         page_size: int = 20,
     ) -> dict:
         """Get all proposals on a job (client only)."""
+        page_size = min(page_size, 100)
         # Verify client owns the job
         job = await self._get_job(job_id)
         if job.client_id != client.id:
@@ -335,6 +345,7 @@ class ProposalService:
         page_size: int = 20,
     ) -> dict:
         """Get all proposals submitted by the freelancer."""
+        page_size = min(page_size, 100)
         stmt = (
             select(Proposal)
             .options(

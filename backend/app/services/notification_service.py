@@ -52,6 +52,7 @@ class NotificationService:
         page_size: int = 20,
     ) -> dict:
         """Get notifications for a user."""
+        page_size = min(page_size, 100)
         stmt = select(Notification).where(Notification.user_id == user.id)
 
         if unread_only:

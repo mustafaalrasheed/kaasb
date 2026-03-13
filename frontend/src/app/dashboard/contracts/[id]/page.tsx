@@ -229,11 +229,11 @@ function MilestoneCard({
         await contractsApi.startMilestone(milestone.id);
         toast.success("Milestone started");
       } else if (action === "submit") {
-        await contractsApi.submitMilestone(milestone.id, (data || {}) as { submission_note?: string });
+        await contractsApi.submitMilestone(milestone.id, data || {});
         toast.success("Milestone submitted for review");
         setShowSubmit(false);
       } else if (action === "review") {
-        await contractsApi.reviewMilestone(milestone.id, data as { action: string; feedback?: string });
+        await contractsApi.reviewMilestone(milestone.id, data || {});
         toast.success(
           data?.action === "approve"
             ? "Milestone approved & paid"
