@@ -28,6 +28,10 @@ async def save_avatar(file: UploadFile, user_id: str) -> str:
     Save an avatar image and return the relative URL path.
     Validates file type and size before saving.
     """
+    # Reject filenames with path traversal sequences
+    if ".." in (file.filename or "") or "/" in (file.filename or ""):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
     # Validate content type
     if file.content_type not in settings.ALLOWED_IMAGE_TYPES:
         raise HTTPException(

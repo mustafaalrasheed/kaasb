@@ -6,11 +6,15 @@ FastAPI application factory with middleware, CORS, security, and lifecycle manag
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+logger = logging.getLogger(__name__)
 
 from app.core.config import get_settings
 from app.core.database import init_db, engine
@@ -24,21 +28,19 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """
     Application lifecycle manager.
-    - Startup: Ensure all database tables exist (safe: uses CREATE TABLE IF NOT EXISTS)
+    - Startup: Initialize database tables (dev only)
     - Shutdown: Close database connections
     """
     # === Startup ===
-    # Always run init_db so tables exist on a fresh DB (development or production).
-    # Alembic migrations track schema history; create_all() is idempotent and safe
-    # to call every boot — it skips tables that already exist.
-    await init_db()
-    print(f"{settings.APP_NAME} v{settings.APP_VERSION} started [{settings.ENVIRONMENT}]")
+    if settings.ENVIRONMENT == "development":
+        await init_db()
+        print(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} started in {settings.ENVIRONMENT} mode")
 
     yield
 
     # === Shutdown ===
     await engine.dispose()
-    print(f"{settings.APP_NAME} shutting down.")
+    print(f"👋 {settings.APP_NAME} shutting down...")
 
 
 def create_app() -> FastAPI:
@@ -84,13 +86,13 @@ def create_app() -> FastAPI:
     # === Global Exception Handler ===
     @app.exception_handler(Exception)
     async def global_exception_handler(request, exc):
+        logger.error(
+            f"Unhandled exception on {request.method} {request.url}: {exc}",
+            exc_info=True,
+        )
         return JSONResponse(
             status_code=500,
-            content={
-                "detail": "Internal server error"
-                if not settings.DEBUG
-                else str(exc)
-            },
+            content={"detail": "Internal server error"},
         )
 
     # === Routes ===

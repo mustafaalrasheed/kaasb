@@ -1,8 +1,8 @@
-"""add admin fields and final schema updates
+"""add_refresh_tokens_table
 
-Revision ID: a205fe7eef29
-Revises: b0638a178b74
-Create Date: 2026-03-02 06:24:48.114235
+Revision ID: 8708878f9950
+Revises: 40dda097581c
+Create Date: 2026-03-12 13:57:49.875278
 """
 from typing import Sequence, Union
 from alembic import op
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers
-revision: str = 'a205fe7eef29'
-down_revision: Union[str, None] = 'b0638a178b74'
+revision: str = '8708878f9950'
+down_revision: Union[str, None] = '40dda097581c'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

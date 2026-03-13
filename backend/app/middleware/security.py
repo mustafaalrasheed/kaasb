@@ -9,39 +9,73 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Callable
 
-from fastapi import Request, Response, HTTPException, status
+import redis.asyncio as aioredis
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import get_settings
 
 settings = get_settings()
 
+# === Redis-backed Rate Limiter with in-memory fallback ===
 
-# === In-Memory Rate Limiter (swap to Redis in production) ===
+_redis_client = None
+
+
+async def _get_redis():
+    """Return a shared Redis client, creating it lazily. Returns None on failure."""
+    global _redis_client
+    if _redis_client is None:
+        try:
+            _redis_client = aioredis.from_url(
+                settings.REDIS_URL,
+                encoding="utf-8",
+                decode_responses=True,
+            )
+        except Exception:
+            pass
+    return _redis_client
+
 
 class RateLimiter:
-    """Simple sliding-window rate limiter. Production: swap to Redis."""
+    """Redis-backed rate limiter with in-memory fallback."""
 
     def __init__(self):
-        self._requests: dict[str, list[float]] = defaultdict(list)
+        self._fallback: dict = defaultdict(list)
 
-    def _cleanup(self, key: str, window: int):
+    async def is_allowed(self, key: str, limit: int, window: int) -> bool:
+        """Return True if the request is within the rate limit."""
+        try:
+            r = await _get_redis()
+            if r:
+                pipe = r.pipeline()
+                pipe.incr(key)
+                pipe.expire(key, window)
+                results = await pipe.execute()
+                count = results[0]
+                return count <= limit
+        except Exception:
+            pass
+        # Fallback to in-memory sliding window
         now = time.time()
-        self._requests[key] = [
-            t for t in self._requests[key] if now - t < window
-        ]
-
-    def is_allowed(self, key: str, limit: int, window: int = 60) -> bool:
-        """Check if request is within rate limit. Window in seconds."""
-        self._cleanup(key, window)
-        if len(self._requests[key]) >= limit:
+        self._fallback[key] = [t for t in self._fallback[key] if now - t < window]
+        if len(self._fallback[key]) >= limit:
             return False
-        self._requests[key].append(time.time())
+        self._fallback[key].append(now)
         return True
 
-    def get_remaining(self, key: str, limit: int, window: int = 60) -> int:
-        self._cleanup(key, window)
-        return max(0, limit - len(self._requests[key]))
+    async def get_remaining(self, key: str, limit: int, window: int) -> int:
+        """Return the number of remaining requests in the current window."""
+        try:
+            r = await _get_redis()
+            if r:
+                count = await r.get(key)
+                return max(0, limit - int(count or 0))
+        except Exception:
+            pass
+        now = time.time()
+        recent = [t for t in self._fallback.get(key, []) if now - t < window]
+        return max(0, limit - len(recent))
 
 
 rate_limiter = RateLimiter()
@@ -51,7 +85,7 @@ RATE_LIMITS = {
     "login": {"limit": 5, "window": 300},       # 5 per 5 min
     "register": {"limit": 3, "window": 600},     # 3 per 10 min
     "upload": {"limit": 10, "window": 60},        # 10 per min
-    "api_write": {"limit": 30, "window": 60},     # 30 writes per min
+    "api_write": {"limit": 120, "window": 60},    # 120 writes per min
     "api_read": {"limit": 120, "window": 60},     # 120 reads per min
 }
 
@@ -146,8 +180,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         rate_key = f"{tier}:{client_ip}"
 
-        if not rate_limiter.is_allowed(rate_key, config["limit"], config["window"]):
-            remaining = 0
+        if not await rate_limiter.is_allowed(rate_key, config["limit"], config["window"]):
             retry_after = config["window"]
             return Response(
                 content='{"detail":"Rate limit exceeded. Please try again later."}',
@@ -164,7 +197,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         # Add rate limit headers to response
-        remaining = rate_limiter.get_remaining(rate_key, config["limit"], config["window"])
+        remaining = await rate_limiter.get_remaining(rate_key, config["limit"], config["window"])
         response.headers["X-RateLimit-Limit"] = str(config["limit"])
         response.headers["X-RateLimit-Remaining"] = str(remaining)
 

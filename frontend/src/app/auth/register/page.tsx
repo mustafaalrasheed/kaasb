@@ -20,8 +20,29 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    const updated = { ...formData, [name]: value };
+
+    // Auto-suggest username from first + last name (no spaces, lowercase)
+    if (name === "first_name" || name === "last_name") {
+      const first = name === "first_name" ? value : formData.first_name;
+      const last = name === "last_name" ? value : formData.last_name;
+      if (!formData.username || formData.username === autoUsername(formData.first_name, formData.last_name)) {
+        updated.username = autoUsername(first, last);
+      }
+    }
+
+    // Strip spaces from username as user types
+    if (name === "username") {
+      updated.username = value.replace(/\s/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
+    }
+
+    setFormData(updated);
   };
+
+  function autoUsername(first: string, last: string): string {
+    return `${first}_${last}`.toLowerCase().replace(/\s/g, "_").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 30);
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,9 +55,17 @@ export default function RegisterPage() {
     } catch (err: any) {
       const detail = err.response?.data?.detail;
       if (Array.isArray(detail)) {
-        setError(detail.map((d: any) => d.msg).join(", "));
+        // Pydantic validation errors — extract clear messages
+        const messages = detail.map((d: any) => {
+          const field = d.loc?.[d.loc.length - 1] || "field";
+          const msg = d.msg?.replace("Value error, ", "") || "Invalid value";
+          return `${field}: ${msg}`;
+        });
+        setError(messages.join("\n"));
+      } else if (typeof detail === "string") {
+        setError(detail);
       } else {
-        setError(detail || "Registration failed. Please try again.");
+        setError("Registration failed. Check your inputs and try again.");
       }
     } finally {
       setIsLoading(false);
@@ -57,7 +86,7 @@ export default function RegisterPage() {
           </div>
 
           {error && (
-            <div className="mb-6 p-3 bg-danger-50 text-danger-700 rounded-lg text-sm">
+            <div className="mb-6 p-3 bg-danger-50 text-danger-700 rounded-lg text-sm whitespace-pre-line">
               {error}
             </div>
           )}
@@ -151,11 +180,14 @@ export default function RegisterPage() {
                 value={formData.username}
                 onChange={handleChange}
                 className="input-field"
-                placeholder="Choose a unique username"
+                placeholder="e.g. almustafa_abed"
                 pattern="^[a-zA-Z0-9_-]+$"
                 minLength={3}
                 required
               />
+              <p className="mt-1 text-xs text-gray-500">
+                Letters, numbers, underscores and hyphens only — no spaces
+              </p>
             </div>
 
             <div>

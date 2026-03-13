@@ -3,6 +3,7 @@ Kaasb Platform - Job Service
 Business logic for job posting, listing, search, and lifecycle management.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -15,6 +16,8 @@ from fastapi import HTTPException, status
 from app.models.job import Job, JobStatus, JobType, ExperienceLevel, JobDuration
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobUpdate
+
+logger = logging.getLogger(__name__)
 
 
 class JobService:
@@ -59,6 +62,7 @@ class JobService:
         self.db.add(job)
         await self.db.flush()
         await self.db.refresh(job, attribute_names=["client"])
+        logger.info(f"Job created: {job.id} by client={client.id}")
         return job
 
     # === Read ===
@@ -125,6 +129,7 @@ class JobService:
 
         await self.db.flush()
         await self.db.refresh(job, attribute_names=["client"])
+        logger.info(f"Job updated: {job.id} by client={client.id}")
         return job
 
     # === Status Changes ===
@@ -149,6 +154,7 @@ class JobService:
         job.closed_at = datetime.now(timezone.utc)
         await self.db.flush()
         await self.db.refresh(job, attribute_names=["client"])
+        logger.info(f"Job closed: {job.id} by client={client.id}")
         return job
 
     async def delete_job(self, job_id: uuid.UUID, client: User) -> None:
@@ -175,6 +181,7 @@ class JobService:
 
         await self.db.delete(job)
         await self.db.flush()
+        logger.info(f"Job deleted: {job_id} by client={client.id}")
 
     # === Search & Listing ===
 
@@ -193,6 +200,7 @@ class JobService:
         page_size: int = 20,
     ) -> dict:
         """Search open jobs with filters, sorting, and pagination."""
+        page_size = min(page_size, 100)
         stmt = (
             select(Job)
             .options(selectinload(Job.client))
@@ -289,6 +297,7 @@ class JobService:
         page_size: int = 20,
     ) -> dict:
         """Get all jobs posted by a specific client."""
+        page_size = min(page_size, 100)
         stmt = (
             select(Job)
             .options(selectinload(Job.client))

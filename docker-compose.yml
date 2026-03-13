@@ -65,6 +65,7 @@ services:
     build:
       context: ./frontend
       dockerfile: ../docker/frontend/Dockerfile
+      target: development
     container_name: kaasb_frontend
     restart: unless-stopped
     environment:
