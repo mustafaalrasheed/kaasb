@@ -16,12 +16,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add 'qi_card' to paymentprovider enum
-    # PostgreSQL requires ALTER TYPE ... ADD VALUE (cannot be inside a transaction)
-    op.execute("ALTER TYPE paymentprovider ADD VALUE IF NOT EXISTS 'qi_card'")
-
-    # Add 'pending' to escrowstatus enum (for payments awaiting Qi Card confirmation)
-    op.execute("ALTER TYPE escrowstatus ADD VALUE IF NOT EXISTS 'pending'")
+    # ALTER TYPE ... ADD VALUE cannot run inside a transaction block in PostgreSQL.
+    # Use autocommit_block to commit the current transaction first, run outside it,
+    # then Alembic resumes a new transaction for the rest of the migration.
+    with op.get_context().autocommit_block():
+        op.execute("ALTER TYPE paymentprovider ADD VALUE IF NOT EXISTS 'qi_card'")
+        op.execute("ALTER TYPE escrowstatus ADD VALUE IF NOT EXISTS 'pending'")
 
     # Add Qi Card-specific columns to payment_accounts
     op.add_column(
