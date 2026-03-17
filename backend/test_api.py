@@ -86,7 +86,7 @@ def test_02_auth():
     if r.status_code == 201 and "access_token" in r.json():
         tokens["client"] = r.json()["access_token"]
         ok("Client registered")
-    elif r.status_code == 409:
+    elif r.status_code in (409, 429):
         r2 = raw("POST", "/auth/login", json={"email": "client@test.com", "password": "TestPass123!"})
         if r2.status_code == 200:
             tokens["client"] = r2.json()["access_token"]
@@ -107,7 +107,7 @@ def test_02_auth():
     if r.status_code == 201:
         tokens["freelancer"] = r.json()["access_token"]
         ok("Freelancer registered")
-    elif r.status_code == 409:
+    elif r.status_code in (409, 429):
         r2 = raw("POST", "/auth/login", json={"email": "freelancer@test.com", "password": "TestPass123!"})
         if r2.status_code == 200:
             tokens["freelancer"] = r2.json()["access_token"]
@@ -280,7 +280,7 @@ def test_04_jobs():
     # --- POST /jobs/ (create) ---
     r = raw("POST", "/jobs/", json={
         "title": "Build a FastAPI Backend",
-        "description": "Need an experienced Python developer to build a scalable REST API.",
+        "description": "Need an experienced Python developer to build a scalable REST API with authentication.",
         "category": "Web Development",
         "job_type": "fixed", "fixed_price": 1500.0,
         "skills_required": ["Python", "FastAPI", "PostgreSQL"],
@@ -297,7 +297,7 @@ def test_04_jobs():
     # --- Create second job ---
     r = raw("POST", "/jobs/", json={
         "title": "Design a Logo",
-        "description": "Modern logo design needed for a growing tech startup with clean aesthetics.",
+        "description": "Modern logo design needed for a growing tech startup with clean and professional aesthetics.",
         "category": "Design", "job_type": "fixed", "fixed_price": 200.0,
         "skills_required": ["Logo Design"],
         "experience_level": "entry", "duration": "less_than_1_week",
@@ -377,8 +377,8 @@ def test_05_proposals():
 
     # --- POST /proposals/jobs/{id} ---
     r = raw("POST", f"/proposals/jobs/{job_id}", json={
-        "cover_letter": "I'm an experienced FastAPI developer with 5 years of Python backend work.",
-        "proposed_price": 1200.0,
+        "cover_letter": "I'm an experienced FastAPI developer with 5 years of Python backend work and REST API expertise.",
+        "bid_amount": 1200.0,
         "estimated_duration": "2_to_4_weeks",
     }, headers=h("freelancer"))
     if r.status_code == 201:
@@ -390,14 +390,14 @@ def test_05_proposals():
 
     # --- Client cannot submit → 403 ---
     r = raw("POST", f"/proposals/jobs/{job_id}", json={
-        "cover_letter": "This should be blocked since clients cannot submit proposals.", "proposed_price": 500.0,
+        "cover_letter": "This should be blocked since clients cannot submit proposals on the platform.", "bid_amount": 500.0,
     }, headers=h("client"))
     if r.status_code == 403:
         ok("Client blocked from proposals (403)")
 
     # --- Duplicate → 400 ---
     r = raw("POST", f"/proposals/jobs/{job_id}", json={
-        "cover_letter": "Submitting again to test duplicate proposal rejection by the system.", "proposed_price": 1100.0,
+        "cover_letter": "Submitting again to test duplicate proposal rejection by the system.", "bid_amount": 1100.0,
     }, headers=h("freelancer"))
     if r.status_code == 400:
         ok("Duplicate proposal rejected (400)")
@@ -414,10 +414,10 @@ def test_05_proposals():
 
     # --- PUT /proposals/{id} ---
     r = raw("PUT", f"/proposals/{proposal_id}", json={
-        "proposed_price": 1300.0,
+        "bid_amount": 1300.0,
     }, headers=h("freelancer"))
     if r.status_code == 200:
-        ok(f"Proposal updated → ${r.json()['proposed_price']}")
+        ok(f"Proposal updated → ${r.json()['bid_amount']}")
 
     # --- GET /proposals/my ---
     r = raw("GET", "/proposals/my", headers=h("freelancer"))
@@ -426,10 +426,13 @@ def test_05_proposals():
 
     # --- POST /proposals/{id}/respond (accept) ---
     r = raw("POST", f"/proposals/{proposal_id}/respond", json={
-        "action": "accept",
+        "status": "accepted",
     }, headers=h("client"))
     if r.status_code == 200:
         ok(f"Proposal accepted → contract created")
+    else:
+        fail(f"Proposal accept: {r.status_code} {r.text[:200]}")
+        return False
 
     return True
 
@@ -465,7 +468,10 @@ def test_06_contracts():
         ],
     }, headers=h("client"))
     if r.status_code == 201:
-        ms = r.json()["milestones"]
+        ms = r.json().get("milestones", [])
+        if not ms:
+            fail(f"Add milestones returned 201 but milestones list is empty. Response: {r.json()}")
+            return False
         milestone_id = ms[0]["id"]
         milestone_id_2 = ms[1]["id"] if len(ms) > 1 else ""
         ok(f"Added {len(ms)} milestones")
