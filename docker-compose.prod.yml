@@ -11,8 +11,8 @@ services:
       - "443:443"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      # Uncomment for SSL:
-      # - ./ssl:/etc/nginx/ssl:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -77,12 +77,14 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - ENVIRONMENT=production
       - DEBUG=false
-      - CORS_ORIGINS=["https://${DOMAIN}"]
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
-      - WISE_API_KEY=${WISE_API_KEY}
-      - WISE_PROFILE_ID=${WISE_PROFILE_ID}
-      - WISE_ENVIRONMENT=production
+      - CORS_ORIGINS=["https://${DOMAIN}","https://www.${DOMAIN}"]
+      # Qi Card Payment Gateway
+      - QI_CARD_MERCHANT_ID=${QI_CARD_MERCHANT_ID}
+      - QI_CARD_SECRET_KEY=${QI_CARD_SECRET_KEY}
+      - QI_CARD_BASE_URL=${QI_CARD_BASE_URL:-https://gateway.qi.iq/api/v1}
+      - QI_CARD_SANDBOX_URL=${QI_CARD_SANDBOX_URL:-https://sandbox.gateway.qi.iq/api/v1}
+      - QI_CARD_SANDBOX=${QI_CARD_SANDBOX:-false}
+      - QI_CARD_CURRENCY=${QI_CARD_CURRENCY:-IQD}
     volumes:
       - backend_uploads:/app/uploads
     depends_on:
@@ -90,6 +92,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8000/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     deploy:
       resources:
         limits:
@@ -110,6 +118,12 @@ services:
       - NEXT_PUBLIC_API_URL=https://${DOMAIN}/api/v1
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
