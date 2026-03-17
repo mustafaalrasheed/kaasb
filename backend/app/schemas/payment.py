@@ -13,9 +13,12 @@ from pydantic import BaseModel, Field
 
 class PaymentAccountSetup(BaseModel):
     """Setup a payment account."""
-    provider: str = Field(pattern=r"^(stripe|wise)$")
+    provider: str = Field(pattern=r"^(qi_card|stripe|wise)$")
+    # Wise-specific
     wise_email: Optional[str] = Field(None, max_length=255)
     wise_currency: str = Field(default="USD", max_length=3)
+    # Qi Card-specific (optional — used for account label)
+    qi_card_phone: Optional[str] = Field(None, max_length=20, description="Iraqi phone number linked to Qi Card")
 
 
 class PaymentAccountResponse(BaseModel):
@@ -25,6 +28,7 @@ class PaymentAccountResponse(BaseModel):
     external_account_id: Optional[str] = None
     wise_email: Optional[str] = None
     wise_currency: str = "USD"
+    qi_card_phone: Optional[str] = None
     is_default: bool = True
     verified_at: Optional[datetime] = None
     created_at: datetime
@@ -37,7 +41,16 @@ class PaymentAccountResponse(BaseModel):
 class EscrowFundRequest(BaseModel):
     """Client funds escrow for a milestone."""
     milestone_id: uuid.UUID
-    payment_method_id: Optional[str] = None  # Stripe payment method
+    payment_method_id: Optional[str] = None  # Stripe payment method (legacy)
+    # Qi Card payment flow
+    callback_url: Optional[str] = Field(
+        None,
+        description="URL Qi Card will POST the webhook to after payment completes",
+    )
+    return_url: Optional[str] = Field(
+        None,
+        description="URL to redirect the user to after Qi Card payment",
+    )
 
 
 class EscrowFundResponse(BaseModel):
@@ -47,7 +60,11 @@ class EscrowFundResponse(BaseModel):
     platform_fee: float
     freelancer_amount: float
     status: str
-    client_secret: Optional[str] = None  # Stripe client_secret for frontend confirmation
+    # Qi Card payment redirect
+    payment_redirect_url: Optional[str] = None  # Redirect client here to complete payment
+    qi_card_payment_id: Optional[str] = None
+    # Legacy Stripe
+    client_secret: Optional[str] = None
     message: str
 
     model_config = {"from_attributes": True}
@@ -103,7 +120,19 @@ class PaymentSummary(BaseModel):
     payment_accounts: list[PaymentAccountResponse] = []
 
 
-# === Webhook ===
+# === Qi Card Webhook ===
+
+class QiCardWebhookEvent(BaseModel):
+    """Qi Card webhook payload sent to our callback URL after payment."""
+    payment_id: str
+    order_id: str  # This is our escrow order_id
+    status: str    # "completed" | "failed" | "cancelled"
+    amount: int    # Amount in IQD
+    merchant_id: str
+    signature: Optional[str] = None  # HMAC-SHA256 signature for verification
+
+
+# === Legacy Stripe Webhook (kept for compatibility) ===
 
 class StripeWebhookEvent(BaseModel):
     """Stripe webhook payload (partial — we parse what we need)."""

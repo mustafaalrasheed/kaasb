@@ -34,6 +34,7 @@ class PaymentProvider(str, enum.Enum):
     STRIPE = "stripe"
     WISE = "wise"
     MANUAL = "manual"  # For admin-managed payouts
+    QI_CARD = "qi_card"  # Iraqi Qi Card payment gateway
 
 
 class PaymentAccountStatus(str, enum.Enum):
@@ -81,6 +82,10 @@ class PaymentAccount(BaseModel):
     # Wise-specific fields
     wise_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     wise_currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+
+    # Qi Card-specific fields
+    qi_card_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    qi_card_payment_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Pending payment reference
 
     # Metadata (provider-specific data)
     metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
@@ -198,7 +203,8 @@ class Transaction(BaseModel):
 
 
 class EscrowStatus(str, enum.Enum):
-    FUNDED = "funded"        # Money held
+    PENDING = "pending"      # Awaiting payment confirmation (Qi Card redirect flow)
+    FUNDED = "funded"        # Money held in escrow
     RELEASED = "released"    # Paid to freelancer
     REFUNDED = "refunded"    # Returned to client
     DISPUTED = "disputed"    # Under dispute

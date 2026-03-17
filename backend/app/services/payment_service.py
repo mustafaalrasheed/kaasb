@@ -1,17 +1,17 @@
 """
 Kaasb Platform - Payment Service
-Business logic for escrow, Stripe charges, Wise payouts, and platform fees.
+Business logic for escrow, Qi Card charges, and platform fees.
 
-Payment Flow:
-1. Client funds escrow (Stripe charge → hold in escrow)
-2. Freelancer works on milestone
-3. Client approves milestone
-4. Escrow releases → freelancer gets paid (Stripe/Wise minus platform fee)
+Payment Flow (Qi Card):
+1. Client funds escrow → Qi Card payment initiated → redirect URL returned
+2. Client completes payment on Qi Card → webhook confirms → escrow marked FUNDED
+3. Freelancer works on milestone
+4. Client approves milestone → escrow released → freelancer gets paid
+5. Freelancer withdraws via Qi Card payout
 
-Production Notes:
-- Replace mock Stripe/Wise calls with real SDK calls
-- Add webhook verification for Stripe
-- Add idempotency keys for all financial operations
+Currency:
+  - Internal amounts stored in USD (float)
+  - Qi Card transactions converted to IQD at time of payment
 """
 
 import logging
@@ -39,6 +39,7 @@ from app.schemas.payment import (
     EscrowFundResponse, EscrowReleaseResponse,
     PayoutRequest, PayoutResponse,
 )
+from app.services.qi_card_client import QiCardClient, QiCardError, usd_to_iqd
 
 settings = get_settings()
 
@@ -49,6 +50,7 @@ class PaymentService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.platform_fee_rate = settings.PLATFORM_FEE_PERCENT / 100.0
+        self.qi_card = QiCardClient()
 
     # === Helpers ===
 
@@ -84,7 +86,6 @@ class PaymentService:
         self, user: User, data: PaymentAccountSetup
     ) -> PaymentAccount:
         """Set up a payment account for a user."""
-        # Check if already exists
         existing = await self.db.execute(
             select(PaymentAccount).where(
                 PaymentAccount.user_id == user.id,
@@ -99,8 +100,9 @@ class PaymentService:
 
         provider = PaymentProvider(data.provider)
 
-        if provider == PaymentProvider.STRIPE:
-            # In production: call stripe.Customer.create()
+        if provider == PaymentProvider.QI_CARD:
+            external_id = f"qc_acct_{uuid.uuid4().hex[:12]}"
+        elif provider == PaymentProvider.STRIPE:
             external_id = f"cus_mock_{uuid.uuid4().hex[:12]}"
         elif provider == PaymentProvider.WISE:
             if not data.wise_email:
@@ -108,7 +110,6 @@ class PaymentService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Wise email is required for Wise accounts",
                 )
-            # In production: call Wise API to create recipient
             external_id = f"wise_mock_{uuid.uuid4().hex[:12]}"
         else:
             external_id = None
@@ -116,16 +117,18 @@ class PaymentService:
         account = PaymentAccount(
             user_id=user.id,
             provider=provider,
-            status=PaymentAccountStatus.VERIFIED,  # Auto-verify in dev
+            status=PaymentAccountStatus.VERIFIED,
             external_account_id=external_id,
             wise_email=data.wise_email if provider == PaymentProvider.WISE else None,
             wise_currency=data.wise_currency if provider == PaymentProvider.WISE else "USD",
+            qi_card_phone=data.qi_card_phone if provider == PaymentProvider.QI_CARD else None,
             is_default=True,
             verified_at=datetime.now(timezone.utc),
         )
         self.db.add(account)
         await self.db.flush()
         await self.db.refresh(account)
+        logger.info(f"Payment account created: user={user.id} provider={provider.value}")
         return account
 
     async def get_payment_accounts(self, user: User) -> list[PaymentAccount]:
@@ -137,13 +140,17 @@ class PaymentService:
         )
         return list(result.scalars().all())
 
-    # === Escrow: Fund ===
+    # === Escrow: Fund via Qi Card ===
 
     async def fund_escrow(
         self, client: User, data: EscrowFundRequest
     ) -> EscrowFundResponse:
-        """Client funds escrow for a milestone."""
-        # Get milestone with contract
+        """
+        Client funds escrow for a milestone via Qi Card.
+
+        Returns a redirect URL for the client to complete payment on Qi Card.
+        Escrow is created in PENDING state and marked FUNDED via webhook.
+        """
         result = await self.db.execute(
             select(Milestone).where(Milestone.id == data.milestone_id)
         )
@@ -151,7 +158,6 @@ class PaymentService:
         if not milestone:
             raise HTTPException(status_code=404, detail="Milestone not found")
 
-        # Get contract
         result = await self.db.execute(
             select(Contract).where(Contract.id == milestone.contract_id)
         )
@@ -159,18 +165,15 @@ class PaymentService:
         if not contract:
             raise HTTPException(status_code=404, detail="Contract not found")
 
-        # Authorization
         if contract.client_id != client.id:
             raise HTTPException(status_code=403, detail="Only the client can fund escrow")
 
-        # Check milestone is in a fundable state
         if milestone.status not in (MilestoneStatus.PENDING, MilestoneStatus.IN_PROGRESS):
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot fund escrow for milestone with status '{milestone.status.value}'",
             )
 
-        # Check not already funded
         existing = await self.db.execute(
             select(Escrow).where(
                 Escrow.milestone_id == milestone.id,
@@ -180,46 +183,60 @@ class PaymentService:
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Escrow already funded for this milestone")
 
-        # Calculate fees
         fees = self._calculate_fees(milestone.amount)
+        order_id = f"escrow-{milestone.id}"
 
-        # In production: Create Stripe PaymentIntent
-        # stripe_intent = stripe.PaymentIntent.create(
-        #     amount=int(milestone.amount * 100),  # cents
-        #     currency="usd",
-        #     customer=payment_account.external_account_id,
-        #     payment_method=data.payment_method_id,
-        #     confirm=True,
-        #     metadata={"milestone_id": str(milestone.id)}
-        # )
-        mock_stripe_id = f"pi_mock_{uuid.uuid4().hex[:12]}"
+        # Build callback/return URLs (use provided or default)
+        callback_url = (
+            data.callback_url
+            or f"https://kaasb.com/api/v1/payments/qi-card/webhook"
+        )
+        return_url = data.return_url or "https://kaasb.com/payment/result"
 
-        # Create transaction record
+        # Initiate Qi Card payment
+        try:
+            qi_result = await self.qi_card.create_payment(
+                amount_usd=fees["amount"],
+                order_id=order_id,
+                callback_url=callback_url,
+                return_url=return_url,
+                description=f"Escrow: {milestone.title[:100]}",
+            )
+        except QiCardError as e:
+            logger.error(f"Qi Card error in fund_escrow: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=502,
+                detail="Payment gateway error. Please try again later.",
+            )
+
+        qi_payment_id = qi_result["payment_id"]
+        amount_iqd = qi_result["amount_iqd"]
+
+        # Create transaction record (PENDING — confirmed via webhook)
         transaction = Transaction(
             transaction_type=TransactionType.ESCROW_FUND,
-            status=TransactionStatus.COMPLETED,
+            status=TransactionStatus.PENDING,
             amount=fees["amount"],
-            currency="USD",
-            platform_fee=0,  # Fee taken on release
+            currency=settings.QI_CARD_CURRENCY,
+            platform_fee=0,
             net_amount=fees["amount"],
             payer_id=client.id,
             contract_id=contract.id,
             milestone_id=milestone.id,
-            provider=PaymentProvider.STRIPE,
-            external_transaction_id=mock_stripe_id,
-            description=f"Escrow funded for milestone: {milestone.title}",
-            completed_at=datetime.now(timezone.utc),
+            provider=PaymentProvider.QI_CARD,
+            external_transaction_id=qi_payment_id,
+            description=f"Qi Card escrow payment for milestone: {milestone.title}",
         )
         self.db.add(transaction)
         await self.db.flush()
 
-        # Create escrow
+        # Create escrow in PENDING state (will be FUNDED after webhook)
         escrow = Escrow(
             amount=fees["amount"],
             platform_fee=fees["platform_fee"],
             freelancer_amount=fees["net_amount"],
-            currency="USD",
-            status=EscrowStatus.FUNDED,
+            currency=settings.QI_CARD_CURRENCY,
+            status=EscrowStatus.PENDING,
             contract_id=contract.id,
             milestone_id=milestone.id,
             client_id=client.id,
@@ -236,7 +253,10 @@ class PaymentService:
             logger.error(f"Database error in fund_escrow: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Internal server error")
 
-        logger.info(f"Escrow funded: milestone={data.milestone_id} client={client.id} amount={fees['amount']}")
+        logger.info(
+            f"Qi Card payment initiated: milestone={data.milestone_id} "
+            f"payment_id={qi_payment_id} amount_usd={fees['amount']} amount_iqd={amount_iqd}"
+        )
 
         return EscrowFundResponse(
             escrow_id=escrow.id,
@@ -244,11 +264,95 @@ class PaymentService:
             amount=fees["amount"],
             platform_fee=fees["platform_fee"],
             freelancer_amount=fees["net_amount"],
-            status="funded",
-            client_secret=None,  # In production: stripe_intent.client_secret
-            message=f"Escrow funded: ${fees['amount']:.2f} "
-                    f"(freelancer gets ${fees['net_amount']:.2f} after {settings.PLATFORM_FEE_PERCENT}% fee)",
+            status="pending_payment",
+            payment_redirect_url=qi_result.get("redirect_url"),
+            qi_card_payment_id=qi_payment_id,
+            message=(
+                f"Redirect client to complete Qi Card payment. "
+                f"Amount: {amount_iqd:,} IQD (${fees['amount']:.2f}). "
+                f"Freelancer receives ${fees['net_amount']:.2f} after "
+                f"{settings.PLATFORM_FEE_PERCENT}% platform fee."
+            ),
         )
+
+    async def confirm_qi_card_payment(
+        self, qi_payment_id: str, order_id: str
+    ) -> bool:
+        """
+        Called from the Qi Card webhook handler when payment is confirmed.
+        Marks the escrow as FUNDED and transaction as COMPLETED.
+        """
+        # Find the transaction by Qi Card payment_id
+        result = await self.db.execute(
+            select(Transaction).where(
+                Transaction.external_transaction_id == qi_payment_id,
+                Transaction.provider == PaymentProvider.QI_CARD,
+                Transaction.transaction_type == TransactionType.ESCROW_FUND,
+            )
+        )
+        transaction = result.scalar_one_or_none()
+        if not transaction:
+            logger.warning(f"Qi Card webhook: no transaction found for payment_id={qi_payment_id}")
+            return False
+
+        if transaction.status == TransactionStatus.COMPLETED:
+            logger.info(f"Qi Card webhook: already processed payment_id={qi_payment_id}")
+            return True  # Idempotent
+
+        # Update transaction
+        transaction.status = TransactionStatus.COMPLETED
+        transaction.completed_at = datetime.now(timezone.utc)
+
+        # Update escrow to FUNDED
+        result = await self.db.execute(
+            select(Escrow).where(
+                Escrow.funding_transaction_id == transaction.id,
+            )
+        )
+        escrow = result.scalar_one_or_none()
+        if escrow:
+            escrow.status = EscrowStatus.FUNDED
+            escrow.funded_at = datetime.now(timezone.utc)
+
+        try:
+            await self.db.flush()
+        except SQLAlchemyError as e:
+            logger.error(f"Database error confirming Qi Card payment: {e}", exc_info=True)
+            return False
+
+        logger.info(
+            f"Qi Card payment confirmed: payment_id={qi_payment_id} "
+            f"transaction={transaction.id} escrow={escrow.id if escrow else 'not found'}"
+        )
+        return True
+
+    async def handle_qi_card_payment_failed(self, qi_payment_id: str) -> bool:
+        """Mark transaction as FAILED when Qi Card payment fails or is cancelled."""
+        result = await self.db.execute(
+            select(Transaction).where(
+                Transaction.external_transaction_id == qi_payment_id,
+                Transaction.provider == PaymentProvider.QI_CARD,
+                Transaction.status == TransactionStatus.PENDING,
+            )
+        )
+        transaction = result.scalar_one_or_none()
+        if not transaction:
+            return False
+
+        transaction.status = TransactionStatus.FAILED
+        transaction.failure_reason = "Payment cancelled or failed on Qi Card"
+
+        # Cancel the escrow
+        result = await self.db.execute(
+            select(Escrow).where(Escrow.funding_transaction_id == transaction.id)
+        )
+        escrow = result.scalar_one_or_none()
+        if escrow:
+            escrow.status = EscrowStatus.REFUNDED  # Nothing was actually charged
+
+        await self.db.flush()
+        logger.info(f"Qi Card payment failed/cancelled: payment_id={qi_payment_id}")
+        return True
 
     # === Escrow: Release (called when milestone approved) ===
 
@@ -264,9 +368,9 @@ class PaymentService:
         )
         escrow = result.scalar_one_or_none()
         if not escrow:
-            return None  # No escrow to release (might be unfunded milestone)
+            return None
 
-        # Create platform fee transaction
+        # Platform fee transaction
         fee_tx = Transaction(
             transaction_type=TransactionType.PLATFORM_FEE,
             status=TransactionStatus.COMPLETED,
@@ -282,7 +386,7 @@ class PaymentService:
         )
         self.db.add(fee_tx)
 
-        # Create release transaction
+        # Release transaction (internal ledger — real payout happens via request_payout)
         release_tx = Transaction(
             transaction_type=TransactionType.ESCROW_RELEASE,
             status=TransactionStatus.COMPLETED,
@@ -294,15 +398,14 @@ class PaymentService:
             payee_id=escrow.freelancer_id,
             contract_id=escrow.contract_id,
             milestone_id=milestone_id,
-            provider=PaymentProvider.STRIPE,
-            external_transaction_id=f"tr_mock_{uuid.uuid4().hex[:12]}",
-            description=f"Milestone payment released",
+            provider=PaymentProvider.QI_CARD,
+            external_transaction_id=f"release_{uuid.uuid4().hex[:12]}",
+            description="Milestone payment released to freelancer balance",
             completed_at=datetime.now(timezone.utc),
         )
         self.db.add(release_tx)
         await self.db.flush()
 
-        # Update escrow
         escrow.status = EscrowStatus.RELEASED
         escrow.released_at = datetime.now(timezone.utc)
         escrow.release_transaction_id = release_tx.id
@@ -321,7 +424,7 @@ class PaymentService:
             amount=escrow.amount,
             freelancer_amount=escrow.freelancer_amount,
             status="released",
-            message=f"${escrow.freelancer_amount:.2f} released to freelancer",
+            message=f"${escrow.freelancer_amount:.2f} added to freelancer balance",
         )
 
     # === Escrow: Refund ===
@@ -329,7 +432,7 @@ class PaymentService:
     async def refund_escrow(
         self, milestone_id: uuid.UUID, reason: str = "Milestone cancelled"
     ) -> bool:
-        """Refund escrow to client."""
+        """Refund escrow to client via Qi Card."""
         result = await self.db.execute(
             select(Escrow).where(
                 Escrow.milestone_id == milestone_id,
@@ -340,7 +443,27 @@ class PaymentService:
         if not escrow:
             return False
 
-        # In production: stripe.Refund.create()
+        # Find original Qi Card payment_id
+        original_tx = None
+        if escrow.funding_transaction_id:
+            tx_result = await self.db.execute(
+                select(Transaction).where(Transaction.id == escrow.funding_transaction_id)
+            )
+            original_tx = tx_result.scalar_one_or_none()
+
+        qi_payment_id = original_tx.external_transaction_id if original_tx else None
+        amount_iqd = usd_to_iqd(escrow.amount)
+
+        if qi_payment_id:
+            try:
+                await self.qi_card.refund_payment(
+                    payment_id=qi_payment_id,
+                    amount_iqd=amount_iqd,
+                    reason=reason,
+                )
+            except QiCardError as e:
+                logger.error(f"Qi Card refund error: {e}", exc_info=True)
+                # Continue to update DB even if gateway call fails — handle manually
 
         refund_tx = Transaction(
             transaction_type=TransactionType.ESCROW_REFUND,
@@ -352,8 +475,8 @@ class PaymentService:
             payee_id=escrow.client_id,
             contract_id=escrow.contract_id,
             milestone_id=milestone_id,
-            provider=PaymentProvider.STRIPE,
-            external_transaction_id=f"re_mock_{uuid.uuid4().hex[:12]}",
+            provider=PaymentProvider.QI_CARD,
+            external_transaction_id=f"refund_{uuid.uuid4().hex[:12]}",
             description=reason,
             completed_at=datetime.now(timezone.utc),
         )
@@ -363,6 +486,7 @@ class PaymentService:
         escrow.released_at = datetime.now(timezone.utc)
 
         await self.db.flush()
+        logger.info(f"Escrow refunded: milestone={milestone_id} amount={escrow.amount}")
         return True
 
     # === Payout: Freelancer withdraws funds ===
@@ -370,8 +494,7 @@ class PaymentService:
     async def request_payout(
         self, freelancer: User, data: PayoutRequest
     ) -> PayoutResponse:
-        """Freelancer requests a payout to their payment account."""
-        # Verify payment account
+        """Freelancer requests a payout to their Qi Card account."""
         result = await self.db.execute(
             select(PaymentAccount).where(
                 PaymentAccount.id == data.payment_account_id,
@@ -383,7 +506,7 @@ class PaymentService:
         if not account:
             raise HTTPException(status_code=404, detail="Payment account not found or not verified")
 
-        # Check available balance (total released - total payouts)
+        # Check available balance
         released = await self.db.execute(
             select(func.coalesce(func.sum(Transaction.net_amount), 0.0)).where(
                 Transaction.payee_id == freelancer.id,
@@ -409,45 +532,56 @@ class PaymentService:
                 detail=f"Insufficient balance. Available: ${available:.2f}",
             )
 
-        # In production:
-        # if account.provider == PaymentProvider.WISE:
-        #     wise_transfer = wise_client.create_transfer(...)
-        # elif account.provider == PaymentProvider.STRIPE:
-        #     stripe.Transfer.create(...)
+        amount_iqd = usd_to_iqd(data.amount)
 
+        # For Qi Card payouts: in production, call Qi Card payout/transfer API
+        # Currently logged as processing — admin confirms manually until payout API is available
         payout_tx = Transaction(
             transaction_type=TransactionType.PAYOUT,
             status=TransactionStatus.PROCESSING,
             amount=data.amount,
-            currency="USD",
+            currency=settings.QI_CARD_CURRENCY,
             platform_fee=0,
             net_amount=data.amount,
             payee_id=freelancer.id,
             provider=account.provider,
-            external_transaction_id=f"po_mock_{uuid.uuid4().hex[:12]}",
-            description=f"Payout to {account.provider.value} account",
+            external_transaction_id=f"payout_{uuid.uuid4().hex[:12]}",
+            description=(
+                f"Qi Card payout: {amount_iqd:,} IQD (${data.amount:.2f}) "
+                f"to phone {account.qi_card_phone or 'N/A'}"
+            ),
         )
         self.db.add(payout_tx)
         await self.db.flush()
 
-        # In dev, auto-complete the payout
-        payout_tx.status = TransactionStatus.COMPLETED
-        payout_tx.completed_at = datetime.now(timezone.utc)
+        # In sandbox/dev: auto-complete
+        if settings.QI_CARD_SANDBOX or settings.ENVIRONMENT == "development":
+            payout_tx.status = TransactionStatus.COMPLETED
+            payout_tx.completed_at = datetime.now(timezone.utc)
+
         try:
             await self.db.flush()
         except SQLAlchemyError as e:
             logger.error(f"Database error in request_payout: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Internal server error")
 
-        logger.info(f"Payout processed: freelancer={freelancer.id} amount={data.amount} provider={account.provider.value}")
+        logger.info(
+            f"Payout requested: freelancer={freelancer.id} "
+            f"amount={data.amount} ({amount_iqd:,} IQD) provider={account.provider.value}"
+        )
 
+        payout_status = payout_tx.status.value
         return PayoutResponse(
             transaction_id=payout_tx.id,
             amount=data.amount,
             net_amount=data.amount,
-            status="completed",
+            status=payout_status,
             provider=account.provider.value,
-            message=f"${data.amount:.2f} payout processed via {account.provider.value}",
+            message=(
+                f"Payout of {amount_iqd:,} IQD (${data.amount:.2f}) "
+                f"{'processed' if payout_status == 'completed' else 'queued for processing'} "
+                f"via {account.provider.value}"
+            ),
         )
 
     # === Transaction History ===
@@ -470,11 +604,9 @@ class PaymentService:
                 Transaction.transaction_type == TransactionType(transaction_type)
             )
 
-        # Count
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.db.execute(count_stmt)).scalar() or 0
 
-        # Paginate
         stmt = stmt.order_by(Transaction.created_at.desc())
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
@@ -493,7 +625,6 @@ class PaymentService:
 
     async def get_payment_summary(self, user: User) -> dict:
         """Get payment summary for dashboard."""
-        # Total earned (escrow releases where user is payee)
         earned_result = await self.db.execute(
             select(func.coalesce(func.sum(Transaction.net_amount), 0.0)).where(
                 Transaction.payee_id == user.id,
@@ -503,7 +634,6 @@ class PaymentService:
         )
         total_earned = earned_result.scalar() or 0.0
 
-        # Total spent (escrow funds where user is payer)
         spent_result = await self.db.execute(
             select(func.coalesce(func.sum(Transaction.amount), 0.0)).where(
                 Transaction.payer_id == user.id,
@@ -513,7 +643,6 @@ class PaymentService:
         )
         total_spent = spent_result.scalar() or 0.0
 
-        # Pending escrow (funded but not released)
         pending_result = await self.db.execute(
             select(func.coalesce(func.sum(Escrow.amount), 0.0)).where(
                 (Escrow.client_id == user.id) | (Escrow.freelancer_id == user.id),
@@ -522,7 +651,6 @@ class PaymentService:
         )
         pending_escrow = pending_result.scalar() or 0.0
 
-        # Platform fees paid
         fees_result = await self.db.execute(
             select(func.coalesce(func.sum(Transaction.platform_fee), 0.0)).where(
                 Transaction.payer_id == user.id,
@@ -532,7 +660,6 @@ class PaymentService:
         )
         total_fees = fees_result.scalar() or 0.0
 
-        # Transaction count
         count_result = await self.db.execute(
             select(func.count()).where(
                 (Transaction.payer_id == user.id) | (Transaction.payee_id == user.id)
@@ -540,14 +667,13 @@ class PaymentService:
         )
         tx_count = count_result.scalar() or 0
 
-        # Payment accounts
         accounts = await self.get_payment_accounts(user)
 
         return {
             "total_earned": total_earned,
             "total_spent": total_spent,
             "pending_escrow": pending_escrow,
-            "available_balance": total_earned,  # Simplified
+            "available_balance": total_earned,
             "total_platform_fees": total_fees,
             "transaction_count": tx_count,
             "payment_accounts": accounts,

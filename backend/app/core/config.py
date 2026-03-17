@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     WISE_PROFILE_ID: str = ""
     WISE_ENVIRONMENT: str = "sandbox"  # sandbox | production
 
+    # === Qi Card (Iraqi Payment Gateway) ===
+    QI_CARD_MERCHANT_ID: str = ""
+    QI_CARD_SECRET_KEY: str = ""
+    QI_CARD_BASE_URL: str = "https://gateway.qi.iq/api/v1"
+    QI_CARD_SANDBOX_URL: str = "https://sandbox.gateway.qi.iq/api/v1"
+    QI_CARD_SANDBOX: bool = True  # Set to False in production
+    QI_CARD_CURRENCY: str = "IQD"  # Iraqi Dinar
+
     # === Email (for future use) ===
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
