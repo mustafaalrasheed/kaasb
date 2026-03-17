@@ -1,4 +1,5 @@
 """Kaasb Platform - Schemas Package"""
+# ruff: noqa: F401  — intentional re-exports
 
 from app.schemas.user import (
     UserRegister, UserLogin, TokenResponse, TokenRefresh,

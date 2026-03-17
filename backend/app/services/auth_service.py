@@ -7,7 +7,6 @@ import hashlib
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -209,7 +208,7 @@ class AuthService:
         result = await self.db.execute(
             select(RefreshToken).where(
                 RefreshToken.token_hash == token_hash,
-                RefreshToken.revoked == False,
+                RefreshToken.revoked.is_(False),
                 RefreshToken.expires_at > datetime.now(timezone.utc),
             )
         )
@@ -288,7 +287,7 @@ class AuthService:
             update(RefreshToken)
             .where(
                 RefreshToken.user_id == user.id,
-                RefreshToken.revoked == False,
+                RefreshToken.revoked.is_(False),
             )
             .values(revoked=True)
         )

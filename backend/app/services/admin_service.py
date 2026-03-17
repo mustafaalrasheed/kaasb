@@ -8,12 +8,10 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from sqlalchemy import select, func, update, and_
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException, status
-
-logger = logging.getLogger(__name__)
+from fastapi import HTTPException
 
 from app.models.user import User, UserRole, UserStatus
 from app.models.job import Job, JobStatus
@@ -21,8 +19,9 @@ from app.models.contract import Contract, ContractStatus
 from app.models.proposal import Proposal
 from app.models.payment import Transaction, TransactionType, TransactionStatus, Escrow, EscrowStatus
 from app.models.review import Review
-from app.models.notification import Notification
-from app.models.message import Conversation, Message
+from app.models.message import Message
+
+logger = logging.getLogger(__name__)
 
 
 class AdminService:

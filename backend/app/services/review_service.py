@@ -5,12 +5,11 @@ Business logic for reviews and rating aggregation.
 
 import logging
 import uuid
-from typing import Optional
 
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
 from app.models.review import Review
 from app.models.contract import Contract, ContractStatus
@@ -129,7 +128,7 @@ class ReviewService:
                 selectinload(Review.reviewee),
                 selectinload(Review.contract),
             )
-            .where(Review.reviewee_id == user_id, Review.is_public == True)
+            .where(Review.reviewee_id == user_id, Review.is_public.is_(True))
         )
 
         # Count
@@ -139,7 +138,7 @@ class ReviewService:
         # Avg rating
         avg_result = await self.db.execute(
             select(func.avg(Review.rating)).where(
-                Review.reviewee_id == user_id, Review.is_public == True
+                Review.reviewee_id == user_id, Review.is_public.is_(True)
             )
         )
         avg_rating = avg_result.scalar()
@@ -162,10 +161,6 @@ class ReviewService:
 
     async def get_review_stats(self, user_id: uuid.UUID) -> dict:
         """Get aggregated review statistics."""
-        base = select(Review).where(
-            Review.reviewee_id == user_id, Review.is_public == True
-        )
-
         # Overall stats
         stats_result = await self.db.execute(
             select(
@@ -175,14 +170,14 @@ class ReviewService:
                 func.avg(Review.quality_rating),
                 func.avg(Review.professionalism_rating),
                 func.avg(Review.timeliness_rating),
-            ).where(Review.reviewee_id == user_id, Review.is_public == True)
+            ).where(Review.reviewee_id == user_id, Review.is_public.is_(True))
         )
         row = stats_result.one()
 
         # Rating distribution
         dist_result = await self.db.execute(
             select(Review.rating, func.count(Review.id))
-            .where(Review.reviewee_id == user_id, Review.is_public == True)
+            .where(Review.reviewee_id == user_id, Review.is_public.is_(True))
             .group_by(Review.rating)
         )
         distribution = {str(i): 0 for i in range(1, 6)}

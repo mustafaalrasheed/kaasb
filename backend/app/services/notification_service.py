@@ -8,7 +8,6 @@ from typing import Optional
 
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException
 
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
@@ -56,7 +55,7 @@ class NotificationService:
         stmt = select(Notification).where(Notification.user_id == user.id)
 
         if unread_only:
-            stmt = stmt.where(Notification.is_read == False)
+            stmt = stmt.where(Notification.is_read.is_(False))
 
         # Count
         count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -66,7 +65,7 @@ class NotificationService:
         unread_result = await self.db.execute(
             select(func.count()).where(
                 Notification.user_id == user.id,
-                Notification.is_read == False,
+                Notification.is_read.is_(False),
             )
         )
         unread_count = unread_result.scalar() or 0
@@ -92,7 +91,7 @@ class NotificationService:
         result = await self.db.execute(
             select(func.count()).where(
                 Notification.user_id == user.id,
-                Notification.is_read == False,
+                Notification.is_read.is_(False),
             )
         )
         return result.scalar() or 0
@@ -118,7 +117,7 @@ class NotificationService:
             update(Notification)
             .where(
                 Notification.user_id == user.id,
-                Notification.is_read == False,
+                Notification.is_read.is_(False),
             )
             .values(is_read=True)
         )

@@ -42,7 +42,7 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     - **primary_role**: "client" or "freelancer"
     """
     auth_service = AuthService(db)
-    user = await auth_service.register(data)
+    await auth_service.register(data)
 
     # Auto-login after registration
     login_data = UserLogin(email=data.email, password=data.password)

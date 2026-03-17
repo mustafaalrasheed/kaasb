@@ -14,13 +14,12 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-logger = logging.getLogger(__name__)
-
 from app.core.config import get_settings
 from app.core.database import init_db, engine
 from app.api.v1.router import api_router
 from app.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 

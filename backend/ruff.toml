@@ -1,0 +1,10 @@
+[lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+# Models use SQLAlchemy string forward references — F821 is a false positive here
+"app/models/*.py" = ["F821"]
+# __init__.py is an intentional re-export barrel — all imports are public API
+"app/schemas/__init__.py" = ["F401"]
+"app/models/__init__.py" = ["F401"]

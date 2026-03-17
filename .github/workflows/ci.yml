@@ -61,7 +61,7 @@ jobs:
         run: |
           cd backend
           pip install ruff
-          ruff check app/ --select E,F,W --ignore E501
+          ruff check app/
 
       - name: Type check
         run: |
