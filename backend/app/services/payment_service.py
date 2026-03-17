@@ -24,8 +24,6 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
-logger = logging.getLogger(__name__)
-
 from app.core.config import get_settings
 from app.models.payment import (
     PaymentAccount, PaymentAccountStatus, PaymentProvider,
@@ -41,6 +39,7 @@ from app.schemas.payment import (
 )
 from app.services.qi_card_client import QiCardClient, QiCardError, usd_to_iqd
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
@@ -75,7 +74,7 @@ class PaymentService:
         if provider:
             stmt = stmt.where(PaymentAccount.provider == PaymentProvider(provider))
         else:
-            stmt = stmt.where(PaymentAccount.is_default == True)
+            stmt = stmt.where(PaymentAccount.is_default.is_(True))
 
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
@@ -189,7 +188,7 @@ class PaymentService:
         # Build callback/return URLs (use provided or default)
         callback_url = (
             data.callback_url
-            or f"https://kaasb.com/api/v1/payments/qi-card/webhook"
+            or "https://kaasb.com/api/v1/payments/qi-card/webhook"
         )
         return_url = data.return_url or "https://kaasb.com/payment/result"
 

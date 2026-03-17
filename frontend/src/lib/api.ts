@@ -258,6 +258,7 @@ export const paymentsApi = {
     provider: string;
     wise_email?: string;
     wise_currency?: string;
+    qi_card_phone?: string;
   }) => api.post("/payments/accounts", data),
 
   getTransactions: (params?: {

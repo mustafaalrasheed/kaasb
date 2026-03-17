@@ -84,6 +84,7 @@ export const TRANSACTION_STATUS_COLORS: Record<string, string> = {
 };
 
 export const PROVIDER_LABELS: Record<string, string> = {
+  qi_card: "Qi Card",
   stripe: "Stripe",
   wise: "Wise (TransferWise)",
   manual: "Manual",

@@ -54,6 +54,7 @@ export interface UserProfile
     | "hourly_rate"
     | "skills"
     | "experience_level"
+    | "portfolio_url"
     | "avg_rating"
     | "total_reviews"
     | "jobs_completed"

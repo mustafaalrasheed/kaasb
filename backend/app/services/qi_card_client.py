@@ -23,10 +23,8 @@ To go live:
 import base64
 import hashlib
 import hmac
-import json
 import logging
 import uuid
-from typing import Optional
 
 import httpx
 

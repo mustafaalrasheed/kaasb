@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import type {
   PaymentSummary,
   TransactionDetail,
-  PaymentAccount,
 } from "@/types/payment";
 import {
   TRANSACTION_TYPE_LABELS,
@@ -25,8 +24,9 @@ export default function PaymentsPage() {
 
   // Setup account form
   const [showSetup, setShowSetup] = useState(false);
-  const [setupProvider, setSetupProvider] = useState("stripe");
+  const [setupProvider, setSetupProvider] = useState("qi_card");
   const [wiseEmail, setWiseEmail] = useState("");
+  const [qiCardPhone, setQiCardPhone] = useState("");
 
   // Payout form
   const [showPayout, setShowPayout] = useState(false);
@@ -56,18 +56,23 @@ export default function PaymentsPage() {
 
   const handleSetupAccount = async () => {
     try {
-      const data: Record<string, string> = { provider: setupProvider };
+      const data: { provider: string; wise_email?: string; qi_card_phone?: string } = {
+        provider: setupProvider,
+      };
       if (setupProvider === "wise") {
         if (!wiseEmail) {
           toast.error("Wise email is required");
           return;
         }
         data.wise_email = wiseEmail;
+      } else if (setupProvider === "qi_card" && qiCardPhone) {
+        data.qi_card_phone = qiCardPhone;
       }
       await paymentsApi.setupAccount(data);
-      toast.success(`${PROVIDER_LABELS[setupProvider]} account created`);
+      toast.success(`${PROVIDER_LABELS[setupProvider] ?? setupProvider} account created`);
       setShowSetup(false);
       setWiseEmail("");
+      setQiCardPhone("");
       fetchData();
     } catch (err: any) {
       toast.error(err.response?.data?.detail || "Failed to setup account");

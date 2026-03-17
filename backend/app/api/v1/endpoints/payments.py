@@ -4,7 +4,6 @@ Kaasb Platform - Payment Endpoints
 
 import logging
 from typing import Optional
-import uuid
 
 from fastapi import APIRouter, Depends, Query, Request, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +18,6 @@ from app.schemas.payment import (
     PaymentAccountResponse,
     EscrowFundRequest,
     EscrowFundResponse,
-    TransactionResponse,
     TransactionListResponse,
     PaymentSummary,
     PayoutRequest,
