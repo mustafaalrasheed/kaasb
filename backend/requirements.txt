@@ -43,7 +43,7 @@ stripe==7.12.0
 pytest==8.3.4
 pytest-asyncio==0.24.0
 pytest-cov==6.0.0
-httpx==0.28.1
+requests==2.32.3
 
 # === Dev Tools ===
 black==24.10.0
