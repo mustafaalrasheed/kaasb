@@ -24,7 +24,7 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
 # Load env
 if [ ! -f .env.production ]; then
-    error ".env.production not found. Copy .env.production.template and fill in values."
+    error ".env.production not found. Copy .env.production.example and fill in values."
 fi
 
 export $(grep -v '^#' .env.production | xargs)

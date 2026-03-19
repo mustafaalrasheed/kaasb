@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { cn, backendUrl } from "@/lib/utils";
 
 const sidebarLinks = [
   { href: "/dashboard", label: "Overview", icon: "📊", roles: ["client", "freelancer"] },
@@ -63,8 +63,8 @@ export default function DashboardLayout({
               <div className="w-10 h-10 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
                 {user.avatar_url ? (
                   <img
-                    src={`http://localhost:8000${user.avatar_url}`}
-                    alt=""
+                    src={backendUrl(user.avatar_url)}
+                    alt={`${user.first_name} ${user.last_name}`}
                     className="w-full h-full object-cover"
                   />
                 ) : (

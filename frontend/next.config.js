@@ -1,4 +1,9 @@
 /** @type {import('next').NextConfig} */
+
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
 const nextConfig = {
   // Enable React strict mode for better development experience
   reactStrictMode: true,
@@ -9,11 +14,9 @@ const nextConfig = {
   // Image optimization — restrict to known hosts
   images: {
     remotePatterns: [
-      {
-        protocol: "http",
-        hostname: "localhost",
-        port: "8000",
-      },
+      ...(IS_PRODUCTION
+        ? []
+        : [{ protocol: "http", hostname: "localhost", port: "8000" }]),
       {
         protocol: "https",
         hostname: "kaasb.com",
@@ -27,6 +30,14 @@ const nextConfig = {
 
   // Security headers
   async headers() {
+    const imgSrc = IS_PRODUCTION
+      ? "img-src 'self' data: blob: https://kaasb.com https://*.kaasb.com"
+      : `img-src 'self' data: blob: ${BACKEND_URL} https://kaasb.com https://*.kaasb.com`;
+
+    const connectSrc = IS_PRODUCTION
+      ? "connect-src 'self' https://kaasb.com https://*.kaasb.com https://api.stripe.com"
+      : `connect-src 'self' ${BACKEND_URL} https://kaasb.com https://*.kaasb.com https://api.stripe.com`;
+
     return [
       {
         source: "/(.*)",
@@ -57,9 +68,9 @@ const nextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: http://localhost:8000 https://kaasb.com https://*.kaasb.com",
+              imgSrc,
               "font-src 'self'",
-              "connect-src 'self' http://localhost:8000 https://kaasb.com https://*.kaasb.com https://api.stripe.com",
+              connectSrc,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
@@ -79,6 +90,7 @@ const nextConfig = {
 
   // Proxy API requests in development to avoid CORS issues
   async rewrites() {
+    if (IS_PRODUCTION) return [];
     return [
       {
         source: "/api/:path*",

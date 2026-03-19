@@ -47,7 +47,7 @@ async def create_admin(
             primary_role=UserRole.ADMIN,
             status=UserStatus.ACTIVE,
             is_superuser=True,
-            is_verified=True,
+            is_email_verified=True,
         )
         db.add(admin)
         await db.commit()

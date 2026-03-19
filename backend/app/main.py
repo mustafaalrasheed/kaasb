@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import logging
+import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,8 +20,32 @@ from app.core.database import init_db, engine
 from app.api.v1.router import api_router
 from app.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware, CSRFMiddleware
 
-logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def _configure_logging() -> None:
+    """Configure structured logging based on environment."""
+    log_level = logging.DEBUG if settings.DEBUG else logging.INFO
+    log_format = (
+        "%(asctime)s %(levelname)-8s [%(name)s] %(message)s"
+        if settings.ENVIRONMENT == "production"
+        else "%(levelname)-8s [%(name)s] %(message)s"
+    )
+
+    logging.basicConfig(
+        level=log_level,
+        format=log_format,
+        handlers=[logging.StreamHandler(sys.stdout)],
+        force=True,
+    )
+
+    # Quiet noisy loggers
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
+
+_configure_logging()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -33,13 +58,16 @@ async def lifespan(app: FastAPI):
     # === Startup ===
     if settings.ENVIRONMENT == "development":
         await init_db()
-        print(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} started in {settings.ENVIRONMENT} mode")
+    logger.info(
+        "%s v%s started in %s mode",
+        settings.APP_NAME, settings.APP_VERSION, settings.ENVIRONMENT,
+    )
 
     yield
 
     # === Shutdown ===
     await engine.dispose()
-    print(f"👋 {settings.APP_NAME} shutting down...")
+    logger.info("%s shutting down...", settings.APP_NAME)
 
 
 def create_app() -> FastAPI:
@@ -89,7 +117,8 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def global_exception_handler(request, exc):
         logger.error(
-            f"Unhandled exception on {request.method} {request.url}: {exc}",
+            "Unhandled exception on %s %s: %s",
+            request.method, request.url, exc,
             exc_info=True,
         )
         return JSONResponse(

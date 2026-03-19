@@ -8,3 +8,11 @@ import { twMerge } from "tailwind-merge";
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
+/** Build a full URL for backend-hosted assets (avatars, uploads, etc.) */
+export function backendUrl(path: string): string {
+  return `${BACKEND_URL}${path}`;
+}

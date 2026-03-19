@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuthStore } from "@/lib/auth-store";
 import { usersApi } from "@/lib/api";
+import { backendUrl } from "@/lib/utils";
 import { toast } from "sonner";
 
 const EXPERIENCE_LEVELS = [
@@ -202,7 +203,7 @@ export default function EditProfilePage() {
           >
             {user.avatar_url ? (
               <img
-                src={`http://localhost:8000${user.avatar_url}`}
+                src={backendUrl(user.avatar_url)}
                 alt="Avatar"
                 className="w-full h-full object-cover"
               />

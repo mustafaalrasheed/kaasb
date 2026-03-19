@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { usersApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
+import { backendUrl } from "@/lib/utils";
 import type { UserProfile } from "@/types/user";
 
 export default function PublicProfilePage() {
@@ -68,7 +69,7 @@ export default function PublicProfilePage() {
             <div className="w-28 h-28 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center">
               {profile.avatar_url ? (
                 <img
-                  src={`http://localhost:8000${profile.avatar_url}`}
+                  src={backendUrl(profile.avatar_url)}
                   alt={`${profile.first_name}'s avatar`}
                   className="w-full h-full object-cover"
                 />

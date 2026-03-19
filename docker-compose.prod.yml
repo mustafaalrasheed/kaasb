@@ -85,6 +85,14 @@ services:
       - QI_CARD_SANDBOX_URL=${QI_CARD_SANDBOX_URL:-https://sandbox.gateway.qi.iq/api/v1}
       - QI_CARD_SANDBOX=${QI_CARD_SANDBOX:-false}
       - QI_CARD_CURRENCY=${QI_CARD_CURRENCY:-IQD}
+      # Stripe
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      # Wise
+      - WISE_API_KEY=${WISE_API_KEY:-}
+      - WISE_PROFILE_ID=${WISE_PROFILE_ID:-}
+      - WISE_ENVIRONMENT=production
     volumes:
       - backend_uploads:/app/uploads
     depends_on:

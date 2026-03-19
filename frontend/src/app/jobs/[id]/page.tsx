@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { jobsApi, proposalsApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
+import { backendUrl } from "@/lib/utils";
 import { toast } from "sonner";
 import type { JobDetail } from "@/types/job";
 import { DURATION_LABELS, EXPERIENCE_LABELS } from "@/types/job";
@@ -342,7 +343,7 @@ export default function JobDetailPage() {
             <Link href={`/profile/${job.client.username}`} className="flex items-center gap-3 group">
               <div className="w-12 h-12 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
                 {job.client.avatar_url ? (
-                  <img src={`http://localhost:8000${job.client.avatar_url}`} alt="" className="w-full h-full object-cover" />
+                  <img src={backendUrl(job.client.avatar_url)} alt={`${job.client.first_name} ${job.client.last_name}`} className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-lg font-bold text-brand-500">
                     {job.client.first_name[0]}{job.client.last_name[0]}

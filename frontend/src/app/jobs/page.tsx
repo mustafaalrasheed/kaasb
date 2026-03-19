@@ -1,15 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { jobsApi } from "@/lib/api";
-import { useAuthStore } from "@/lib/auth-store";
-import { toast } from "sonner";
-import type { JobDetail } from "@/types/job";
-import { DURATION_LABELS, EXPERIENCE_LABELS } from "@/types/job";
+import { backendUrl } from "@/lib/utils";
+import type { JobSummary, JobListResponse } from "@/types/job";
+import { JOB_CATEGORIES, DURATION_LABELS, EXPERIENCE_LABELS } from "@/types/job";
 
-function formatBudget(job: JobDetail): string {
+const SORT_OPTIONS = [
+  { value: "newest", label: "Newest First" },
+  { value: "oldest", label: "Oldest First" },
+  { value: "budget_high", label: "Budget: High to Low" },
+  { value: "budget_low", label: "Budget: Low to High" },
+  { value: "most_proposals", label: "Most Proposals" },
+];
+
+function formatBudget(job: JobSummary): string {
   if (job.job_type === "fixed" && job.fixed_price) {
     return `$${job.fixed_price.toLocaleString()}`;
   }
@@ -20,317 +26,274 @@ function formatBudget(job: JobDetail): string {
   return "Budget not set";
 }
 
-export default function JobDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const jobId = params.id as string;
-  const { user } = useAuthStore();
-
-  const [job, setJob] = useState<JobDetail | null>(null);
+export default function JobsPage() {
+  const [jobs, setJobs] = useState<JobSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState("");
+  const [category, setCategory] = useState("");
+  const [jobType, setJobType] = useState("");
+  const [experienceLevel, setExperienceLevel] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
+  const [page, setPage] = useState(1);
+
+  const fetchJobs = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const params: Record<string, unknown> = {
+        sort_by: sortBy,
+        page,
+        page_size: 12,
+      };
+      if (searchQuery) params.q = searchQuery;
+      if (category) params.category = category;
+      if (jobType) params.job_type = jobType;
+      if (experienceLevel) params.experience_level = experienceLevel;
+
+      const response = await jobsApi.search(params as any);
+      const data: JobListResponse = response.data;
+      setJobs(data.jobs);
+      setTotal(data.total);
+      setTotalPages(data.total_pages);
+    } catch {
+      setJobs([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchQuery, category, jobType, experienceLevel, sortBy, page]);
 
   useEffect(() => {
-    async function loadJob() {
-      try {
-        const response = await jobsApi.getById(jobId);
-        setJob(response.data);
-      } catch (err: any) {
-        setError(
-          err.response?.status === 404
-            ? "Job not found"
-            : "Failed to load job"
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    if (jobId) loadJob();
-  }, [jobId]);
+    fetchJobs();
+  }, [fetchJobs]);
 
-  const isOwner = user?.id === job?.client?.id;
-  const isFreelancer = user?.primary_role === "freelancer";
-
-  const handleClose = async () => {
-    if (!job || !confirm("Are you sure you want to close this job?")) return;
-    try {
-      await jobsApi.close(job.id);
-      toast.success("Job closed");
-      router.push("/dashboard");
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to close job");
-    }
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    fetchJobs();
   };
-
-  const handleDelete = async () => {
-    if (!job || !confirm("Are you sure you want to delete this job? This cannot be undone."))
-      return;
-    try {
-      await jobsApi.delete(job.id);
-      toast.success("Job deleted");
-      router.push("/dashboard");
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to delete job");
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <p className="text-gray-500">Loading job...</p>
-      </div>
-    );
-  }
-
-  if (error || !job) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl font-semibold text-gray-900">{error}</p>
-          <Link href="/jobs" className="mt-4 inline-block text-brand-500 hover:text-brand-600">
-            Browse jobs
-          </Link>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col lg:flex-row gap-8">
-        {/* Main Content */}
-        <div className="flex-1 min-w-0 space-y-6">
-          {/* Header */}
-          <div className="card p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-brand-50 text-brand-700 border border-brand-200">
-                    {job.category}
-                  </span>
-                  <span
-                    className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                      job.status === "open"
-                        ? "bg-success-50 text-success-700 border border-green-200"
-                        : "bg-gray-100 text-gray-600 border border-gray-200"
-                    }`}
-                  >
-                    {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-                  </span>
-                </div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  {job.title}
-                </h1>
-              </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Browse Jobs</h1>
+        <p className="mt-2 text-gray-600">
+          {total > 0
+            ? `${total.toLocaleString()} jobs available`
+            : "Find your next opportunity"}
+        </p>
+      </div>
 
-              {isOwner && job.status === "open" && (
-                <div className="flex gap-2 shrink-0">
-                  <Link
-                    href={`/jobs/${job.id}/edit`}
-                    className="btn-secondary py-2 px-4 text-sm"
-                  >
-                    Edit
-                  </Link>
-                  <button
-                    onClick={handleClose}
-                    className="btn-secondary py-2 px-4 text-sm"
-                  >
-                    Close
-                  </button>
-                  {job.proposal_count === 0 && (
-                    <button
-                      onClick={handleDelete}
-                      className="btn-danger py-2 px-4 text-sm"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Meta row */}
-            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
-              <div>
-                <span className="text-gray-400">Budget:</span>{" "}
-                <span className="font-semibold text-gray-900">
-                  {formatBudget(job)}
-                </span>
-              </div>
-              <div>
-                <span className="text-gray-400">Type:</span>{" "}
-                <span className="capitalize">{job.job_type} price</span>
-              </div>
-              {job.experience_level && (
-                <div>
-                  <span className="text-gray-400">Level:</span>{" "}
-                  {EXPERIENCE_LABELS[job.experience_level]}
-                </div>
-              )}
-              {job.duration && (
-                <div>
-                  <span className="text-gray-400">Duration:</span>{" "}
-                  {DURATION_LABELS[job.duration]}
-                </div>
-              )}
-              <div>
-                <span className="text-gray-400">Posted:</span>{" "}
-                {new Date(
-                  job.published_at || job.created_at
-                ).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Description */}
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">
-              Job Description
-            </h2>
-            <div className="text-gray-700 whitespace-pre-line leading-relaxed">
-              {job.description}
-            </div>
-          </div>
-
-          {/* Skills */}
-          {job.skills_required && job.skills_required.length > 0 && (
-            <div className="card p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">
-                Skills Required
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {job.skills_required.map((skill) => (
-                  <span
-                    key={skill}
-                    className="px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-700 border border-gray-200"
-                  >
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Activity stats */}
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">
-              Activity
-            </h2>
-            <div className="flex gap-8 text-sm">
-              <div>
-                <span className="text-2xl font-bold text-gray-900">
-                  {job.proposal_count}
-                </span>
-                <p className="text-gray-500">Proposals</p>
-              </div>
-              <div>
-                <span className="text-2xl font-bold text-gray-900">
-                  {job.view_count}
-                </span>
-                <p className="text-gray-500">Views</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div className="w-full lg:w-80 shrink-0 space-y-6">
-          {/* Apply button (for freelancers) */}
-          {isFreelancer && job.status === "open" && !isOwner && (
-            <div className="card p-5">
-              <button className="btn-primary w-full py-3 text-lg">
-                Submit Proposal
-              </button>
-              <p className="mt-2 text-xs text-center text-gray-500">
-                Proposals system coming in Step 4
-              </p>
-            </div>
-          )}
-
-          {/* Client info */}
-          <div className="card p-5">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              About the Client
-            </h3>
-            <Link
-              href={`/profile/${job.client.username}`}
-              className="flex items-center gap-3 group"
+      {/* Search & Filters */}
+      <div className="card p-4 mb-6">
+        <form onSubmit={handleSearch} className="space-y-3">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input-field flex-1"
+              placeholder="Search jobs by title, description, or skills..."
+            />
+            <button
+              type="submit"
+              className="btn-primary py-2.5 px-6 whitespace-nowrap"
             >
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
-                {job.client.avatar_url ? (
-                  <img
-                    src={`http://localhost:8000${job.client.avatar_url}`}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-lg font-bold text-brand-500">
-                    {job.client.first_name[0]}
-                    {job.client.last_name[0]}
-                  </span>
-                )}
-              </div>
-              <div>
-                <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors">
-                  {job.client.display_name ||
-                    `${job.client.first_name} ${job.client.last_name}`}
-                </p>
-                {job.client.country && (
-                  <p className="text-sm text-gray-500">
-                    📍 {job.client.country}
-                  </p>
-                )}
-              </div>
-            </Link>
+              Search
+            </button>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <select
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                setPage(1);
+              }}
+              className="input-field sm:w-48"
+            >
+              <option value="">All Categories</option>
+              {JOB_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+            <select
+              value={jobType}
+              onChange={(e) => {
+                setJobType(e.target.value);
+                setPage(1);
+              }}
+              className="input-field sm:w-36"
+            >
+              <option value="">All Types</option>
+              <option value="fixed">Fixed Price</option>
+              <option value="hourly">Hourly</option>
+            </select>
+            <select
+              value={experienceLevel}
+              onChange={(e) => {
+                setExperienceLevel(e.target.value);
+                setPage(1);
+              }}
+              className="input-field sm:w-40"
+            >
+              <option value="">All Levels</option>
+              <option value="entry">Entry Level</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="expert">Expert</option>
+            </select>
+            <select
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                setPage(1);
+              }}
+              className="input-field sm:w-44"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </form>
+      </div>
 
-            <div className="mt-4 pt-4 border-t border-gray-100 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Total spent</span>
-                <span className="font-medium text-gray-900">
-                  ${job.client.total_spent.toLocaleString()}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Rating</span>
-                <span className="font-medium text-gray-900">
-                  {job.client.avg_rating > 0
-                    ? `⭐ ${job.client.avg_rating.toFixed(1)} (${job.client.total_reviews})`
-                    : "New client"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Member since</span>
-                <span className="font-medium text-gray-900">
-                  {new Date(job.client.created_at).toLocaleDateString("en-US", {
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </span>
-              </div>
-            </div>
+      {/* Results */}
+      {isLoading ? (
+        <div className="text-center py-12 text-gray-500">Loading jobs...</div>
+      ) : jobs.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-lg font-medium text-gray-900">No jobs found</p>
+          <p className="mt-2 text-gray-600">
+            Try adjusting your search or filters.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-4">
+            {jobs.map((job) => (
+              <JobCard key={job.id} job={job} />
+            ))}
           </div>
 
-          {/* Deadline */}
-          {job.deadline && (
-            <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Deadline
-              </h3>
-              <p className="font-medium text-gray-900">
-                {new Date(job.deadline).toLocaleDateString("en-US", {
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </p>
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-8 flex items-center justify-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-600 px-4">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
+              >
+                Next
+              </button>
             </div>
           )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function JobCard({ job }: { job: JobSummary }) {
+  return (
+    <Link
+      href={`/jobs/${job.id}`}
+      className="card p-5 hover:shadow-md transition-shadow block"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-brand-50 text-brand-700 border border-brand-200">
+              {job.category}
+            </span>
+            <span className="capitalize text-xs text-gray-400">
+              {job.job_type} price
+            </span>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 group-hover:text-brand-600">
+            {job.title}
+          </h3>
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-500">
+            <span className="font-medium text-gray-900">
+              {formatBudget(job)}
+            </span>
+            {job.experience_level && (
+              <span>{EXPERIENCE_LABELS[job.experience_level]}</span>
+            )}
+            {job.duration && <span>{DURATION_LABELS[job.duration]}</span>}
+            <span>
+              {job.proposal_count} proposal{job.proposal_count !== 1 ? "s" : ""}
+            </span>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Skills */}
+      {job.skills_required && job.skills_required.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {job.skills_required.slice(0, 6).map((skill) => (
+            <span
+              key={skill}
+              className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600"
+            >
+              {skill}
+            </span>
+          ))}
+          {job.skills_required.length > 6 && (
+            <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-400">
+              +{job.skills_required.length - 6}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-sm text-gray-400">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
+              {job.client.avatar_url ? (
+                <img
+                  src={backendUrl(job.client.avatar_url)}
+                  alt={`${job.client.first_name} ${job.client.last_name}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-[10px] font-bold text-brand-500">
+                  {job.client.first_name[0]}
+                  {job.client.last_name[0]}
+                </span>
+              )}
+            </div>
+            <span>
+              {job.client.display_name ||
+                `${job.client.first_name} ${job.client.last_name}`}
+            </span>
+          </div>
+          {job.client.country && <span>📍 {job.client.country}</span>}
+        </div>
+        <span>
+          Posted{" "}
+          {new Date(job.published_at || job.created_at).toLocaleDateString(
+            "en-US",
+            { month: "short", day: "numeric" }
+          )}
+        </span>
+      </div>
+    </Link>
   );
 }

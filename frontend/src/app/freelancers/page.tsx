@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usersApi } from "@/lib/api";
+import { backendUrl } from "@/lib/utils";
 import type { UserProfile } from "@/types/user";
 
 const SORT_OPTIONS = [
@@ -176,8 +177,8 @@ function FreelancerCard({ user }: { user: UserProfile }) {
         <div className="w-14 h-14 shrink-0 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center">
           {user.avatar_url ? (
             <img
-              src={`http://localhost:8000${user.avatar_url}`}
-              alt=""
+              src={backendUrl(user.avatar_url)}
+              alt={`${user.first_name} ${user.last_name}`}
               className="w-full h-full object-cover"
             />
           ) : (
