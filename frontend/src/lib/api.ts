@@ -7,21 +7,8 @@ export const api = axios.create({
   baseURL: API_URL,
   headers: { "Content-Type": "application/json" },
   timeout: 30000,
+  withCredentials: true, // Send httpOnly cookies with every request
 });
-
-// === Request Interceptor: Attach JWT token ===
-api.interceptors.request.use(
-  (config) => {
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("access_token");
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
 
 // === Response Interceptor: Handle 401 & token refresh ===
 api.interceptors.response.use(
@@ -32,26 +19,19 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const refreshToken = localStorage.getItem("refresh_token");
-        if (!refreshToken) throw new Error("No refresh token");
-
-        const response = await axios.post(`${API_URL}/auth/refresh`, {
-          refresh_token: refreshToken,
-        });
-
-        const { access_token, refresh_token: newRefreshToken } = response.data;
-        localStorage.setItem("access_token", access_token);
-        localStorage.setItem("refresh_token", newRefreshToken);
-
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        // Refresh token is sent automatically via httpOnly cookie
+        await axios.post(
+          `${API_URL}/auth/refresh`,
+          { refresh_token: "" },
+          { withCredentials: true }
+        );
+        // Retry the original request (new access_token cookie is set by server)
         return api(originalRequest);
-      } catch (refreshError) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+      } catch {
         if (typeof window !== "undefined") {
           window.location.href = "/auth/login";
         }
-        return Promise.reject(refreshError);
+        return Promise.reject(error);
       }
     }
 
@@ -74,10 +54,12 @@ export const authApi = {
   login: (data: { email: string; password: string }) =>
     api.post("/auth/login", data),
 
-  refresh: (refreshToken: string) =>
-    api.post("/auth/refresh", { refresh_token: refreshToken }),
+  refresh: () =>
+    api.post("/auth/refresh", { refresh_token: "" }),
 
   getMe: () => api.get("/auth/me"),
+
+  logout: () => api.post("/auth/logout", { refresh_token: "" }),
 };
 
 // === Users API ===

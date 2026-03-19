@@ -5,7 +5,6 @@ In-app notifications for key platform events.
 
 import enum
 import uuid
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
@@ -13,7 +12,6 @@ from sqlalchemy import (
     Enum,
     Text,
     Boolean,
-    DateTime,
     ForeignKey,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship

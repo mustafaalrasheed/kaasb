@@ -6,12 +6,11 @@ Business logic for conversations and messaging.
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
 from app.models.message import Conversation, Message
 from app.models.user import User

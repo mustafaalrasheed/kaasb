@@ -28,11 +28,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
 
   login: async (email, password) => {
-    const response = await authApi.login({ email, password });
-    const { access_token, refresh_token } = response.data;
-
-    localStorage.setItem("access_token", access_token);
-    localStorage.setItem("refresh_token", refresh_token);
+    // Server sets httpOnly cookies automatically
+    await authApi.login({ email, password });
 
     // Fetch user profile
     const userResponse = await authApi.getMe();
@@ -40,11 +37,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   register: async (data) => {
-    const response = await authApi.register(data);
-    const { access_token, refresh_token } = response.data;
-
-    localStorage.setItem("access_token", access_token);
-    localStorage.setItem("refresh_token", refresh_token);
+    // Server sets httpOnly cookies automatically
+    await authApi.register(data);
 
     // Fetch user profile
     const userResponse = await authApi.getMe();
@@ -52,8 +46,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+    // Server clears httpOnly cookies
+    authApi.logout().catch(() => {});
     set({ user: null, isAuthenticated: false });
     window.location.href = "/";
   },
@@ -68,18 +62,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   initialize: async () => {
-    const token = localStorage.getItem("access_token");
-    if (token) {
-      try {
-        const response = await authApi.getMe();
-        set({ user: response.data, isAuthenticated: true, isLoading: false });
-      } catch {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        set({ user: null, isAuthenticated: false, isLoading: false });
-      }
-    } else {
-      set({ isLoading: false });
+    try {
+      // Cookie is sent automatically — just check if we have a valid session
+      const response = await authApi.getMe();
+      set({ user: response.data, isAuthenticated: true, isLoading: false });
+    } catch {
+      set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
 }));

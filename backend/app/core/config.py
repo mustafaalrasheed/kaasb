@@ -3,9 +3,14 @@ Kaasb Platform - Application Configuration
 All settings are loaded from environment variables with sensible defaults.
 """
 
+import logging
+import secrets
 from functools import lru_cache
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -15,11 +20,11 @@ class Settings(BaseSettings):
     APP_NAME: str = "Kaasb"
     APP_VERSION: str = "0.1.0"
     ENVIRONMENT: str = "development"  # development | staging | production
-    DEBUG: bool = True
+    DEBUG: bool = False
     API_PREFIX: str = "/api/v1"
 
     # === Database ===
-    DATABASE_URL: str = "postgresql+asyncpg://kaasb_user:kaasb_secret_2024@localhost:5432/kaasb_db"
+    DATABASE_URL: str = "postgresql+asyncpg://localhost:5432/kaasb_db"
 
     # Sync URL for Alembic migrations
     @property
@@ -30,7 +35,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # === Auth / JWT ===
-    SECRET_KEY: str = "change-me-in-production-use-openssl-rand-hex-32"
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -80,6 +85,31 @@ class Settings(BaseSettings):
         "env_file_encoding": "utf-8",
         "case_sensitive": True,
     }
+
+    @model_validator(mode="after")
+    def _validate_secrets(self) -> "Settings":
+        """Ensure critical secrets are set in production and generate safe defaults in dev."""
+        if not self.SECRET_KEY:
+            if self.ENVIRONMENT == "production":
+                raise ValueError(
+                    "SECRET_KEY must be set in production. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                )
+            self.SECRET_KEY = secrets.token_hex(32)
+            logger.warning("SECRET_KEY not set — generated a random key (not persisted across restarts)")
+
+        if self.DEBUG and self.ENVIRONMENT == "production":
+            raise ValueError("DEBUG must be False in production")
+
+        if self.ENVIRONMENT == "production":
+            if not self.STRIPE_SECRET_KEY:
+                logger.warning("STRIPE_SECRET_KEY not set — Stripe payments will not work")
+            if not self.STRIPE_WEBHOOK_SECRET:
+                logger.warning("STRIPE_WEBHOOK_SECRET not set — Stripe webhooks will not be verified")
+            if not self.QI_CARD_SECRET_KEY and not self.QI_CARD_SANDBOX:
+                raise ValueError("QI_CARD_SECRET_KEY must be set when QI_CARD_SANDBOX is False")
+
+        return self
 
 
 @lru_cache

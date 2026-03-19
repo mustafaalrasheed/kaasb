@@ -6,7 +6,6 @@ Rate limiting, security headers, and request tracking.
 import time
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Callable
 
 import redis.asyncio as aioredis
@@ -112,6 +111,56 @@ def _get_rate_limit_tier(request: Request) -> str:
     if method in ("POST", "PUT", "DELETE", "PATCH"):
         return "api_write"
     return "api_read"
+
+
+# === CSRF Origin Validation Middleware ===
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """
+    Validate Origin/Referer on state-changing requests to prevent CSRF.
+    Only enforced in production; development allows all origins.
+    """
+
+    UNSAFE_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
+    # Paths that receive external webhooks (no browser origin)
+    WEBHOOK_PATHS = {"/api/v1/payments/qi-card/webhook"}
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if settings.ENVIRONMENT != "production":
+            return await call_next(request)
+
+        if request.method not in self.UNSAFE_METHODS:
+            return await call_next(request)
+
+        # Skip webhook endpoints (server-to-server, no Origin header)
+        if request.url.path in self.WEBHOOK_PATHS:
+            return await call_next(request)
+
+        origin = request.headers.get("origin") or ""
+        referer = request.headers.get("referer") or ""
+
+        # Extract origin from referer if origin header is absent
+        check_value = origin
+        if not check_value and referer:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            check_value = f"{parsed.scheme}://{parsed.netloc}"
+
+        if not check_value:
+            return Response(
+                content='{"detail":"Missing Origin header on state-changing request"}',
+                status_code=403,
+                media_type="application/json",
+            )
+
+        if check_value not in settings.CORS_ORIGINS:
+            return Response(
+                content='{"detail":"Origin not allowed"}',
+                status_code=403,
+                media_type="application/json",
+            )
+
+        return await call_next(request)
 
 
 # === Security Headers Middleware ===

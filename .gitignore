@@ -66,6 +66,9 @@ coverage.xml
 .pytest_cache/
 .mypy_cache/
 
+# === Alembic (contains DB URL — use .env instead) ===
+backend/alembic.ini
+
 # === OS ===
 .DS_Store
 Desktop.ini

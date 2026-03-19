@@ -20,11 +20,10 @@ from app.schemas.job import (
     JobCreate,
     JobUpdate,
     JobDetail,
-    JobSummary,
     JobListResponse,
 )
 from app.services.job_service import JobService
-from app.api.dependencies import get_current_user, get_current_client
+from app.api.dependencies import get_current_client
 from app.models.user import User
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])

@@ -13,7 +13,6 @@ from sqlalchemy import (
     Enum,
     Text,
     Float,
-    Integer,
     DateTime,
     ForeignKey,
     UniqueConstraint,

@@ -4,19 +4,13 @@ Both client and freelancer can leave reviews after a contract is completed.
 Each party can only review the other once per contract.
 """
 
-import enum
 import uuid
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
-    String,
-    Enum,
     Text,
-    Float,
     Integer,
     Boolean,
-    DateTime,
     ForeignKey,
     UniqueConstraint,
     CheckConstraint,

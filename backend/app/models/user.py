@@ -4,13 +4,12 @@ Supports both freelancers and clients with role-based fields.
 """
 
 import enum
-import uuid
 from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import String, Boolean, Enum, Text, Float, Integer, DateTime
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.models.base import BaseModel
 

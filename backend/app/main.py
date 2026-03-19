@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import get_settings
 from app.core.database import init_db, engine
 from app.api.v1.router import api_router
-from app.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware
+from app.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware, CSRFMiddleware
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -76,10 +76,13 @@ def create_app() -> FastAPI:
     # 2. GZip compression (responses > 500 bytes)
     app.add_middleware(GZipMiddleware, minimum_size=500)
 
-    # 3. Security headers
+    # 3. CSRF origin validation
+    app.add_middleware(CSRFMiddleware)
+
+    # 4. Security headers
     app.add_middleware(SecurityHeadersMiddleware)
 
-    # 4. Rate limiting
+    # 5. Rate limiting
     app.add_middleware(RateLimitMiddleware)
 
     # === Global Exception Handler ===

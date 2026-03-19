@@ -8,14 +8,14 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
 from app.models.proposal import Proposal, ProposalStatus
 from app.models.job import Job, JobStatus
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.schemas.proposal import ProposalCreate, ProposalUpdate, ProposalRespond
 
 logger = logging.getLogger(__name__)
@@ -91,6 +91,18 @@ class ProposalService:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="You have already submitted a proposal for this job",
+            )
+
+        # Validate bid amount
+        if data.bid_amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Bid amount must be greater than zero",
+            )
+        if job.budget_max and data.bid_amount > job.budget_max * 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Bid amount exceeds reasonable range for this job (max budget: ${job.budget_max:.2f})",
             )
 
         # Create proposal

@@ -14,7 +14,6 @@ from app.models.user import User
 from app.services.contract_service import ContractService
 from app.schemas.contract import (
     ContractDetail,
-    ContractSummary,
     ContractListResponse,
     ContractCreate,
     ContractUserInfo,

@@ -150,8 +150,9 @@ class PaymentService:
         Returns a redirect URL for the client to complete payment on Qi Card.
         Escrow is created in PENDING state and marked FUNDED via webhook.
         """
+        # Use FOR UPDATE to prevent race conditions on concurrent escrow funding
         result = await self.db.execute(
-            select(Milestone).where(Milestone.id == data.milestone_id)
+            select(Milestone).where(Milestone.id == data.milestone_id).with_for_update()
         )
         milestone = result.scalar_one_or_none()
         if not milestone:
@@ -176,11 +177,11 @@ class PaymentService:
         existing = await self.db.execute(
             select(Escrow).where(
                 Escrow.milestone_id == milestone.id,
-                Escrow.status == EscrowStatus.FUNDED,
+                Escrow.status.in_([EscrowStatus.FUNDED, EscrowStatus.PENDING]),
             )
         )
         if existing.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Escrow already funded for this milestone")
+            raise HTTPException(status_code=400, detail="Escrow already funded or pending for this milestone")
 
         fees = self._calculate_fees(milestone.amount)
         order_id = f"escrow-{milestone.id}"
@@ -211,7 +212,7 @@ class PaymentService:
         qi_payment_id = qi_result["payment_id"]
         amount_iqd = qi_result["amount_iqd"]
 
-        # Create transaction record (PENDING — confirmed via webhook)
+        # Create transaction and escrow atomically in a single flush
         transaction = Transaction(
             transaction_type=TransactionType.ESCROW_FUND,
             status=TransactionStatus.PENDING,
@@ -227,7 +228,13 @@ class PaymentService:
             description=f"Qi Card escrow payment for milestone: {milestone.title}",
         )
         self.db.add(transaction)
-        await self.db.flush()
+
+        # Flush transaction first to get its ID for the escrow FK
+        try:
+            await self.db.flush()
+        except (IntegrityError, SQLAlchemyError) as e:
+            logger.error(f"Database error creating transaction: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal server error")
 
         # Create escrow in PENDING state (will be FUNDED after webhook)
         escrow = Escrow(
@@ -363,7 +370,7 @@ class PaymentService:
             select(Escrow).where(
                 Escrow.milestone_id == milestone_id,
                 Escrow.status == EscrowStatus.FUNDED,
-            )
+            ).with_for_update()
         )
         escrow = result.scalar_one_or_none()
         if not escrow:

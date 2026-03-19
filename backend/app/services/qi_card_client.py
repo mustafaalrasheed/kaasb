@@ -98,8 +98,11 @@ class QiCardClient:
         Qi Card sends an X-QiCard-Signature header with the HMAC.
         """
         if not self.settings.QI_CARD_SECRET_KEY:
-            logger.warning("QI_CARD_SECRET_KEY not set — skipping webhook signature verification")
-            return True  # Allow in sandbox mode without credentials
+            if self.settings.QI_CARD_SANDBOX:
+                logger.warning("QI_CARD_SECRET_KEY not set in sandbox — skipping signature verification")
+                return True
+            logger.error("QI_CARD_SECRET_KEY not set in non-sandbox mode — rejecting webhook")
+            return False
 
         expected = hmac.new(
             self.settings.QI_CARD_SECRET_KEY.encode(),

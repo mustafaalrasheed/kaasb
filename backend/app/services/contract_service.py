@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select, func, and_, case
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -22,7 +22,7 @@ from app.models.job import Job, JobStatus
 from app.models.proposal import Proposal
 from app.models.user import User
 from app.schemas.contract import (
-    ContractCreate, MilestoneCreate, MilestoneUpdate,
+    ContractCreate, MilestoneUpdate,
     MilestoneSubmit, MilestoneReview,
 )
 

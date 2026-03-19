@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
@@ -207,8 +207,9 @@ class JobService:
             .where(Job.status == JobStatus.OPEN)
         )
 
-        # Text search on title and description
+        # Text search on title and description (limit length to prevent abuse)
         if query:
+            query = query[:200]
             search_term = f"%{query}%"
             stmt = stmt.where(
                 or_(
@@ -219,6 +220,7 @@ class JobService:
 
         # Category filter
         if category:
+            category = category[:100]
             stmt = stmt.where(Job.category.ilike(f"%{category}%"))
 
         # Job type filter

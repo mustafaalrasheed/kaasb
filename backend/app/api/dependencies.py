@@ -3,7 +3,9 @@ Kaasb Platform - Dependencies
 Reusable FastAPI dependencies for authentication and authorization.
 """
 
-from fastapi import Depends, HTTPException, status
+from typing import Optional
+
+from fastapi import Cookie, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -12,8 +14,26 @@ from app.models.user import User, UserRole
 from app.services.auth_service import AuthService
 
 
+async def _extract_token(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),
+    access_token: Optional[str] = Cookie(default=None),
+) -> str:
+    """Extract JWT token from Authorization header or httpOnly cookie."""
+    # Prefer Authorization header, fall back to cookie
+    if token:
+        return token
+    if access_token:
+        return access_token
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: str = Depends(_extract_token),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """Get the currently authenticated user."""
