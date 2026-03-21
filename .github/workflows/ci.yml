@@ -103,13 +103,13 @@ jobs:
             fi
             sleep 1
           done
-          python test_api.py
-          TEST_EXIT=$?
+          python test_api.py || TEST_EXIT=$?
+          TEST_EXIT=${TEST_EXIT:-0}
           kill $SERVER_PID 2>/dev/null || true
           if [ $TEST_EXIT -ne 0 ]; then
             echo ""
-            echo "=== Server logs (last 50 lines) ==="
-            tail -50 /tmp/server.log
+            echo "=== Server logs (last 80 lines) ==="
+            tail -80 /tmp/server.log
           fi
           exit $TEST_EXIT
 
