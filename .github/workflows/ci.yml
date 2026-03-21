@@ -88,10 +88,30 @@ jobs:
           DEBUG: "true"
         run: |
           cd backend
-          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          sleep 3
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/server.log 2>&1 &
+          SERVER_PID=$!
+          # Wait for server to be ready (up to 30s)
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+              echo "Server process died. Logs:"
+              cat /tmp/server.log
+              exit 1
+            fi
+            sleep 1
+          done
           python test_api.py
-          kill %1
+          TEST_EXIT=$?
+          kill $SERVER_PID 2>/dev/null || true
+          if [ $TEST_EXIT -ne 0 ]; then
+            echo ""
+            echo "=== Server logs (last 50 lines) ==="
+            tail -50 /tmp/server.log
+          fi
+          exit $TEST_EXIT
 
   # === Frontend Build ===
   frontend:

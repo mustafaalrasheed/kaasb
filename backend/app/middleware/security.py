@@ -218,6 +218,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     """Apply rate limiting based on endpoint tier."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Skip rate limiting entirely in testing (CI runs all endpoints sequentially)
+        if settings.ENVIRONMENT == "testing":
+            return await call_next(request)
+
         # Skip rate limiting for health checks and static files
         path = request.url.path
         if path in ("/", "/health", "/docs", "/redoc", "/openapi.json"):

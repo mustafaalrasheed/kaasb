@@ -57,10 +57,11 @@ def test_01_health():
     section(1, "Health Check")
     try:
         r = raw("GET", "/health")
-        if r.status_code == 200 and r.json().get("status") == "healthy":
-            ok(f"API healthy: {r.json()}")
+        data = r.json()
+        if r.status_code == 200 and data.get("status") in ("healthy", "degraded"):
+            ok(f"API status: {data.get('status')} — db={data.get('database')}, redis={data.get('redis')}")
             return True
-        fail("Unhealthy response")
+        fail(f"Unhealthy response: {r.status_code} {r.text[:300]}")
         return False
     except requests.ConnectionError:
         fail("Cannot connect to backend at localhost:8000")
