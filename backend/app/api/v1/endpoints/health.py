@@ -30,9 +30,11 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     # Redis check
     try:
         r = aioredis.from_url(settings.REDIS_URL, socket_connect_timeout=2)
-        await r.ping()
-        await r.aclose()
-        redis_status = "connected"
+        try:
+            await r.ping()
+            redis_status = "connected"
+        finally:
+            await r.aclose()
     except Exception:
         redis_status = "disconnected"
 

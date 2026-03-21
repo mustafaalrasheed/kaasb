@@ -27,6 +27,13 @@ if [ ! -f .env.production ]; then
     error ".env.production not found. Copy .env.production.example and fill in values."
 fi
 
+# Secure file permissions
+PERMS=$(stat -c %a .env.production 2>/dev/null || stat -f %Lp .env.production 2>/dev/null)
+if [ "$PERMS" != "600" ]; then
+    chmod 600 .env.production
+    warn ".env.production permissions set to 600 (owner read/write only)"
+fi
+
 export $(grep -v '^#' .env.production | xargs)
 
 # Validate required vars
@@ -35,6 +42,17 @@ for var in DB_USER DB_PASSWORD DB_NAME SECRET_KEY DOMAIN; do
         error "Required variable $var is not set in .env.production"
     fi
 done
+
+# Validate SSL certs exist for full deploy
+_check_ssl() {
+    local cert_path="/etc/letsencrypt/live/${DOMAIN}"
+    if [ ! -f "${cert_path}/fullchain.pem" ] || [ ! -f "${cert_path}/privkey.pem" ]; then
+        warn "SSL certificates not found at ${cert_path}"
+        warn "Run: certbot certonly --webroot -w /var/www/certbot -d ${DOMAIN} -d www.${DOMAIN}"
+        return 1
+    fi
+    return 0
+}
 
 COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.production"
 
@@ -76,9 +94,20 @@ case "${1:-full}" in
         $COMPOSE exec backend python -m scripts.create_admin
         ;;
 
+    --backup)
+        log "Creating database backup..."
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        mkdir -p backups
+        $COMPOSE exec -T db pg_dump -U "${DB_USER}" "${DB_NAME}" > "backups/kaasb-${TIMESTAMP}.sql"
+        log "Backup saved to backups/kaasb-${TIMESTAMP}.sql"
+        ;;
+
     full|--full)
         log "=== Full Production Deployment ==="
         echo ""
+
+        # Pre-flight checks
+        _check_ssl || warn "Continuing without SSL validation..."
 
         log "Step 1/5: Building images..."
         $COMPOSE build --no-cache
@@ -96,7 +125,7 @@ case "${1:-full}" in
         log "Step 5/5: Health check..."
         sleep 10
         if curl -sf http://localhost/health > /dev/null 2>&1; then
-            log "✅ Platform is live at http://${DOMAIN}"
+            log "Platform is live at https://${DOMAIN}"
         else
             warn "Health check failed — services may still be starting."
             warn "Check logs with: ./deploy.sh --logs"
@@ -112,10 +141,11 @@ case "${1:-full}" in
         echo "  ./deploy.sh --status        # Service status"
         echo "  ./deploy.sh --restart       # Restart all"
         echo "  ./deploy.sh --create-admin  # Create admin user"
+        echo "  ./deploy.sh --backup        # Database backup"
         echo "  ./deploy.sh --stop          # Stop all"
         ;;
 
     *)
-        echo "Usage: ./deploy.sh [--build|--migrate|--restart|--stop|--logs|--status|--create-admin|--full]"
+        echo "Usage: ./deploy.sh [--build|--migrate|--restart|--stop|--logs|--status|--create-admin|--backup|--full]"
         ;;
 esac

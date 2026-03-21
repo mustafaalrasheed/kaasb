@@ -86,7 +86,7 @@ class AuthService:
         await self.db.flush()
         await self.db.refresh(user)
 
-        logger.info(f"User registered: {user.id} ({user.primary_role})")
+        logger.info("User registered: %s (%s)", user.id, user.primary_role)
         return user
 
     async def login(self, data: UserLogin) -> TokenResponse:
@@ -100,7 +100,7 @@ class AuthService:
         # Timing-safe: always run bcrypt even when user not found
         if not user:
             verify_password(data.password, DUMMY_HASH)
-            logger.warning(f"Failed login attempt for unknown email: {data.email}")
+            logger.warning("Failed login attempt for unknown email: %s", data.email)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
@@ -108,7 +108,7 @@ class AuthService:
 
         # Check if account is locked
         if user.locked_until and user.locked_until > datetime.now(timezone.utc):
-            logger.warning(f"Login attempt on locked account: user={user.id}")
+            logger.warning("Login attempt on locked account: user=%s", user.id)
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Account temporarily locked. Try again later.",
@@ -118,9 +118,9 @@ class AuthService:
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= 10:
                 user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=30)
-                logger.warning(f"Account locked due to failed attempts: user={user.id}")
+                logger.warning("Account locked due to failed attempts: user=%s", user.id)
             await self.db.flush()
-            logger.warning(f"Failed login attempt for email: {data.email}")
+            logger.warning("Failed login attempt for email: %s", data.email)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
@@ -158,7 +158,7 @@ class AuthService:
         self.db.add(rt)
         await self.db.flush()
 
-        logger.info(f"Login successful: user={user.id}")
+        logger.info("Login successful: user=%s", user.id)
 
         return TokenResponse(
             access_token=access_token,
@@ -259,7 +259,7 @@ class AuthService:
         self.db.add(new_rt)
         await self.db.flush()
 
-        logger.info(f"Token refreshed: user={user.id}")
+        logger.info("Token refreshed: user=%s", user.id)
 
         return TokenResponse(
             access_token=new_access_token,
@@ -279,7 +279,7 @@ class AuthService:
         if token:
             token.revoked = True
             await self.db.flush()
-        logger.info(f"User logged out: user={user.id}")
+        logger.info("User logged out: user=%s", user.id)
 
     async def logout_all(self, user: User) -> None:
         """Revoke all refresh tokens for the user."""
@@ -292,4 +292,4 @@ class AuthService:
             .values(revoked=True)
         )
         await self.db.flush()
-        logger.info(f"All sessions terminated: user={user.id}")
+        logger.info("All sessions terminated: user=%s", user.id)

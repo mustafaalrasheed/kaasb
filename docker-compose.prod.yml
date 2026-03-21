@@ -44,6 +44,7 @@ services:
       resources:
         limits:
           memory: 512M
+          cpus: '1.0'
 
   # === Redis ===
   redis:
@@ -62,6 +63,7 @@ services:
       resources:
         limits:
           memory: 256M
+          cpus: '0.5'
 
   # === FastAPI Backend ===
   backend:

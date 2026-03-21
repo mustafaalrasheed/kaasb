@@ -4,7 +4,7 @@ WORKDIR /app
 
 # System deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev curl \
+    gcc libpq-dev curl libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps (cached layer)
@@ -41,6 +41,7 @@ CMD ["gunicorn", "app.main:app", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
      "--workers", "4", \
      "--bind", "0.0.0.0:8000", \
-     "--timeout", "120", \
+     "--timeout", "60", \
+     "--graceful-timeout", "30", \
      "--access-logfile", "-", \
      "--error-logfile", "-"]

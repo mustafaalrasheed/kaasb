@@ -3,6 +3,7 @@ Kaasb Platform - Security Middleware
 Rate limiting, security headers, and request tracking.
 """
 
+import logging
 import time
 import uuid
 from collections import defaultdict
@@ -14,6 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import get_settings
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # === Redis-backed Rate Limiter with in-memory fallback ===
@@ -32,7 +34,7 @@ async def _get_redis():
                 decode_responses=True,
             )
         except Exception:
-            pass
+            logger.warning("Redis unavailable for rate limiting; using in-memory fallback")
     return _redis_client
 
 

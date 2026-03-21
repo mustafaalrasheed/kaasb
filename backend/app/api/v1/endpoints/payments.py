@@ -160,19 +160,20 @@ async def qi_card_webhook(
     qi_client = QiCardClient()
     if not qi_client.verify_webhook_signature(raw_body, signature):
         logger.warning(
-            f"Qi Card webhook: invalid signature from {request.client.host if request.client else 'unknown'}"
+            "Qi Card webhook: invalid signature from %s",
+            request.client.host if request.client else "unknown",
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid webhook signature",
         )
 
+    import json
     try:
-        import json
         payload = json.loads(raw_body)
         event = QiCardWebhookEvent(**payload)
-    except Exception as e:
-        logger.error(f"Qi Card webhook: failed to parse payload: {e}")
+    except (json.JSONDecodeError, ValueError, KeyError) as e:
+        logger.error("Qi Card webhook: failed to parse payload: %s", e)
         raise HTTPException(status_code=400, detail="Invalid webhook payload")
 
     service = PaymentService(db)
@@ -183,16 +184,16 @@ async def qi_card_webhook(
             order_id=event.order_id,
         )
         if not success:
-            logger.warning(f"Qi Card webhook: could not confirm payment_id={event.payment_id}")
+            logger.warning("Qi Card webhook: could not confirm payment_id=%s", event.payment_id)
         else:
-            logger.info(f"Qi Card webhook: payment confirmed payment_id={event.payment_id}")
+            logger.info("Qi Card webhook: payment confirmed payment_id=%s", event.payment_id)
 
     elif event.status in ("failed", "cancelled"):
         await service.handle_qi_card_payment_failed(qi_payment_id=event.payment_id)
-        logger.info(f"Qi Card webhook: payment {event.status} payment_id={event.payment_id}")
+        logger.info("Qi Card webhook: payment %s payment_id=%s", event.status, event.payment_id)
 
     else:
-        logger.info(f"Qi Card webhook: unhandled status={event.status} payment_id={event.payment_id}")
+        logger.info("Qi Card webhook: unhandled status=%s payment_id=%s", event.status, event.payment_id)
 
     # Always return 200 so Qi Card doesn't retry
     return {"received": True}
