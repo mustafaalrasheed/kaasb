@@ -1,0 +1,20 @@
+{
+  "name": "Kaasb - Iraq's Leading Freelancing Platform",
+  "short_name": "Kaasb",
+  "description": "Connect with talented freelancers across Iraq and the Middle East. Post jobs, hire experts, and grow your business.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e40af",
+  "orientation": "portrait-primary",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ]
+}

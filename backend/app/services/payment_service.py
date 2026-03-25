@@ -16,30 +16,36 @@ Currency:
 
 import logging
 import uuid
-from datetime import datetime, timezone
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import select, func
+from fastapi import HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException, status
-
-from app.services.base import BaseService
 
 from app.core.config import get_settings
-from app.models.payment import (
-    PaymentAccount, PaymentAccountStatus, PaymentProvider,
-    Transaction, TransactionType, TransactionStatus,
-    Escrow, EscrowStatus,
-)
 from app.models.contract import Contract, Milestone, MilestoneStatus
+from app.models.payment import (
+    Escrow,
+    EscrowStatus,
+    PaymentAccount,
+    PaymentAccountStatus,
+    PaymentProvider,
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+)
 from app.models.user import User
 from app.schemas.payment import (
-    PaymentAccountSetup, EscrowFundRequest,
-    EscrowFundResponse, EscrowReleaseResponse,
-    PayoutRequest, PayoutResponse,
+    EscrowFundRequest,
+    EscrowFundResponse,
+    EscrowReleaseResponse,
+    PaymentAccountSetup,
+    PayoutRequest,
+    PayoutResponse,
 )
+from app.services.base import BaseService
 from app.services.qi_card_client import QiCardClient, QiCardError, usd_to_iqd
 
 logger = logging.getLogger(__name__)
@@ -68,8 +74,8 @@ class PaymentService(BaseService):
         }
 
     async def _get_payment_account(
-        self, user_id: uuid.UUID, provider: Optional[str] = None
-    ) -> Optional[PaymentAccount]:
+        self, user_id: uuid.UUID, provider: str | None = None
+    ) -> PaymentAccount | None:
         """Get user's payment account."""
         stmt = select(PaymentAccount).where(
             PaymentAccount.user_id == user_id,
@@ -126,7 +132,7 @@ class PaymentService(BaseService):
             wise_currency=data.wise_currency if provider == PaymentProvider.WISE else "USD",
             qi_card_phone=data.qi_card_phone if provider == PaymentProvider.QI_CARD else None,
             is_default=True,
-            verified_at=datetime.now(timezone.utc),
+            verified_at=datetime.now(UTC),
         )
         self.db.add(account)
         await self.db.flush()
@@ -205,11 +211,11 @@ class PaymentService(BaseService):
                 description=f"Escrow: {milestone.title[:100]}",
             )
         except QiCardError as e:
-            logger.error("Qi Card error in fund_escrow: %s", e, exc_info=True)
+            logger.exception("Qi Card error in fund_escrow: %s", e)
             raise HTTPException(
                 status_code=502,
                 detail="Payment gateway error. Please try again later.",
-            )
+            ) from e
 
         qi_payment_id = qi_result["payment_id"]
         amount_iqd = qi_result["amount_iqd"]
@@ -235,8 +241,8 @@ class PaymentService(BaseService):
         try:
             await self.db.flush()
         except (IntegrityError, SQLAlchemyError) as e:
-            logger.error("Database error creating transaction: %s", e, exc_info=True)
-            raise HTTPException(status_code=500, detail="Internal server error")
+            logger.exception("Database error creating transaction: %s", e)
+            raise HTTPException(status_code=500, detail="Internal server error") from e
 
         # Create escrow in PENDING state (will be FUNDED after webhook)
         escrow = Escrow(
@@ -255,11 +261,11 @@ class PaymentService(BaseService):
         self.db.add(escrow)
         try:
             await self.db.flush()
-        except IntegrityError:
-            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation")
+        except IntegrityError as e:
+            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation") from e
         except SQLAlchemyError as e:
-            logger.error("Database error in fund_escrow: %s", e, exc_info=True)
-            raise HTTPException(status_code=500, detail="Internal server error")
+            logger.exception("Database error in fund_escrow: %s", e)
+            raise HTTPException(status_code=500, detail="Internal server error") from e
 
         logger.info(
             "Qi Card payment initiated: milestone=%s payment_id=%s amount_usd=%s amount_iqd=%s",
@@ -309,7 +315,7 @@ class PaymentService(BaseService):
 
         # Update transaction
         transaction.status = TransactionStatus.COMPLETED
-        transaction.completed_at = datetime.now(timezone.utc)
+        transaction.completed_at = datetime.now(UTC)
 
         # Update escrow to FUNDED
         result = await self.db.execute(
@@ -320,12 +326,12 @@ class PaymentService(BaseService):
         escrow = result.scalar_one_or_none()
         if escrow:
             escrow.status = EscrowStatus.FUNDED
-            escrow.funded_at = datetime.now(timezone.utc)
+            escrow.funded_at = datetime.now(UTC)
 
         try:
             await self.db.flush()
         except SQLAlchemyError as e:
-            logger.error("Database error confirming Qi Card payment: %s", e, exc_info=True)
+            logger.exception("Database error confirming Qi Card payment: %s", e)
             return False
 
         logger.info(
@@ -366,7 +372,7 @@ class PaymentService(BaseService):
 
     async def release_escrow(
         self, milestone_id: uuid.UUID
-    ) -> Optional[EscrowReleaseResponse]:
+    ) -> EscrowReleaseResponse | None:
         """Release escrow funds to freelancer after milestone approval."""
         result = await self.db.execute(
             select(Escrow).where(
@@ -390,7 +396,7 @@ class PaymentService(BaseService):
             contract_id=escrow.contract_id,
             milestone_id=milestone_id,
             description=f"Platform fee ({settings.PLATFORM_FEE_PERCENT}%)",
-            completed_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(UTC),
         )
         self.db.add(fee_tx)
 
@@ -409,20 +415,20 @@ class PaymentService(BaseService):
             provider=PaymentProvider.QI_CARD,
             external_transaction_id=f"release_{uuid.uuid4().hex[:12]}",
             description="Milestone payment released to freelancer balance",
-            completed_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(UTC),
         )
         self.db.add(release_tx)
         await self.db.flush()
 
         escrow.status = EscrowStatus.RELEASED
-        escrow.released_at = datetime.now(timezone.utc)
+        escrow.released_at = datetime.now(UTC)
         escrow.release_transaction_id = release_tx.id
 
         try:
             await self.db.flush()
         except SQLAlchemyError as e:
-            logger.error("Database error in release_escrow: %s", e, exc_info=True)
-            raise HTTPException(status_code=500, detail="Internal server error")
+            logger.exception("Database error in release_escrow: %s", e)
+            raise HTTPException(status_code=500, detail="Internal server error") from e
 
         logger.info("Escrow released: milestone=%s amount=%s", milestone_id, escrow.freelancer_amount)
 
@@ -472,7 +478,7 @@ class PaymentService(BaseService):
                 )
                 gateway_refund_succeeded = True
             except QiCardError as e:
-                logger.error("Qi Card refund error: %s", e, exc_info=True)
+                logger.exception("Qi Card refund error: %s", e)
                 # Record as PROCESSING so admin can resolve manually
         else:
             gateway_refund_succeeded = True  # No gateway call needed
@@ -490,12 +496,12 @@ class PaymentService(BaseService):
             provider=PaymentProvider.QI_CARD,
             external_transaction_id=f"refund_{uuid.uuid4().hex[:12]}",
             description=reason,
-            completed_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(UTC),
         )
         self.db.add(refund_tx)
 
         escrow.status = EscrowStatus.REFUNDED
-        escrow.released_at = datetime.now(timezone.utc)
+        escrow.released_at = datetime.now(UTC)
 
         await self.db.flush()
         logger.info("Escrow refunded: milestone=%s amount=%s", milestone_id, escrow.amount)
@@ -574,13 +580,13 @@ class PaymentService(BaseService):
         # In sandbox/dev: auto-complete
         if settings.QI_CARD_SANDBOX or settings.ENVIRONMENT == "development":
             payout_tx.status = TransactionStatus.COMPLETED
-            payout_tx.completed_at = datetime.now(timezone.utc)
+            payout_tx.completed_at = datetime.now(UTC)
 
         try:
             await self.db.flush()
         except SQLAlchemyError as e:
-            logger.error("Database error in request_payout: %s", e, exc_info=True)
-            raise HTTPException(status_code=500, detail="Internal server error")
+            logger.exception("Database error in request_payout: %s", e)
+            raise HTTPException(status_code=500, detail="Internal server error") from e
 
         logger.info(
             "Payout requested: freelancer=%s amount=%s (%s IQD) provider=%s",
@@ -606,7 +612,7 @@ class PaymentService(BaseService):
     async def get_transactions(
         self,
         user: User,
-        transaction_type: Optional[str] = None,
+        transaction_type: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> dict:

@@ -172,12 +172,14 @@ class QiCardClient:
                     },
                 )
         except httpx.RequestError as e:
-            logger.error(f"Qi Card network error in create_payment: {e}")
-            raise QiCardError(f"Network error connecting to Qi Card: {e}")
+            logger.error("Qi Card network error in create_payment: %s", e)
+            raise QiCardError(f"Network error connecting to Qi Card: {e}") from e
 
         if response.status_code not in (200, 201):
             logger.error(
-                f"Qi Card create_payment failed: status={response.status_code} body={response.text}"
+                "Qi Card create_payment failed: status=%s body=%s",
+                response.status_code,
+                response.text,
             )
             raise QiCardError(
                 "Qi Card payment creation failed",
@@ -219,8 +221,8 @@ class QiCardClient:
                     },
                 )
         except httpx.RequestError as e:
-            logger.error(f"Qi Card network error in get_payment_status: {e}")
-            raise QiCardError(f"Network error: {e}")
+            logger.error("Qi Card network error in get_payment_status: %s", e)
+            raise QiCardError(f"Network error: {e}") from e
 
         if response.status_code != 200:
             raise QiCardError(
@@ -239,7 +241,7 @@ class QiCardClient:
     async def cancel_payment(self, payment_id: str) -> bool:
         """Cancel a pending payment. Returns True on success."""
         if not self._is_configured():
-            logger.info(f"[MOCK] Qi Card cancel_payment: {payment_id}")
+            logger.info("[MOCK] Qi Card cancel_payment: %s", payment_id)
             return True
 
         payload = {
@@ -259,7 +261,7 @@ class QiCardClient:
                     },
                 )
         except httpx.RequestError as e:
-            logger.error(f"Qi Card network error in cancel_payment: {e}")
+            logger.error("Qi Card network error in cancel_payment: %s", e)
             return False
 
         return response.status_code in (200, 204)
@@ -272,7 +274,7 @@ class QiCardClient:
             {"refund_id": "...", "status": "refunded", "amount_iqd": ...}
         """
         if not self._is_configured():
-            logger.info(f"[MOCK] Qi Card refund_payment: {payment_id} {amount_iqd} IQD")
+            logger.info("[MOCK] Qi Card refund_payment: %s %s IQD", payment_id, amount_iqd)
             return {
                 "refund_id": f"qc_refund_mock_{uuid.uuid4().hex[:10]}",
                 "status": "refunded",
@@ -298,8 +300,8 @@ class QiCardClient:
                     },
                 )
         except httpx.RequestError as e:
-            logger.error(f"Qi Card network error in refund_payment: {e}")
-            raise QiCardError(f"Network error: {e}")
+            logger.error("Qi Card network error in refund_payment: %s", e)
+            raise QiCardError(f"Network error: {e}") from e
 
         if response.status_code not in (200, 201):
             raise QiCardError(
@@ -322,8 +324,10 @@ class QiCardClient:
     def _mock_create_payment(self, amount_usd: float, amount_iqd: int, order_id: str) -> dict:
         payment_id = f"qc_mock_{uuid.uuid4().hex[:12]}"
         logger.info(
-            f"[MOCK] Qi Card create_payment: order_id={order_id} "
-            f"amount_usd={amount_usd} amount_iqd={amount_iqd}"
+            "[MOCK] Qi Card create_payment: order_id=%s amount_usd=%s amount_iqd=%s",
+            order_id,
+            amount_usd,
+            amount_iqd,
         )
         return {
             "payment_id": payment_id,

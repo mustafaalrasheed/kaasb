@@ -1,109 +1,30 @@
-"use client";
+/**
+ * Login page — server component wrapper for SEO metadata + client form.
+ */
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { useAuthStore } from "@/lib/auth-store";
+import type { Metadata } from "next";
+import { SITE_NAME, SITE_URL, KEYWORDS, ogImageUrl } from "@/lib/seo";
+import LoginClient from "./login-client";
+
+export const metadata: Metadata = {
+  title: "Log In",
+  description: `Log in to your ${SITE_NAME} account. Access your dashboard, manage projects, and connect with freelancers across Iraq.`,
+  keywords: ["login Kaasb", "freelancer login Iraq", "تسجيل دخول كاسب", ...KEYWORDS.primary.slice(0, 3)],
+  alternates: { canonical: "/auth/login" },
+  robots: { index: true, follow: true },
+  openGraph: {
+    title: `Log In | ${SITE_NAME}`,
+    description: `Log in to ${SITE_NAME} to manage your freelancing projects and proposals.`,
+    url: `${SITE_URL}/auth/login`,
+    type: "website",
+    images: [{
+      url: ogImageUrl({ title: "Log In", subtitle: "Access your Kaasb account", type: "page" }),
+      width: 1200,
+      height: 630,
+    }],
+  },
+};
 
 export default function LoginPage() {
-  const router = useRouter();
-  const { login } = useAuthStore();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setIsLoading(true);
-
-    try {
-      await login(email, password);
-      router.push("/dashboard");
-    } catch (err: any) {
-      setError(
-        err.response?.data?.detail || "Invalid email or password. Please try again."
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="card p-8">
-          <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
-            <p className="mt-2 text-gray-600">
-              Log in to your Kaasb account
-            </p>
-          </div>
-
-          {error && (
-            <div className="mb-6 p-3 bg-danger-50 text-danger-700 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-1.5"
-              >
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-field"
-                placeholder="you@example.com"
-                required
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-1.5"
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field"
-                placeholder="Enter your password"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="btn-primary w-full py-3"
-            >
-              {isLoading ? "Logging in..." : "Log In"}
-            </button>
-          </form>
-
-          <p className="mt-6 text-center text-sm text-gray-600">
-            Don&apos;t have an account?{" "}
-            <Link
-              href="/auth/register"
-              className="text-brand-500 hover:text-brand-600 font-medium"
-            >
-              Sign up
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  return <LoginClient />;
 }

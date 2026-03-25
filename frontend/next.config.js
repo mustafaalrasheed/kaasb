@@ -3,6 +3,7 @@
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://kaasb.com";
 
 const nextConfig = {
   // Enable React strict mode for better development experience
@@ -10,6 +11,12 @@ const nextConfig = {
 
   // Standalone output for Docker production builds
   output: "standalone",
+
+  // Trailing slash consistency (SEO: avoid duplicate content)
+  trailingSlash: false,
+
+  // Powered-by header removal (security + cleaner responses)
+  poweredByHeader: false,
 
   // Image optimization — restrict to known hosts + prefer modern formats
   images: {
@@ -30,7 +37,7 @@ const nextConfig = {
     ],
   },
 
-  // Security headers
+  // Security + SEO headers
   async headers() {
     const imgSrc = IS_PRODUCTION
       ? "img-src 'self' data: blob: https://kaasb.com https://*.kaasb.com"
@@ -80,6 +87,100 @@ const nextConfig = {
           },
         ],
       },
+      // Cache static assets aggressively
+      {
+        source: "/(.*)\\.(ico|svg|png|jpg|jpeg|gif|webp|avif|woff|woff2)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      // SEO: Ensure sitemap and robots.txt are not cached too long
+      {
+        source: "/(sitemap.xml|robots.txt)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=3600, s-maxage=3600",
+          },
+        ],
+      },
+      // SEO: Add Vary header for language-specific content
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Vary",
+            value: "Accept-Language",
+          },
+        ],
+      },
+    ];
+  },
+
+  // SEO redirects — normalize common URL patterns
+  async redirects() {
+    return [
+      // Redirect trailing slashes to non-trailing (canonical)
+      {
+        source: "/jobs/",
+        destination: "/jobs",
+        permanent: true,
+      },
+      {
+        source: "/freelancers/",
+        destination: "/freelancers",
+        permanent: true,
+      },
+      {
+        source: "/profile/:username/",
+        destination: "/profile/:username",
+        permanent: true,
+      },
+      // Common misspellings / old routes
+      {
+        source: "/browse-jobs",
+        destination: "/jobs",
+        permanent: true,
+      },
+      {
+        source: "/find-freelancers",
+        destination: "/freelancers",
+        permanent: true,
+      },
+      {
+        source: "/signup",
+        destination: "/auth/register",
+        permanent: true,
+      },
+      {
+        source: "/signin",
+        destination: "/auth/login",
+        permanent: true,
+      },
+      {
+        source: "/login",
+        destination: "/auth/login",
+        permanent: true,
+      },
+      {
+        source: "/register",
+        destination: "/auth/register",
+        permanent: true,
+      },
+      // Arabic URL aliases → English canonical
+      {
+        source: "/وظائف",
+        destination: "/jobs",
+        permanent: true,
+      },
+      {
+        source: "/مستقلين",
+        destination: "/freelancers",
+        permanent: true,
+      },
     ];
   },
 
@@ -88,6 +189,7 @@ const nextConfig = {
     NEXT_PUBLIC_API_URL:
       process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1",
     NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || "Kaasb",
+    NEXT_PUBLIC_SITE_URL: SITE_URL,
   },
 
   // Proxy API requests in development to avoid CORS issues

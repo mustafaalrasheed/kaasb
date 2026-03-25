@@ -5,28 +5,30 @@ Business logic for contracts and milestone management.
 
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-from sqlalchemy import select, func
+from fastapi import HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException, status
-
-from app.services.base import BaseService
 
 from app.models.contract import (
-    Contract, ContractStatus,
-    Milestone, MilestoneStatus,
+    Contract,
+    ContractStatus,
+    Milestone,
+    MilestoneStatus,
 )
 from app.models.job import Job, JobStatus
 from app.models.proposal import Proposal
 from app.models.user import User
 from app.schemas.contract import (
-    ContractCreate, MilestoneUpdate,
-    MilestoneSubmit, MilestoneReview,
+    ContractCreate,
+    MilestoneReview,
+    MilestoneSubmit,
+    MilestoneUpdate,
 )
+from app.services.base import BaseService
 
 logger = logging.getLogger(__name__)
 
@@ -101,17 +103,17 @@ class ContractService(BaseService):
             proposal_id=proposal.id,
             client_id=job.client_id,
             freelancer_id=proposal.freelancer_id,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             deadline=job.deadline,
         )
         self.db.add(contract)
         try:
             await self.db.flush()
-        except IntegrityError:
-            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation")
+        except IntegrityError as e:
+            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation") from e
         except SQLAlchemyError as e:
-            logger.error("Database error creating contract: %s", e, exc_info=True)
-            raise HTTPException(status_code=500, detail="Internal server error")
+            logger.exception("Database error creating contract: %s", e)
+            raise HTTPException(status_code=500, detail="Internal server error") from e
         logger.info("Contract created: %s for job=%s", contract.id, job.id)
         return contract
 
@@ -289,7 +291,7 @@ class ContractService(BaseService):
             )
 
         milestone.status = MilestoneStatus.SUBMITTED
-        milestone.submitted_at = datetime.now(timezone.utc)
+        milestone.submitted_at = datetime.now(UTC)
         milestone.submission_note = data.submission_note
         milestone.feedback = None  # Clear previous feedback
 
@@ -328,7 +330,7 @@ class ContractService(BaseService):
 
         if data.action == "approve":
             milestone.status = MilestoneStatus.APPROVED
-            milestone.approved_at = datetime.now(timezone.utc)
+            milestone.approved_at = datetime.now(UTC)
 
             # Release escrow — only marks as PAID if escrow was actually funded
             from app.services.payment_service import PaymentService
@@ -345,7 +347,7 @@ class ContractService(BaseService):
             else:
                 # Escrow was funded and released — now mark as paid
                 milestone.status = MilestoneStatus.PAID
-                milestone.paid_at = datetime.now(timezone.utc)
+                milestone.paid_at = datetime.now(UTC)
 
                 # Update contract amount_paid
                 full_contract = await self._get_contract(contract.id)
@@ -361,7 +363,7 @@ class ContractService(BaseService):
                 )
                 if all_paid and len(full_contract.milestones) > 0:
                     full_contract.status = ContractStatus.COMPLETED
-                    full_contract.completed_at = datetime.now(timezone.utc)
+                    full_contract.completed_at = datetime.now(UTC)
 
                     # Update job status
                     job_result = await self.db.execute(
@@ -389,11 +391,11 @@ class ContractService(BaseService):
 
         try:
             await self.db.flush()
-        except IntegrityError:
-            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation")
+        except IntegrityError as e:
+            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation") from e
         except SQLAlchemyError as e:
-            logger.error("Database error reviewing milestone: %s", e, exc_info=True)
-            raise HTTPException(status_code=500, detail="Internal server error")
+            logger.exception("Database error reviewing milestone: %s", e)
+            raise HTTPException(status_code=500, detail="Internal server error") from e
         await self.db.refresh(milestone)
         return milestone
 
@@ -414,7 +416,7 @@ class ContractService(BaseService):
     async def get_my_contracts(
         self,
         user: User,
-        status_filter: Optional[str] = None,
+        status_filter: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> dict:

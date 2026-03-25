@@ -3,10 +3,8 @@ Kaasb Platform - Input Sanitization
 Cleans user input to prevent XSS, HTML injection, and other attacks.
 """
 
-import re
 import html
-from typing import Optional
-
+import re
 
 # Dangerous HTML tags and patterns
 _SCRIPT_PATTERN = re.compile(r"<script[^>]*>.*?</script>", re.IGNORECASE | re.DOTALL)
@@ -25,7 +23,7 @@ _SQL_PATTERNS = [
 ]
 
 
-def sanitize_text(text: Optional[str], max_length: int = 10000) -> Optional[str]:
+def sanitize_text(text: str | None, max_length: int = 10000) -> str | None:
     """
     Sanitize user-provided text input.
 
@@ -70,7 +68,7 @@ def sanitize_text(text: Optional[str], max_length: int = 10000) -> Optional[str]
     return text[:max_length] if text else text
 
 
-def sanitize_username(username: Optional[str]) -> Optional[str]:
+def sanitize_username(username: str | None) -> str | None:
     """Sanitize username — alphanumeric, underscores, hyphens only."""
     if username is None:
         return None
@@ -79,14 +77,14 @@ def sanitize_username(username: Optional[str]) -> Optional[str]:
     return cleaned[:50]
 
 
-def sanitize_email(email: Optional[str]) -> Optional[str]:
+def sanitize_email(email: str | None) -> str | None:
     """Basic email sanitization — lowercase, strip whitespace."""
     if email is None:
         return None
     return email.strip().lower()[:254]
 
 
-def sanitize_url(url: Optional[str]) -> Optional[str]:
+def sanitize_url(url: str | None) -> str | None:
     """Sanitize URL — block javascript: and data: URIs."""
     if url is None:
         return None
@@ -109,7 +107,4 @@ def check_sql_injection(text: str) -> bool:
     Check if text contains suspicious SQL patterns.
     Returns True if suspicious. Defense-in-depth only — ORM prevents actual injection.
     """
-    for pattern in _SQL_PATTERNS:
-        if pattern.search(text):
-            return True
-    return False
+    return any(pattern.search(text) for pattern in _SQL_PATTERNS)

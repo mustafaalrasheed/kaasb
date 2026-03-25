@@ -1,6 +1,9 @@
 # Kaasb Platform — Ruff Linter Configuration
 # Docs: https://docs.astral.sh/ruff/
 
+target-version = "py311"
+line-length = 120
+
 [lint]
 select = [
     "E",      # pycodestyle errors
@@ -25,6 +28,10 @@ ignore = [
     "RET504",  # unnecessary assignment before return
     "UP007",   # use X | Y for union types (not yet everywhere)
     "SIM108",  # use ternary operator (sometimes less readable)
+    "UP042",   # StrEnum migration — str+Enum pattern still valid in SQLAlchemy
+    "N802",    # lowercase function name — Pydantic validators use field name convention
+    "ASYNC230", # blocking open in async — used in sync helper functions
+    "LOG014",  # exc_info outside handler — used intentionally in global exception handler
 ]
 
 [lint.per-file-ignores]
@@ -39,7 +46,3 @@ known-first-party = ["app"]
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
-
-# Target Python 3.11+
-target-version = "py311"
-line-length = 120

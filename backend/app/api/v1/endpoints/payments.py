@@ -3,27 +3,26 @@ Kaasb Platform - Payment Endpoints
 """
 
 import logging
-from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_client, get_current_freelancer, get_current_user
 from app.core.database import get_db
-from app.api.dependencies import get_current_user, get_current_client, get_current_freelancer
 from app.models.user import User
-from app.services.payment_service import PaymentService
-from app.services.qi_card_client import QiCardClient
 from app.schemas.payment import (
-    PaymentAccountSetup,
-    PaymentAccountResponse,
     EscrowFundRequest,
     EscrowFundResponse,
-    TransactionListResponse,
+    PaymentAccountResponse,
+    PaymentAccountSetup,
     PaymentSummary,
     PayoutRequest,
     PayoutResponse,
     QiCardWebhookEvent,
+    TransactionListResponse,
 )
+from app.services.payment_service import PaymentService
+from app.services.qi_card_client import QiCardClient
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +81,7 @@ async def setup_payment_account(
     summary="List transactions",
 )
 async def list_transactions(
-    type: Optional[str] = Query(None, description="Filter: escrow_fund|escrow_release|platform_fee|payout"),
+    type: str | None = Query(None, description="Filter: escrow_fund|escrow_release|platform_fee|payout"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     current_user: User = Depends(get_current_user),
@@ -174,7 +173,7 @@ async def qi_card_webhook(
         event = QiCardWebhookEvent(**payload)
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error("Qi Card webhook: failed to parse payload: %s", e)
-        raise HTTPException(status_code=400, detail="Invalid webhook payload")
+        raise HTTPException(status_code=400, detail="Invalid webhook payload") from e
 
     service = PaymentService(db)
 

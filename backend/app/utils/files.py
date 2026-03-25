@@ -5,9 +5,8 @@ Handles avatar and file uploads with validation and storage.
 
 import uuid
 from pathlib import Path
-from typing import Optional
 
-from fastapi import UploadFile, HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import get_settings
 
@@ -28,7 +27,7 @@ _IMAGE_MAGIC_BYTES = {
 }
 
 
-def _detect_image_type(header: bytes) -> Optional[str]:
+def _detect_image_type(header: bytes) -> str | None:
     """Detect image type from magic bytes."""
     for magic, mime in _IMAGE_MAGIC_BYTES.items():
         if header.startswith(magic):
@@ -96,14 +95,14 @@ async def save_avatar(file: UploadFile, user_id: str) -> str:
         old_file.unlink(missing_ok=True)
 
     # Write new file
-    with open(file_path, "wb") as f:
+    with file_path.open("wb") as f:
         f.write(contents)
 
     # Return the URL path (relative to static files mount)
     return f"/uploads/avatars/{filename}"
 
 
-def delete_avatar(avatar_url: Optional[str]) -> None:
+def delete_avatar(avatar_url: str | None) -> None:
     """Delete an avatar file from disk (safe against path traversal)."""
     if not avatar_url:
         return
