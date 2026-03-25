@@ -30,12 +30,12 @@ settings = get_settings()
 
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     """Set httpOnly cookies for access and refresh tokens."""
-    is_prod = settings.ENVIRONMENT == "production"
+    is_secure = settings.ENVIRONMENT != "development"  # Secure for production AND staging
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=is_prod,
+        secure=is_secure,
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
@@ -44,7 +44,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=is_prod,
+        secure=is_secure,
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         path="/api/v1/auth",  # Only sent to auth endpoints

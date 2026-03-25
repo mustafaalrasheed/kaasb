@@ -17,19 +17,33 @@ from app.models.refresh_token import RefreshToken
 from app.schemas.user import UserRegister, UserLogin, TokenResponse
 from app.core.security import (
     hash_password,
+    hash_password_async,
     verify_password,
+    verify_password_async,
     create_access_token,
     create_refresh_token,
     decode_token,
 )
 from app.core.config import get_settings
-from app.utils.sanitize import sanitize_text, sanitize_username
+from app.utils.sanitize import sanitize_text, sanitize_username, sanitize_email
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Used to ensure login takes constant time even when user is not found
 DUMMY_HASH = "$2b$12$dummyhashtopreventtimingattackxxxxxxxxxxxxxxxxxxx"
+
+
+def _mask_email(email: str) -> str:
+    """Mask email for safe logging: 'user@example.com' -> 'u***@e***.com'."""
+    try:
+        local, domain = email.rsplit("@", 1)
+        domain_parts = domain.rsplit(".", 1)
+        masked_local = local[0] + "***" if local else "***"
+        masked_domain = domain_parts[0][0] + "***" if domain_parts[0] else "***"
+        return f"{masked_local}@{masked_domain}.{domain_parts[1]}" if len(domain_parts) > 1 else f"{masked_local}@{masked_domain}"
+    except (ValueError, IndexError):
+        return "***"
 
 
 class AuthService:
@@ -46,6 +60,7 @@ class AuthService:
     async def register(self, data: UserRegister) -> User:
         """Register a new user."""
         # Sanitize input before duplicate checks
+        data.email = sanitize_email(data.email)
         data.username = sanitize_username(data.username)
         data.first_name = sanitize_text(data.first_name)
         data.last_name = sanitize_text(data.last_name)
@@ -70,11 +85,11 @@ class AuthService:
                 detail="Registration failed. An account with this email or username may already exist.",
             )
 
-        # Create new user
+        # Create new user — async hash prevents blocking the event loop (~200ms)
         user = User(
             email=data.email,
             username=data.username,
-            hashed_password=hash_password(data.password),
+            hashed_password=await hash_password_async(data.password),
             first_name=data.first_name,
             last_name=data.last_name,
             primary_role=UserRole(data.primary_role),
@@ -97,10 +112,10 @@ class AuthService:
         )
         user = result.scalar_one_or_none()
 
-        # Timing-safe: always run bcrypt even when user not found
+        # Timing-safe: always run bcrypt even when user not found (async to not block event loop)
         if not user:
-            verify_password(data.password, DUMMY_HASH)
-            logger.warning("Failed login attempt for unknown email: %s", data.email)
+            await verify_password_async(data.password, DUMMY_HASH)
+            logger.warning("Failed login attempt for unknown email: %s", _mask_email(data.email))
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
@@ -114,13 +129,13 @@ class AuthService:
                 detail="Account temporarily locked. Try again later.",
             )
 
-        if not verify_password(data.password, user.hashed_password):
+        if not await verify_password_async(data.password, user.hashed_password):
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= 10:
                 user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=30)
                 logger.warning("Account locked due to failed attempts: user=%s", user.id)
             await self.db.flush()
-            logger.warning("Failed login attempt for email: %s", data.email)
+            logger.warning("Failed login attempt for user=%s", user.id)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
@@ -141,8 +156,8 @@ class AuthService:
         user.is_online = True
         await self.db.flush()
 
-        # Generate tokens
-        token_data = {"sub": str(user.id), "role": user.primary_role.value}
+        # Generate tokens (include token_version so logout-all invalidates access tokens)
+        token_data = {"sub": str(user.id), "role": user.primary_role.value, "tv": user.token_version}
         access_token = create_access_token(token_data)
         refresh_token = create_refresh_token(token_data)
 
@@ -199,6 +214,14 @@ class AuthService:
                 detail="Account is not active",
             )
 
+        # Validate token version — logout-all bumps this to invalidate old access tokens
+        token_version = payload.get("tv", 0)
+        if token_version != user.token_version:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+            )
+
         return user
 
     async def refresh_tokens(self, refresh_token: str) -> TokenResponse:
@@ -242,8 +265,8 @@ class AuthService:
         # Revoke old token
         stored_token.revoked = True
 
-        # Generate new token pair
-        token_data = {"sub": str(user.id), "role": user.primary_role.value}
+        # Generate new token pair (include current token_version)
+        token_data = {"sub": str(user.id), "role": user.primary_role.value, "tv": user.token_version}
         new_access_token = create_access_token(token_data)
         new_refresh_token = create_refresh_token(token_data)
 
@@ -282,7 +305,7 @@ class AuthService:
         logger.info("User logged out: user=%s", user.id)
 
     async def logout_all(self, user: User) -> None:
-        """Revoke all refresh tokens for the user."""
+        """Revoke all refresh tokens and invalidate all access tokens for the user."""
         await self.db.execute(
             update(RefreshToken)
             .where(
@@ -291,5 +314,7 @@ class AuthService:
             )
             .values(revoked=True)
         )
+        # Bump token_version to invalidate all outstanding access tokens immediately
+        user.token_version += 1
         await self.db.flush()
         logger.info("All sessions terminated: user=%s", user.id)

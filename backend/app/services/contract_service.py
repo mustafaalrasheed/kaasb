@@ -137,7 +137,7 @@ class ContractService:
         existing_total = sum(m.amount for m in contract.milestones)
         new_total = sum(m.amount for m in data.milestones)
 
-        if existing_total + new_total > contract.total_amount * 1.01:  # 1% tolerance
+        if existing_total + new_total > contract.total_amount:  # Strict: no overpayment allowed
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Milestone total (${existing_total + new_total:.2f}) "
@@ -235,6 +235,12 @@ class ContractService:
         milestone = await self._get_milestone(milestone_id)
         contract = milestone.contract
 
+        if contract.status != ContractStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot start milestones on a contract with status '{contract.status.value}'",
+            )
+
         if contract.freelancer_id != freelancer.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -260,6 +266,12 @@ class ContractService:
         """Freelancer submits a milestone for client review."""
         milestone = await self._get_milestone(milestone_id)
         contract = milestone.contract
+
+        if contract.status != ContractStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot submit milestones on a contract with status '{contract.status.value}'",
+            )
 
         if contract.freelancer_id != freelancer.id:
             raise HTTPException(
@@ -292,6 +304,12 @@ class ContractService:
         milestone = await self._get_milestone(milestone_id)
         contract = milestone.contract
 
+        if contract.status != ContractStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot review milestones on a contract with status '{contract.status.value}'",
+            )
+
         if contract.client_id != client.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -310,47 +328,54 @@ class ContractService:
             milestone.status = MilestoneStatus.APPROVED
             milestone.approved_at = datetime.now(timezone.utc)
 
-            # Auto-mark as paid (in real system, payment would happen first)
-            milestone.status = MilestoneStatus.PAID
-            milestone.paid_at = datetime.now(timezone.utc)
-
-            # Release escrow if funded
+            # Release escrow — only marks as PAID if escrow was actually funded
             from app.services.payment_service import PaymentService
             payment_service = PaymentService(self.db)
-            await payment_service.release_escrow(milestone.id)
+            escrow_result = await payment_service.release_escrow(milestone.id)
 
-            # Update contract amount_paid
-            full_contract = await self._get_contract(contract.id)
-            full_contract.amount_paid = sum(
-                m.amount for m in full_contract.milestones
-                if m.status == MilestoneStatus.PAID
-            )
-
-            # Check if all milestones are paid → complete contract
-            all_paid = all(
-                m.status == MilestoneStatus.PAID
-                for m in full_contract.milestones
-            )
-            if all_paid and len(full_contract.milestones) > 0:
-                full_contract.status = ContractStatus.COMPLETED
-                full_contract.completed_at = datetime.now(timezone.utc)
-
-                # Update job status
-                job_result = await self.db.execute(
-                    select(Job).where(Job.id == full_contract.job_id)
+            if escrow_result is None:
+                # No funded escrow exists — do NOT mark as paid
+                logger.warning(
+                    f"Milestone {milestone.id} approved but no funded escrow found. "
+                    f"Milestone remains APPROVED until escrow is funded and released."
                 )
-                job = job_result.scalar_one_or_none()
-                if job:
-                    job.status = JobStatus.COMPLETED
-
-                # Update user stats
-                full_contract.freelancer.total_earnings += milestone.amount
-                full_contract.freelancer.jobs_completed += 1
-                full_contract.client.total_spent += milestone.amount
             else:
-                # Just update client spent for this milestone
-                full_contract.client.total_spent += milestone.amount
-                full_contract.freelancer.total_earnings += milestone.amount
+                # Escrow was funded and released — now mark as paid
+                milestone.status = MilestoneStatus.PAID
+                milestone.paid_at = datetime.now(timezone.utc)
+
+                # Update contract amount_paid
+                full_contract = await self._get_contract(contract.id)
+                full_contract.amount_paid = sum(
+                    m.amount for m in full_contract.milestones
+                    if m.status == MilestoneStatus.PAID
+                )
+
+                # Check if all milestones are paid → complete contract
+                all_paid = all(
+                    m.status == MilestoneStatus.PAID
+                    for m in full_contract.milestones
+                )
+                if all_paid and len(full_contract.milestones) > 0:
+                    full_contract.status = ContractStatus.COMPLETED
+                    full_contract.completed_at = datetime.now(timezone.utc)
+
+                    # Update job status
+                    job_result = await self.db.execute(
+                        select(Job).where(Job.id == full_contract.job_id)
+                    )
+                    job = job_result.scalar_one_or_none()
+                    if job:
+                        job.status = JobStatus.COMPLETED
+
+                    # Update user stats
+                    full_contract.freelancer.total_earnings += milestone.amount
+                    full_contract.freelancer.jobs_completed += 1
+                    full_contract.client.total_spent += milestone.amount
+                else:
+                    # Just update client spent for this milestone
+                    full_contract.client.total_spent += milestone.amount
+                    full_contract.freelancer.total_earnings += milestone.amount
 
         elif data.action == "request_revision":
             milestone.status = MilestoneStatus.REVISION_REQUESTED

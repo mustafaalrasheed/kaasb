@@ -39,10 +39,29 @@ async def _get_redis():
 
 
 class RateLimiter:
-    """Redis-backed rate limiter with in-memory fallback."""
+    """Redis-backed rate limiter with bounded in-memory fallback."""
+
+    # Cap in-memory entries to prevent OOM from spoofed IPs
+    _MAX_FALLBACK_KEYS = 10_000
 
     def __init__(self):
         self._fallback: dict = defaultdict(list)
+
+    def _cleanup_fallback(self, now: float, window: int) -> None:
+        """Evict expired entries and enforce max key count."""
+        if len(self._fallback) > self._MAX_FALLBACK_KEYS:
+            # Evict oldest entries beyond the cap
+            expired_keys = [
+                k for k, timestamps in self._fallback.items()
+                if not timestamps or now - timestamps[-1] >= window
+            ]
+            for k in expired_keys:
+                del self._fallback[k]
+            # If still over limit, evict the oldest keys
+            if len(self._fallback) > self._MAX_FALLBACK_KEYS:
+                keys_to_remove = list(self._fallback.keys())[: len(self._fallback) - self._MAX_FALLBACK_KEYS]
+                for k in keys_to_remove:
+                    del self._fallback[k]
 
     async def is_allowed(self, key: str, limit: int, window: int) -> bool:
         """Return True if the request is within the rate limit."""
@@ -57,8 +76,9 @@ class RateLimiter:
                 return count <= limit
         except Exception:
             pass
-        # Fallback to in-memory sliding window
+        # Fallback to in-memory sliding window (bounded)
         now = time.time()
+        self._cleanup_fallback(now, window)
         self._fallback[key] = [t for t in self._fallback[key] if now - t < window]
         if len(self._fallback[key]) >= limit:
             return False
@@ -83,19 +103,32 @@ rate_limiter = RateLimiter()
 
 # Rate limit tiers
 RATE_LIMITS = {
-    "login": {"limit": 5, "window": 300},       # 5 per 5 min
-    "register": {"limit": 3, "window": 600},     # 3 per 10 min
-    "upload": {"limit": 10, "window": 60},        # 10 per min
-    "api_write": {"limit": 120, "window": 60},    # 120 writes per min
-    "api_read": {"limit": 120, "window": 60},     # 120 reads per min
+    "login": {"limit": 5, "window": 300},          # 5 per 5 min
+    "register": {"limit": 3, "window": 600},        # 3 per 10 min
+    "password_change": {"limit": 5, "window": 300}, # 5 per 5 min (brute-force protection)
+    "upload": {"limit": 10, "window": 60},           # 10 per min
+    "api_write": {"limit": 120, "window": 60},       # 120 writes per min
+    "api_read": {"limit": 120, "window": 60},        # 120 reads per min
 }
 
 
 def _get_client_ip(request: Request) -> str:
-    """Extract client IP, respecting X-Forwarded-For behind proxy."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """
+    Extract client IP for rate limiting.
+    Only trusts X-Forwarded-For in production (behind a known reverse proxy).
+    In other environments, uses the direct socket address to prevent spoofing.
+    """
+    if settings.ENVIRONMENT == "production":
+        # In production behind a trusted reverse proxy (nginx/ALB),
+        # take the rightmost-but-one (client IP set by our proxy).
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            # Use the first IP (set by the outermost trusted proxy)
+            ips = [ip.strip() for ip in forwarded.split(",")]
+            # If there's only one proxy, take the first; otherwise take
+            # the second-to-last (the one our edge proxy appended).
+            return ips[0] if len(ips) == 1 else ips[-2]
+    # In non-production or when no proxy header: use direct socket IP
     return request.client.host if request.client else "unknown"
 
 
@@ -108,6 +141,8 @@ def _get_rate_limit_tier(request: Request) -> str:
         return "login"
     if "/auth/register" in path and method == "POST":
         return "register"
+    if "/users/password" in path and method == "PUT":
+        return "password_change"
     if "/avatar" in path and method == "POST":
         return "upload"
     if method in ("POST", "PUT", "DELETE", "PATCH"):
@@ -128,7 +163,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     WEBHOOK_PATHS = {"/api/v1/payments/qi-card/webhook"}
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        if settings.ENVIRONMENT != "production":
+        if settings.ENVIRONMENT == "development" or settings.ENVIRONMENT == "testing":
             return await call_next(request)
 
         if request.method not in self.UNSAFE_METHODS:
@@ -168,14 +203,27 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 # === Security Headers Middleware ===
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add security headers to all responses."""
+    """Add security headers and request timing to all responses."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Generate request ID for tracing
         request_id = str(uuid.uuid4())[:8]
         request.state.request_id = request_id
 
+        # Track request timing for performance monitoring
+        start_time = time.perf_counter()
+
         response = await call_next(request)
+
+        # Add Server-Timing header — visible in browser DevTools and APM tools
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        response.headers["Server-Timing"] = f"total;dur={duration_ms:.1f}"
+        # Log slow requests (>1s) for investigation
+        if duration_ms > 1000:
+            logger.warning(
+                "Slow request: %s %s took %.0fms [%s]",
+                request.method, request.url.path, duration_ms, request_id,
+            )
 
         # Security headers
         response.headers["X-Request-ID"] = request_id

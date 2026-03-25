@@ -45,7 +45,8 @@ async def save_avatar(file: UploadFile, user_id: str) -> str:
     Validates file type (magic bytes), content type, and size before saving.
     """
     # Reject filenames with path traversal sequences
-    if ".." in (file.filename or "") or "/" in (file.filename or ""):
+    filename_check = file.filename or ""
+    if ".." in filename_check or "/" in filename_check or "\\" in filename_check:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     # Validate content type header

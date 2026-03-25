@@ -108,17 +108,25 @@ class MessageService:
         )
         self.db.add(message)
 
-        # Update conversation cache
+        # Atomically update conversation cache at the SQL level to prevent race conditions
+        from sqlalchemy import update
         now = datetime.now(timezone.utc)
-        conversation.last_message_text = content[:500]
-        conversation.last_message_at = now
-        conversation.message_count += 1
-
+        update_values = {
+            "last_message_text": content[:500],
+            "last_message_at": now,
+            "message_count": Conversation.message_count + 1,
+        }
         # Increment unread for the OTHER participant
         if sender.id == conversation.participant_one_id:
-            conversation.unread_two += 1
+            update_values["unread_two"] = Conversation.unread_two + 1
         else:
-            conversation.unread_one += 1
+            update_values["unread_one"] = Conversation.unread_one + 1
+
+        await self.db.execute(
+            update(Conversation)
+            .where(Conversation.id == conversation.id)
+            .values(**update_values)
+        )
 
         await self.db.flush()
         await self.db.refresh(message, attribute_names=["sender"])

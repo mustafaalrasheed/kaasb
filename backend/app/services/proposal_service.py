@@ -118,8 +118,11 @@ class ProposalService:
 
         self.db.add(proposal)
 
-        # Increment job's proposal count
-        job.proposal_count += 1
+        # Atomically increment job's proposal count at the SQL level
+        from sqlalchemy import update
+        await self.db.execute(
+            update(Job).where(Job.id == job_id).values(proposal_count=Job.proposal_count + 1)
+        )
 
         await self.db.flush()
         await self.db.refresh(proposal, attribute_names=["freelancer", "job"])
@@ -182,9 +185,16 @@ class ProposalService:
 
         proposal.status = ProposalStatus.WITHDRAWN
 
-        # Decrement job's proposal count
-        job = await self._get_job(proposal.job_id)
-        job.proposal_count = max(0, job.proposal_count - 1)
+        # Atomically decrement job's proposal count at the SQL level
+        from sqlalchemy import update, case
+        await self.db.execute(
+            update(Job).where(Job.id == proposal.job_id).values(
+                proposal_count=case(
+                    (Job.proposal_count > 0, Job.proposal_count - 1),
+                    else_=0,
+                )
+            )
+        )
 
         await self.db.flush()
         await self.db.refresh(proposal, attribute_names=["freelancer", "job"])
@@ -231,9 +241,19 @@ class ProposalService:
         proposal.client_note = data.client_note
         proposal.responded_at = datetime.now(timezone.utc)
 
-        # If accepted, update the job
+        # If accepted, update the job (with lock to prevent concurrent acceptance)
         if new_status == ProposalStatus.ACCEPTED:
-            job = proposal.job
+            # Re-fetch job with FOR UPDATE lock to prevent race condition
+            from sqlalchemy import update as sql_update
+            job_result = await self.db.execute(
+                select(Job).where(Job.id == proposal.job_id).with_for_update()
+            )
+            job = job_result.scalar_one_or_none()
+            if not job or job.status != JobStatus.OPEN:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This job is no longer open — another proposal may have been accepted",
+                )
             job.status = JobStatus.IN_PROGRESS
             job.freelancer_id = proposal.freelancer_id
 

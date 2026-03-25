@@ -17,6 +17,7 @@ Currency:
 import logging
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 
 from sqlalchemy import select, func
@@ -48,19 +49,20 @@ class PaymentService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.platform_fee_rate = settings.PLATFORM_FEE_PERCENT / 100.0
+        self.platform_fee_rate = Decimal(str(settings.PLATFORM_FEE_PERCENT)) / Decimal("100")
         self.qi_card = QiCardClient()
 
     # === Helpers ===
 
     def _calculate_fees(self, amount: float) -> dict:
-        """Calculate platform fee and net amount."""
-        platform_fee = round(amount * self.platform_fee_rate, 2)
-        net_amount = round(amount - platform_fee, 2)
+        """Calculate platform fee and net amount using Decimal for precision."""
+        amount_d = Decimal(str(amount))
+        platform_fee = (amount_d * self.platform_fee_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        net_amount = (amount_d - platform_fee).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         return {
-            "amount": amount,
-            "platform_fee": platform_fee,
-            "net_amount": net_amount,
+            "amount": float(amount_d),
+            "platform_fee": float(platform_fee),
+            "net_amount": float(net_amount),
         }
 
     async def _get_payment_account(
@@ -186,12 +188,10 @@ class PaymentService:
         fees = self._calculate_fees(milestone.amount)
         order_id = f"escrow-{milestone.id}"
 
-        # Build callback/return URLs (use provided or default)
-        callback_url = (
-            data.callback_url
-            or "https://kaasb.com/api/v1/payments/qi-card/webhook"
-        )
-        return_url = data.return_url or "https://kaasb.com/payment/result"
+        # Server-controlled URLs — never user-supplied to prevent SSRF/webhook hijacking
+        base_url = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "https://kaasb.com"
+        callback_url = f"{base_url}/api/v1/payments/qi-card/webhook"
+        return_url = f"{base_url}/payment/result"
 
         # Initiate Qi Card payment
         try:
@@ -248,7 +248,7 @@ class PaymentService:
             client_id=client.id,
             freelancer_id=contract.freelancer_id,
             funding_transaction_id=transaction.id,
-            funded_at=datetime.now(timezone.utc),
+            funded_at=None,  # Set only when webhook confirms actual payment
         )
         self.db.add(escrow)
         try:
@@ -460,6 +460,7 @@ class PaymentService:
         qi_payment_id = original_tx.external_transaction_id if original_tx else None
         amount_iqd = usd_to_iqd(escrow.amount)
 
+        gateway_refund_succeeded = False
         if qi_payment_id:
             try:
                 await self.qi_card.refund_payment(
@@ -467,13 +468,16 @@ class PaymentService:
                     amount_iqd=amount_iqd,
                     reason=reason,
                 )
+                gateway_refund_succeeded = True
             except QiCardError as e:
                 logger.error(f"Qi Card refund error: {e}", exc_info=True)
-                # Continue to update DB even if gateway call fails — handle manually
+                # Record as PROCESSING so admin can resolve manually
+        else:
+            gateway_refund_succeeded = True  # No gateway call needed
 
         refund_tx = Transaction(
             transaction_type=TransactionType.ESCROW_REFUND,
-            status=TransactionStatus.COMPLETED,
+            status=TransactionStatus.COMPLETED if gateway_refund_succeeded else TransactionStatus.PROCESSING,
             amount=escrow.amount,
             currency=escrow.currency,
             platform_fee=0,
@@ -512,7 +516,12 @@ class PaymentService:
         if not account:
             raise HTTPException(status_code=404, detail="Payment account not found or not verified")
 
-        # Check available balance
+        # Acquire advisory lock on user ID to prevent concurrent payout race conditions.
+        # This ensures only one payout request per user is processed at a time.
+        lock_key = int.from_bytes(freelancer.id.bytes[:8], byteorder="big") & 0x7FFFFFFFFFFFFFFF
+        await self.db.execute(select(func.pg_advisory_xact_lock(lock_key)))
+
+        # Check available balance (now safe under advisory lock)
         released = await self.db.execute(
             select(func.coalesce(func.sum(Transaction.net_amount), 0.0)).where(
                 Transaction.payee_id == freelancer.id,
@@ -531,7 +540,7 @@ class PaymentService:
         )
         total_paid_out = paid_out.scalar() or 0.0
 
-        available = total_released - total_paid_out
+        available = round(total_released - total_paid_out, 2)
         if data.amount > available:
             raise HTTPException(
                 status_code=400,

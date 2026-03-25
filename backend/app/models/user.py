@@ -97,6 +97,10 @@ class User(BaseModel):
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # === Token invalidation ===
+    # Incremented on logout-all to invalidate all outstanding access tokens
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+
     @property
     def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"

@@ -42,15 +42,7 @@ class EscrowFundRequest(BaseModel):
     """Client funds escrow for a milestone."""
     milestone_id: uuid.UUID
     payment_method_id: Optional[str] = None  # Stripe payment method (legacy)
-    # Qi Card payment flow
-    callback_url: Optional[str] = Field(
-        None,
-        description="URL Qi Card will POST the webhook to after payment completes",
-    )
-    return_url: Optional[str] = Field(
-        None,
-        description="URL to redirect the user to after Qi Card payment",
-    )
+    # callback_url and return_url are server-controlled constants — never user-supplied
 
 
 class EscrowFundResponse(BaseModel):

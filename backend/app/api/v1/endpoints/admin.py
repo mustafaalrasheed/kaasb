@@ -91,7 +91,7 @@ async def toggle_admin(
 ):
     """Grant or revoke admin/superuser status."""
     service = AdminService(db)
-    return await service.toggle_superuser(user_id)
+    return await service.toggle_superuser(user_id, acting_admin=admin)
 
 
 # === Job Moderation ===

@@ -3,7 +3,9 @@ Kaasb Platform - Security Utilities
 Password hashing with bcrypt and JWT token management.
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from typing import Optional
 
 from jose import JWTError, jwt
@@ -26,13 +28,25 @@ oauth2_scheme = OAuth2PasswordBearer(
 
 
 def hash_password(password: str) -> str:
-    """Hash a plaintext password."""
+    """Hash a plaintext password (sync — use hash_password_async in async contexts)."""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash."""
+    """Verify a password against its hash (sync — use verify_password_async in async contexts)."""
     return pwd_context.verify(plain_password, hashed_password)
+
+
+async def hash_password_async(password: str) -> str:
+    """Hash password in thread pool — bcrypt is CPU-bound (~200ms) and blocks the event loop."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, partial(pwd_context.hash, password))
+
+
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    """Verify password in thread pool — prevents blocking the event loop during login."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, partial(pwd_context.verify, plain_password, hashed_password))
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

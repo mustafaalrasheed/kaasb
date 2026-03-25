@@ -13,7 +13,7 @@ _SCRIPT_PATTERN = re.compile(r"<script[^>]*>.*?</script>", re.IGNORECASE | re.DO
 _TAG_PATTERN = re.compile(r"<[^>]+>")
 _EVENT_PATTERN = re.compile(r"\bon\w+\s*=", re.IGNORECASE)
 _JAVASCRIPT_PATTERN = re.compile(r"javascript\s*:", re.IGNORECASE)
-_DATA_PATTERN = re.compile(r"data\s*:", re.IGNORECASE)
+_DATA_PATTERN = re.compile(r"(?:^|[\s\"'=])data\s*:\s*\w+/\w+", re.IGNORECASE)
 _EXPRESSION_PATTERN = re.compile(r"expression\s*\(", re.IGNORECASE)
 _IMPORT_PATTERN = re.compile(r"@import", re.IGNORECASE)
 
@@ -97,6 +97,11 @@ def sanitize_url(url: Optional[str]) -> Optional[str]:
     if not (lower.startswith("http://") or lower.startswith("https://")):
         return None
     return url[:2000]
+
+
+def escape_like(text: str) -> str:
+    """Escape SQL LIKE/ILIKE wildcard characters to prevent wildcard injection."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def check_sql_injection(text: str) -> bool:
