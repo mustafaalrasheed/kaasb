@@ -25,10 +25,13 @@ import hashlib
 import hmac
 import logging
 import uuid
+from typing import ClassVar
 
 import httpx
 
 from app.core.config import get_settings
+from app.utils.circuit_breaker import CircuitBreaker, CircuitOpenError
+from app.utils.retry import async_retry
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +68,9 @@ class QiCardClient:
         # Redirect client to payment["redirect_url"]
     """
 
+    # One circuit breaker shared across all instances (class-level)
+    _circuit: ClassVar[CircuitBreaker] = None  # type: ignore[assignment]
+
     def __init__(self):
         self.settings = get_settings()
         self.base_url = (
@@ -73,6 +79,14 @@ class QiCardClient:
             else self.settings.QI_CARD_BASE_URL
         )
         self._auth_header = self._build_auth_header()
+        # Initialise circuit breaker once
+        if QiCardClient._circuit is None:
+            QiCardClient._circuit = CircuitBreaker(
+                name="qi_card",
+                failure_threshold=5,
+                recovery_timeout=60.0,
+                exceptions=(httpx.RequestError, QiCardError),
+            )
 
     def _build_auth_header(self) -> str:
         """Build HTTP Basic Auth header from merchant credentials."""
@@ -124,6 +138,7 @@ class QiCardClient:
     # Payment Operations
     # =========================================================================
 
+    @async_retry(max_attempts=3, base_delay=1.0, exceptions=(httpx.RequestError,))
     async def create_payment(
         self,
         amount_usd: float,
@@ -161,8 +176,9 @@ class QiCardClient:
         payload["signature"] = self._sign_payload(payload)
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                response = await self._circuit.call(
+                    http_client.post,
                     f"{self.base_url}/create-payment",
                     json=payload,
                     headers={
@@ -171,6 +187,9 @@ class QiCardClient:
                         "Accept": "application/json",
                     },
                 )
+        except CircuitOpenError as e:
+            logger.warning("Qi Card circuit open in create_payment: %s", e)
+            raise QiCardError(str(e)) from e
         except httpx.RequestError as e:
             logger.error("Qi Card network error in create_payment: %s", e)
             raise QiCardError(f"Network error connecting to Qi Card: {e}") from e
@@ -196,6 +215,7 @@ class QiCardClient:
             "status": data.get("status", "pending"),
         }
 
+    @async_retry(max_attempts=3, base_delay=1.0, exceptions=(httpx.RequestError,))
     async def get_payment_status(self, payment_id: str) -> dict:
         """
         Poll Qi Card for the current status of a payment.
@@ -211,8 +231,9 @@ class QiCardClient:
             return {"payment_id": payment_id, "status": "completed", "amount_iqd": 0}
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                response = await self._circuit.call(
+                    http_client.get,
                     f"{self.base_url}/get-payment-status",
                     params={"payment_id": payment_id, "merchant_id": self.settings.QI_CARD_MERCHANT_ID},
                     headers={
@@ -220,6 +241,9 @@ class QiCardClient:
                         "Accept": "application/json",
                     },
                 )
+        except CircuitOpenError as e:
+            logger.warning("Qi Card circuit open in get_payment_status: %s", e)
+            raise QiCardError(str(e)) from e
         except httpx.RequestError as e:
             logger.error("Qi Card network error in get_payment_status: %s", e)
             raise QiCardError(f"Network error: {e}") from e
@@ -238,6 +262,7 @@ class QiCardClient:
             "amount_iqd": data.get("amount", 0),
         }
 
+    @async_retry(max_attempts=2, base_delay=1.0, exceptions=(httpx.RequestError,))
     async def cancel_payment(self, payment_id: str) -> bool:
         """Cancel a pending payment. Returns True on success."""
         if not self._is_configured():
@@ -251,8 +276,9 @@ class QiCardClient:
         payload["signature"] = self._sign_payload(payload)
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                response = await self._circuit.call(
+                    http_client.post,
                     f"{self.base_url}/cancel-payment",
                     json=payload,
                     headers={
@@ -260,12 +286,13 @@ class QiCardClient:
                         "Content-Type": "application/json",
                     },
                 )
-        except httpx.RequestError as e:
+        except (CircuitOpenError, httpx.RequestError) as e:
             logger.error("Qi Card network error in cancel_payment: %s", e)
             return False
 
         return response.status_code in (200, 204)
 
+    @async_retry(max_attempts=3, base_delay=1.0, exceptions=(httpx.RequestError,))
     async def refund_payment(self, payment_id: str, amount_iqd: int, reason: str = "") -> dict:
         """
         Issue a refund for a completed payment.
@@ -290,8 +317,9 @@ class QiCardClient:
         payload["signature"] = self._sign_payload(payload)
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                response = await self._circuit.call(
+                    http_client.post,
                     f"{self.base_url}/refund-payment",
                     json=payload,
                     headers={
@@ -299,6 +327,9 @@ class QiCardClient:
                         "Content-Type": "application/json",
                     },
                 )
+        except CircuitOpenError as e:
+            logger.warning("Qi Card circuit open in refund_payment: %s", e)
+            raise QiCardError(str(e)) from e
         except httpx.RequestError as e:
             logger.error("Qi Card network error in refund_payment: %s", e)
             raise QiCardError(f"Network error: {e}") from e

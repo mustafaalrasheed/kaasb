@@ -3,11 +3,13 @@ Kaasb Platform - Main Application
 FastAPI application factory with middleware, CORS, security, and lifecycle management.
 """
 
+import asyncio
+import json
+import logging
+import logging.handlers
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-
-import logging
-import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,29 +17,44 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.core.config import get_settings
-from app.core.database import init_db, engine
 from app.api.v1.router import api_router
-from app.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware, CSRFMiddleware
+from app.core.config import get_settings
+from app.core.database import engine, init_db
+from app.middleware.security import CSRFMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
 
 settings = get_settings()
+
+
+class _JsonFormatter(logging.Formatter):
+    """JSON log formatter for production — one JSON object per line."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        # Propagate any extra fields attached via logger.info(..., extra={...})
+        for key, value in record.__dict__.items():
+            if key not in logging.LogRecord.__dict__ and key not in payload:
+                payload[key] = value
+        return json.dumps(payload, ensure_ascii=False)
 
 
 def _configure_logging() -> None:
     """Configure structured logging based on environment."""
     log_level = logging.DEBUG if settings.DEBUG else logging.INFO
-    log_format = (
-        "%(asctime)s %(levelname)-8s [%(name)s] %(message)s"
-        if settings.ENVIRONMENT == "production"
-        else "%(levelname)-8s [%(name)s] %(message)s"
-    )
+    handler = logging.StreamHandler(sys.stdout)
 
-    logging.basicConfig(
-        level=log_level,
-        format=log_format,
-        handlers=[logging.StreamHandler(sys.stdout)],
-        force=True,
-    )
+    if settings.ENVIRONMENT == "production":
+        handler.setFormatter(_JsonFormatter())
+    else:
+        handler.setFormatter(logging.Formatter("%(levelname)-8s [%(name)s] %(message)s"))
+
+    logging.basicConfig(level=log_level, handlers=[handler], force=True)
 
     # Quiet noisy loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
@@ -56,8 +73,24 @@ async def lifespan(app: FastAPI):
     - Shutdown: Close database connections
     """
     # === Startup ===
+    # Retry DB connection on startup — containers often start before postgres is ready
+    for attempt in range(1, 6):
+        try:
+            from sqlalchemy import text as _text
+            async with engine.connect() as conn:
+                await conn.execute(_text("SELECT 1"))
+            break
+        except Exception as exc:
+            if attempt == 5:
+                logger.exception("Database unreachable after 5 attempts — aborting startup")
+                raise
+            wait = 2 ** attempt
+            logger.warning("DB not ready (attempt %d/5): %s — retrying in %ds", attempt, exc, wait)
+            await asyncio.sleep(wait)
+
     if settings.ENVIRONMENT == "development":
         await init_db()
+
     logger.info(
         "%s v%s started in %s mode",
         settings.APP_NAME, settings.APP_VERSION, settings.ENVIRONMENT,
@@ -115,8 +148,13 @@ def create_app() -> FastAPI:
 
     # === Domain Exception → HTTP Response Mapping ===
     from app.core.exceptions import (
-        KaasbError, NotFoundError, ConflictError, ForbiddenError,
-        BadRequestError, UnauthorizedError, RateLimitError, ExternalServiceError,
+        BadRequestError,
+        ConflictError,
+        ExternalServiceError,
+        ForbiddenError,
+        NotFoundError,
+        RateLimitError,
+        UnauthorizedError,
     )
 
     @app.exception_handler(NotFoundError)
