@@ -25,6 +25,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
+from app.services.base import BaseService
+
 from app.core.config import get_settings
 from app.models.payment import (
     PaymentAccount, PaymentAccountStatus, PaymentProvider,
@@ -44,11 +46,11 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-class PaymentService:
+class PaymentService(BaseService):
     """Service for all payment operations."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        super().__init__(db)
         self.platform_fee_rate = Decimal(str(settings.PLATFORM_FEE_PERCENT)) / Decimal("100")
         self.qi_card = QiCardClient()
 
@@ -129,7 +131,7 @@ class PaymentService:
         self.db.add(account)
         await self.db.flush()
         await self.db.refresh(account)
-        logger.info(f"Payment account created: user={user.id} provider={provider.value}")
+        logger.info("Payment account created: user=%s provider=%s", user.id, provider.value)
         return account
 
     async def get_payment_accounts(self, user: User) -> list[PaymentAccount]:
@@ -203,7 +205,7 @@ class PaymentService:
                 description=f"Escrow: {milestone.title[:100]}",
             )
         except QiCardError as e:
-            logger.error(f"Qi Card error in fund_escrow: {e}", exc_info=True)
+            logger.error("Qi Card error in fund_escrow: %s", e, exc_info=True)
             raise HTTPException(
                 status_code=502,
                 detail="Payment gateway error. Please try again later.",
@@ -233,7 +235,7 @@ class PaymentService:
         try:
             await self.db.flush()
         except (IntegrityError, SQLAlchemyError) as e:
-            logger.error(f"Database error creating transaction: {e}", exc_info=True)
+            logger.error("Database error creating transaction: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Internal server error")
 
         # Create escrow in PENDING state (will be FUNDED after webhook)
@@ -256,12 +258,12 @@ class PaymentService:
         except IntegrityError:
             raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation")
         except SQLAlchemyError as e:
-            logger.error(f"Database error in fund_escrow: {e}", exc_info=True)
+            logger.error("Database error in fund_escrow: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Internal server error")
 
         logger.info(
-            f"Qi Card payment initiated: milestone={data.milestone_id} "
-            f"payment_id={qi_payment_id} amount_usd={fees['amount']} amount_iqd={amount_iqd}"
+            "Qi Card payment initiated: milestone=%s payment_id=%s amount_usd=%s amount_iqd=%s",
+            data.milestone_id, qi_payment_id, fees['amount'], amount_iqd,
         )
 
         return EscrowFundResponse(
@@ -298,11 +300,11 @@ class PaymentService:
         )
         transaction = result.scalar_one_or_none()
         if not transaction:
-            logger.warning(f"Qi Card webhook: no transaction found for payment_id={qi_payment_id}")
+            logger.warning("Qi Card webhook: no transaction found for payment_id=%s", qi_payment_id)
             return False
 
         if transaction.status == TransactionStatus.COMPLETED:
-            logger.info(f"Qi Card webhook: already processed payment_id={qi_payment_id}")
+            logger.info("Qi Card webhook: already processed payment_id=%s", qi_payment_id)
             return True  # Idempotent
 
         # Update transaction
@@ -323,12 +325,12 @@ class PaymentService:
         try:
             await self.db.flush()
         except SQLAlchemyError as e:
-            logger.error(f"Database error confirming Qi Card payment: {e}", exc_info=True)
+            logger.error("Database error confirming Qi Card payment: %s", e, exc_info=True)
             return False
 
         logger.info(
-            f"Qi Card payment confirmed: payment_id={qi_payment_id} "
-            f"transaction={transaction.id} escrow={escrow.id if escrow else 'not found'}"
+            "Qi Card payment confirmed: payment_id=%s transaction=%s escrow=%s",
+            qi_payment_id, transaction.id, escrow.id if escrow else 'not found',
         )
         return True
 
@@ -357,7 +359,7 @@ class PaymentService:
             escrow.status = EscrowStatus.REFUNDED  # Nothing was actually charged
 
         await self.db.flush()
-        logger.info(f"Qi Card payment failed/cancelled: payment_id={qi_payment_id}")
+        logger.info("Qi Card payment failed/cancelled: payment_id=%s", qi_payment_id)
         return True
 
     # === Escrow: Release (called when milestone approved) ===
@@ -419,10 +421,10 @@ class PaymentService:
         try:
             await self.db.flush()
         except SQLAlchemyError as e:
-            logger.error(f"Database error in release_escrow: {e}", exc_info=True)
+            logger.error("Database error in release_escrow: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Internal server error")
 
-        logger.info(f"Escrow released: milestone={milestone_id} amount={escrow.freelancer_amount}")
+        logger.info("Escrow released: milestone=%s amount=%s", milestone_id, escrow.freelancer_amount)
 
         return EscrowReleaseResponse(
             escrow_id=escrow.id,
@@ -470,7 +472,7 @@ class PaymentService:
                 )
                 gateway_refund_succeeded = True
             except QiCardError as e:
-                logger.error(f"Qi Card refund error: {e}", exc_info=True)
+                logger.error("Qi Card refund error: %s", e, exc_info=True)
                 # Record as PROCESSING so admin can resolve manually
         else:
             gateway_refund_succeeded = True  # No gateway call needed
@@ -496,7 +498,7 @@ class PaymentService:
         escrow.released_at = datetime.now(timezone.utc)
 
         await self.db.flush()
-        logger.info(f"Escrow refunded: milestone={milestone_id} amount={escrow.amount}")
+        logger.info("Escrow refunded: milestone=%s amount=%s", milestone_id, escrow.amount)
         return True
 
     # === Payout: Freelancer withdraws funds ===
@@ -577,12 +579,12 @@ class PaymentService:
         try:
             await self.db.flush()
         except SQLAlchemyError as e:
-            logger.error(f"Database error in request_payout: {e}", exc_info=True)
+            logger.error("Database error in request_payout: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Internal server error")
 
         logger.info(
-            f"Payout requested: freelancer={freelancer.id} "
-            f"amount={data.amount} ({amount_iqd:,} IQD) provider={account.provider.value}"
+            "Payout requested: freelancer=%s amount=%s (%s IQD) provider=%s",
+            freelancer.id, data.amount, f"{amount_iqd:,}", account.provider.value,
         )
 
         payout_status = payout_tx.status.value
@@ -609,7 +611,7 @@ class PaymentService:
         page_size: int = 20,
     ) -> dict:
         """Get transaction history for a user."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         stmt = select(Transaction).where(
             (Transaction.payer_id == user.id) | (Transaction.payee_id == user.id)
         )
@@ -628,13 +630,7 @@ class PaymentService:
         result = await self.db.execute(stmt)
         transactions = result.scalars().all()
 
-        return {
-            "transactions": list(transactions),
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=list(transactions), total=total, page=page, page_size=page_size, key="transactions")
 
     # === Payment Summary ===
 

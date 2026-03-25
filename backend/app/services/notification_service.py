@@ -11,16 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
+from app.services.base import BaseService
 
 # Note: Notification queries intentionally do NOT load the user relationship —
 # the endpoint already knows the user from auth context, avoiding wasteful JOINs.
 
 
-class NotificationService:
+class NotificationService(BaseService):
     """Service for notification operations."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        super().__init__(db)
 
     async def create_notification(
         self,
@@ -54,7 +55,7 @@ class NotificationService:
         page_size: int = 20,
     ) -> dict:
         """Get notifications for a user."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         stmt = select(Notification).where(Notification.user_id == user.id)
 
         if unread_only:
@@ -80,14 +81,9 @@ class NotificationService:
         result = await self.db.execute(stmt)
         notifications = list(result.scalars().all())
 
-        return {
-            "notifications": notifications,
-            "total": total,
-            "unread_count": unread_count,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        result_dict = self.paginated_response(items=notifications, total=total, page=page, page_size=page_size, key="notifications")
+        result_dict["unread_count"] = unread_count
+        return result_dict
 
     async def get_unread_count(self, user: User) -> int:
         """Get unread notification count."""

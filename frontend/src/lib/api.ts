@@ -1,4 +1,6 @@
 import axios from "axios";
+import type { User } from "@/types/user";
+import type { Job } from "@/types/job";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -57,7 +59,7 @@ export const authApi = {
   refresh: () =>
     api.post("/auth/refresh", { refresh_token: "" }),
 
-  getMe: () => api.get("/auth/me"),
+  getMe: () => api.get<{ data: User }>("/auth/me"),
 
   logout: () => api.post("/auth/logout", { refresh_token: "" }),
 };
@@ -117,7 +119,7 @@ export const jobsApi = {
     page_size?: number;
   }) => api.get("/jobs", { params }),
 
-  getById: (jobId: string) => api.get(`/jobs/${jobId}`),
+  getById: (jobId: string) => api.get<{ data: Job }>(`/jobs/${jobId}`),
 
   create: (data: {
     title: string;

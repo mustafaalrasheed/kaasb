@@ -1,10 +1,45 @@
+# Kaasb Platform — Ruff Linter Configuration
+# Docs: https://docs.astral.sh/ruff/
+
 [lint]
-select = ["E", "F", "W"]
-ignore = ["E501"]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "T20",    # flake8-print (no print statements)
+    "RET",    # flake8-return
+    "C4",     # flake8-comprehensions
+    "PTH",    # flake8-use-pathlib
+    "LOG",    # flake8-logging — enforce lazy % formatting
+    "G",      # flake8-logging-format
+    "ASYNC",  # flake8-async
+]
+ignore = [
+    "E501",    # line too long (handled by formatter)
+    "B008",    # function call in default argument (FastAPI Depends)
+    "RET504",  # unnecessary assignment before return
+    "UP007",   # use X | Y for union types (not yet everywhere)
+    "SIM108",  # use ternary operator (sometimes less readable)
+]
 
 [lint.per-file-ignores]
-# Models use SQLAlchemy string forward references — F821 is a false positive here
-"app/models/*.py" = ["F821"]
-# __init__.py is an intentional re-export barrel — all imports are public API
+"app/models/*.py" = ["F821"]     # forward references in SQLAlchemy
+"app/models/__init__.py" = ["F401"]  # unused imports in barrel file
 "app/schemas/__init__.py" = ["F401"]
-"app/models/__init__.py" = ["F401"]
+
+[lint.isort]
+known-first-party = ["app"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# Target Python 3.11+
+target-version = "py311"
+line-length = 120

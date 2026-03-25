@@ -28,7 +28,7 @@ class RefreshToken(BaseModel):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     user_agent: Mapped[str] = mapped_column(String(500), nullable=True)
 
-    user: Mapped["User"] = relationship("User", backref="refresh_tokens", lazy="selectin")
+    user: Mapped["User"] = relationship("User", backref="refresh_tokens", lazy="raise")
 
     __table_args__ = (
         Index("ix_refresh_tokens_user_id_revoked", "user_id", "revoked"),

@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
+from app.services.base import BaseService
+
 from app.models.user import User, UserRole, UserStatus
 from app.models.job import Job, JobStatus
 from app.models.contract import Contract, ContractStatus
@@ -25,11 +27,11 @@ from app.utils.sanitize import escape_like
 logger = logging.getLogger(__name__)
 
 
-class AdminService:
+class AdminService(BaseService):
     """Service for admin operations."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        super().__init__(db)
 
     # === Platform Statistics ===
 
@@ -159,7 +161,7 @@ class AdminService:
         page_size: int = 20,
     ) -> dict:
         """List users with filtering."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         stmt = select(User)
 
         if role:
@@ -184,13 +186,7 @@ class AdminService:
         result = await self.db.execute(stmt)
         users = list(result.scalars().all())
 
-        return {
-            "users": users,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=users, total=total, page=page, page_size=page_size, key="users")
 
     async def update_user_status(
         self, user_id: uuid.UUID, new_status: str
@@ -245,8 +241,9 @@ class AdminService:
         if user.is_superuser:
             user.primary_role = UserRole.ADMIN
         logger.info(
-            f"Admin privilege {'granted to' if user.is_superuser else 'revoked from'} "
-            f"user={user_id} by admin={acting_admin.id}"
+            "Admin privilege %s user=%s by admin=%s",
+            "granted to" if user.is_superuser else "revoked from",
+            user_id, acting_admin.id,
         )
         await self.db.flush()
         await self.db.refresh(user)
@@ -262,7 +259,7 @@ class AdminService:
         page_size: int = 20,
     ) -> dict:
         """List all jobs for admin moderation."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         stmt = select(Job).options(selectinload(Job.client))
 
         if status_filter:
@@ -283,13 +280,7 @@ class AdminService:
         result = await self.db.execute(stmt)
         jobs = list(result.scalars().unique().all())
 
-        return {
-            "jobs": jobs,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=jobs, total=total, page=page, page_size=page_size, key="jobs")
 
     async def update_job_status(
         self, job_id: uuid.UUID, new_status: str
@@ -317,7 +308,7 @@ class AdminService:
         page_size: int = 20,
     ) -> dict:
         """List all platform transactions."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         stmt = select(Transaction)
 
         if type_filter:
@@ -338,10 +329,4 @@ class AdminService:
         result = await self.db.execute(stmt)
         transactions = list(result.scalars().all())
 
-        return {
-            "transactions": transactions,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=transactions, total=total, page=page, page_size=page_size, key="transactions")

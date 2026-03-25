@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
+from app.services.base import BaseService
+
 from app.models.contract import (
     Contract, ContractStatus,
     Milestone, MilestoneStatus,
@@ -29,11 +31,11 @@ from app.schemas.contract import (
 logger = logging.getLogger(__name__)
 
 
-class ContractService:
+class ContractService(BaseService):
     """Service for contract and milestone operations."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        super().__init__(db)
 
     # === Helpers ===
 
@@ -108,9 +110,9 @@ class ContractService:
         except IntegrityError:
             raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation")
         except SQLAlchemyError as e:
-            logger.error(f"Database error creating contract: {e}", exc_info=True)
+            logger.error("Database error creating contract: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Internal server error")
-        logger.info(f"Contract created: {contract.id} for job={job.id}")
+        logger.info("Contract created: %s for job=%s", contract.id, job.id)
         return contract
 
     # === Add Milestones (Client) ===
@@ -336,8 +338,9 @@ class ContractService:
             if escrow_result is None:
                 # No funded escrow exists — do NOT mark as paid
                 logger.warning(
-                    f"Milestone {milestone.id} approved but no funded escrow found. "
-                    f"Milestone remains APPROVED until escrow is funded and released."
+                    "Milestone %s approved but no funded escrow found. "
+                    "Milestone remains APPROVED until escrow is funded and released.",
+                    milestone.id,
                 )
             else:
                 # Escrow was funded and released — now mark as paid
@@ -379,17 +382,17 @@ class ContractService:
 
         elif data.action == "request_revision":
             milestone.status = MilestoneStatus.REVISION_REQUESTED
-            logger.info(f"Revision requested: milestone={milestone_id} on contract={contract.id}")
+            logger.info("Revision requested: milestone=%s on contract=%s", milestone_id, contract.id)
 
         if data.action == "approve":
-            logger.info(f"Milestone approved: {milestone_id} on contract={contract.id}")
+            logger.info("Milestone approved: %s on contract=%s", milestone_id, contract.id)
 
         try:
             await self.db.flush()
         except IntegrityError:
             raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation")
         except SQLAlchemyError as e:
-            logger.error(f"Database error reviewing milestone: {e}", exc_info=True)
+            logger.error("Database error reviewing milestone: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Internal server error")
         await self.db.refresh(milestone)
         return milestone
@@ -416,7 +419,7 @@ class ContractService:
         page_size: int = 20,
     ) -> dict:
         """Get all contracts for the current user (as client or freelancer)."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         stmt = (
             select(Contract)
             .options(
@@ -455,10 +458,4 @@ class ContractService:
             )
             enriched.append(c)
 
-        return {
-            "contracts": enriched,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=enriched, total=total, page=page, page_size=page_size, key="contracts")

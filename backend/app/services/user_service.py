@@ -11,6 +11,8 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
+from app.services.base import BaseService
+
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.user import UserProfileUpdate, PasswordChange
 from app.core.security import hash_password_async, verify_password_async
@@ -19,11 +21,11 @@ from app.utils.sanitize import sanitize_text, sanitize_url, escape_like
 logger = logging.getLogger(__name__)
 
 
-class UserService:
+class UserService(BaseService):
     """Service for user profile and account operations."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        super().__init__(db)
 
     # === Profile Retrieval ===
 
@@ -98,7 +100,7 @@ class UserService:
 
         await self.db.flush()
         await self.db.refresh(user)
-        logger.info(f"Profile updated: user={user.id}")
+        logger.info("Profile updated: user=%s", user.id)
         return user
 
     async def update_avatar(self, user: User, avatar_url: str) -> User:
@@ -106,7 +108,7 @@ class UserService:
         user.avatar_url = avatar_url
         await self.db.flush()
         await self.db.refresh(user)
-        logger.info(f"Avatar updated: user={user.id}")
+        logger.info("Avatar updated: user=%s", user.id)
         return user
 
     async def remove_avatar(self, user: User) -> User:
@@ -135,7 +137,7 @@ class UserService:
 
         user.hashed_password = await hash_password_async(data.new_password)
         await self.db.flush()
-        logger.info(f"Password changed: user={user.id}")
+        logger.info("Password changed: user=%s", user.id)
 
     # === User Search & Listing ===
 
@@ -152,7 +154,7 @@ class UserService:
         page_size: int = 20,
     ) -> dict:
         """Search freelancers with filters, sorting, and pagination."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
 
         # Build filters once — reused for COUNT and SELECT (no subquery overhead)
         filters = [
@@ -202,13 +204,7 @@ class UserService:
         result = await self.db.execute(stmt)
         users = result.scalars().all()
 
-        return {
-            "users": list(users),
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=list(users), total=total, page=page, page_size=page_size, key="users")
 
     # === Account Management ===
 
@@ -217,4 +213,4 @@ class UserService:
         user.status = UserStatus.DEACTIVATED
         user.is_online = False
         await self.db.flush()
-        logger.info(f"Account deactivated: user={user.id}")
+        logger.info("Account deactivated: user=%s", user.id)

@@ -10,10 +10,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
+
+from app.services.base import BaseService
 
 from app.models.job import Job, JobStatus, JobType, ExperienceLevel, JobDuration
 from app.models.user import User, UserRole
@@ -29,11 +31,11 @@ _VIEW_DEDUP_TTL = 3600  # 1 hour
 _VIEW_DEDUP_MAX_KEYS = 50_000
 
 
-class JobService:
+class JobService(BaseService):
     """Service for job posting operations."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        super().__init__(db)
 
     # === Create ===
 
@@ -71,7 +73,7 @@ class JobService:
         self.db.add(job)
         await self.db.flush()
         await self.db.refresh(job, attribute_names=["client"])
-        logger.info(f"Job created: {job.id} by client={client.id}")
+        logger.info("Job created: %s by client=%s", job.id, client.id)
         return job
 
     # === Read ===
@@ -93,7 +95,6 @@ class JobService:
 
     async def increment_view(self, job: Job) -> None:
         """Atomically increment the view count for a job at the SQL level."""
-        from sqlalchemy import update
         await self.db.execute(
             update(Job).where(Job.id == job.id).values(view_count=Job.view_count + 1)
         )
@@ -163,7 +164,7 @@ class JobService:
 
         await self.db.flush()
         await self.db.refresh(job, attribute_names=["client"])
-        logger.info(f"Job updated: {job.id} by client={client.id}")
+        logger.info("Job updated: %s by client=%s", job.id, client.id)
         return job
 
     # === Status Changes ===
@@ -188,7 +189,7 @@ class JobService:
         job.closed_at = datetime.now(timezone.utc)
         await self.db.flush()
         await self.db.refresh(job, attribute_names=["client"])
-        logger.info(f"Job closed: {job.id} by client={client.id}")
+        logger.info("Job closed: %s by client=%s", job.id, client.id)
         return job
 
     async def delete_job(self, job_id: uuid.UUID, client: User) -> None:
@@ -215,7 +216,7 @@ class JobService:
 
         await self.db.delete(job)
         await self.db.flush()
-        logger.info(f"Job deleted: {job_id} by client={client.id}")
+        logger.info("Job deleted: %s by client=%s", job_id, client.id)
 
     # === Search & Listing ===
 
@@ -234,7 +235,7 @@ class JobService:
         page_size: int = 20,
     ) -> dict:
         """Search open jobs with filters, sorting, and pagination."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
 
         # Build filter conditions once — reuse for both COUNT and SELECT
         # This avoids the subquery overhead of wrapping the full SELECT in a COUNT
@@ -286,13 +287,7 @@ class JobService:
         result = await self.db.execute(stmt)
         jobs = result.scalars().unique().all()
 
-        return {
-            "jobs": list(jobs),
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=list(jobs), total=total, page=page, page_size=page_size, key="jobs")
 
     async def get_client_jobs(
         self,
@@ -302,7 +297,7 @@ class JobService:
         page_size: int = 20,
     ) -> dict:
         """Get all jobs posted by a specific client."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
 
         # Build filters once for reuse in COUNT and SELECT
         filters = [Job.client_id == client_id]
@@ -327,10 +322,4 @@ class JobService:
         result = await self.db.execute(stmt)
         jobs = result.scalars().unique().all()
 
-        return {
-            "jobs": list(jobs),
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=list(jobs), total=total, page=page, page_size=page_size, key="jobs")

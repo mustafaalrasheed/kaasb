@@ -8,10 +8,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
+
+from app.services.base import BaseService
 
 from app.models.proposal import Proposal, ProposalStatus
 from app.models.job import Job, JobStatus
@@ -21,11 +23,11 @@ from app.schemas.proposal import ProposalCreate, ProposalUpdate, ProposalRespond
 logger = logging.getLogger(__name__)
 
 
-class ProposalService:
+class ProposalService(BaseService):
     """Service for proposal operations."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        super().__init__(db)
 
     # === Helpers ===
 
@@ -119,14 +121,13 @@ class ProposalService:
         self.db.add(proposal)
 
         # Atomically increment job's proposal count at the SQL level
-        from sqlalchemy import update
         await self.db.execute(
             update(Job).where(Job.id == job_id).values(proposal_count=Job.proposal_count + 1)
         )
 
         await self.db.flush()
         await self.db.refresh(proposal, attribute_names=["freelancer", "job"])
-        logger.info(f"Proposal submitted: {proposal.id} by freelancer={freelancer.id} on job={job_id}")
+        logger.info("Proposal submitted: %s by freelancer=%s on job=%s", proposal.id, freelancer.id, job_id)
         return proposal
 
     # === Update Proposal (Freelancer) ===
@@ -186,7 +187,6 @@ class ProposalService:
         proposal.status = ProposalStatus.WITHDRAWN
 
         # Atomically decrement job's proposal count at the SQL level
-        from sqlalchemy import update, case
         await self.db.execute(
             update(Job).where(Job.id == proposal.job_id).values(
                 proposal_count=case(
@@ -244,7 +244,6 @@ class ProposalService:
         # If accepted, update the job (with lock to prevent concurrent acceptance)
         if new_status == ProposalStatus.ACCEPTED:
             # Re-fetch job with FOR UPDATE lock to prevent race condition
-            from sqlalchemy import update as sql_update
             job_result = await self.db.execute(
                 select(Job).where(Job.id == proposal.job_id).with_for_update()
             )
@@ -279,9 +278,9 @@ class ProposalService:
             await contract_service.create_contract_from_proposal(job, proposal)
 
         if new_status == ProposalStatus.ACCEPTED:
-            logger.info(f"Proposal accepted: {proposal_id} by client={client.id}")
+            logger.info("Proposal accepted: %s by client=%s", proposal_id, client.id)
         elif new_status == ProposalStatus.REJECTED:
-            logger.info(f"Proposal rejected: {proposal_id} by client={client.id}")
+            logger.info("Proposal rejected: %s by client=%s", proposal_id, client.id)
 
         await self.db.flush()
         await self.db.refresh(proposal, attribute_names=["freelancer", "job"])
@@ -318,7 +317,7 @@ class ProposalService:
         page_size: int = 20,
     ) -> dict:
         """Get all proposals on a job (client only)."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         # Verify client owns the job
         job = await self._get_job(job_id)
         if job.client_id != client.id:
@@ -359,13 +358,7 @@ class ProposalService:
         result = await self.db.execute(stmt)
         proposals = result.scalars().unique().all()
 
-        return {
-            "proposals": list(proposals),
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=list(proposals), total=total, page=page, page_size=page_size, key="proposals")
 
     # === List: My Proposals (Freelancer) ===
 
@@ -377,7 +370,7 @@ class ProposalService:
         page_size: int = 20,
     ) -> dict:
         """Get all proposals submitted by the freelancer."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         stmt = (
             select(Proposal)
             .options(
@@ -403,10 +396,4 @@ class ProposalService:
         result = await self.db.execute(stmt)
         proposals = result.scalars().unique().all()
 
-        return {
-            "proposals": list(proposals),
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=list(proposals), total=total, page=page, page_size=page_size, key="proposals")

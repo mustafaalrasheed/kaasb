@@ -12,13 +12,13 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
+from app.services.base import BaseService
+
 from app.models.user import User, UserRole, UserStatus
 from app.models.refresh_token import RefreshToken
 from app.schemas.user import UserRegister, UserLogin, TokenResponse
 from app.core.security import (
-    hash_password,
     hash_password_async,
-    verify_password,
     verify_password_async,
     create_access_token,
     create_refresh_token,
@@ -46,11 +46,11 @@ def _mask_email(email: str) -> str:
         return "***"
 
 
-class AuthService:
+class AuthService(BaseService):
     """Authentication service for user management."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        super().__init__(db)
 
     @staticmethod
     def _hash_token(token: str) -> str:

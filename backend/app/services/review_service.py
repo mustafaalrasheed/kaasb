@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
+from app.services.base import BaseService
+
 from app.models.review import Review
 from app.models.contract import Contract, ContractStatus
 from app.models.user import User
@@ -19,11 +21,11 @@ from app.schemas.review import ReviewCreate
 logger = logging.getLogger(__name__)
 
 
-class ReviewService:
+class ReviewService(BaseService):
     """Service for review operations."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        super().__init__(db)
 
     async def submit_review(
         self, reviewer: User, contract_id: uuid.UUID, data: ReviewCreate
@@ -88,7 +90,7 @@ class ReviewService:
         await self._update_user_rating(reviewee_id)
 
         await self.db.refresh(review, attribute_names=["reviewer", "reviewee", "contract"])
-        logger.info(f"Review submitted: {review.id} by reviewer={reviewer.id} on contract={contract_id}")
+        logger.info("Review submitted: %s by reviewer=%s on contract=%s", review.id, reviewer.id, contract_id)
         return review
 
     async def _update_user_rating(self, user_id: uuid.UUID):
@@ -120,7 +122,7 @@ class ReviewService:
         page_size: int = 20,
     ) -> dict:
         """Get all reviews received by a user."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         stmt = (
             select(Review)
             .options(
@@ -150,14 +152,9 @@ class ReviewService:
         result = await self.db.execute(stmt)
         reviews = result.scalars().unique().all()
 
-        return {
-            "reviews": list(reviews),
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-            "average_rating": round(float(avg_rating), 2) if avg_rating else None,
-        }
+        result_dict = self.paginated_response(items=list(reviews), total=total, page=page, page_size=page_size, key="reviews")
+        result_dict["average_rating"] = round(float(avg_rating), 2) if avg_rating else None
+        return result_dict
 
     async def get_review_stats(self, user_id: uuid.UUID) -> dict:
         """Get aggregated review statistics."""

@@ -3,6 +3,8 @@ Kaasb Platform - Database Session Configuration
 Async SQLAlchemy 2.0 setup with optimized connection pooling.
 """
 
+from collections.abc import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -44,11 +46,17 @@ class Base(DeclarativeBase):
     pass
 
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    Dependency that provides a database session.
-    Usage in endpoints:
+    Dependency that provides a database session per request.
+
+    The session auto-commits on success and rolls back on error.
+    Cleanup is handled by the ``async with`` context manager.
+
+    Usage::
+
         async def my_endpoint(db: AsyncSession = Depends(get_db)):
+            ...
     """
     async with async_session() as session:
         try:
@@ -57,8 +65,6 @@ async def get_db() -> AsyncSession:
         except Exception:
             await session.rollback()
             raise
-        finally:
-            await session.close()
 
 
 async def init_db() -> None:

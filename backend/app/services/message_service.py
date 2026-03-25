@@ -7,10 +7,12 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
+
+from app.services.base import BaseService
 
 from app.models.message import Conversation, Message
 from app.models.user import User
@@ -20,11 +22,11 @@ from app.schemas.message import ConversationCreate, MessageCreate
 logger = logging.getLogger(__name__)
 
 
-class MessageService:
+class MessageService(BaseService):
     """Service for messaging operations."""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        super().__init__(db)
 
     async def start_conversation(
         self, sender: User, data: ConversationCreate
@@ -109,7 +111,6 @@ class MessageService:
         self.db.add(message)
 
         # Atomically update conversation cache at the SQL level to prevent race conditions
-        from sqlalchemy import update
         now = datetime.now(timezone.utc)
         update_values = {
             "last_message_text": content[:500],
@@ -139,7 +140,7 @@ class MessageService:
         page_size: int = 20,
     ) -> dict:
         """Get all conversations for a user."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         stmt = (
             select(Conversation)
             .options(
@@ -177,13 +178,7 @@ class MessageService:
                 c._unread_count = c.unread_two
             enriched.append(c)
 
-        return {
-            "conversations": enriched,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=enriched, total=total, page=page, page_size=page_size, key="conversations")
 
     async def get_messages(
         self,
@@ -193,7 +188,7 @@ class MessageService:
         page_size: int = 50,
     ) -> dict:
         """Get messages in a conversation. Marks messages as read."""
-        page_size = min(page_size, 100)
+        page_size = self.clamp_page_size(page_size)
         conversation = await self._get_conversation(conversation_id)
 
         if user.id not in (conversation.participant_one_id, conversation.participant_two_id):
@@ -223,13 +218,7 @@ class MessageService:
         result = await self.db.execute(stmt)
         messages = list(result.scalars().unique().all())
 
-        return {
-            "messages": messages,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
-        }
+        return self.paginated_response(items=messages, total=total, page=page, page_size=page_size, key="messages")
 
     async def _get_conversation(self, conversation_id: uuid.UUID) -> Conversation:
         """Get conversation with participants loaded."""

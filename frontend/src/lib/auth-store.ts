@@ -18,6 +18,7 @@ interface AuthState {
     primary_role: string;
   }) => Promise<void>;
   logout: () => void;
+  reset: () => void;
   fetchUser: () => Promise<void>;
   initialize: () => Promise<void>;
 }
@@ -69,5 +70,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       set({ user: null, isAuthenticated: false, isLoading: false });
     }
+  },
+
+  reset: () => {
+    set({ user: null, isAuthenticated: false, isLoading: false });
   },
 }));
