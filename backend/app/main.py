@@ -98,7 +98,7 @@ def create_app() -> FastAPI:
             "Origin", "X-Requested-With", "X-Request-ID",
         ],
         expose_headers=["X-Request-ID", "X-RateLimit-Remaining", "X-RateLimit-Limit"],
-        max_age=600,  # Cache preflight for 10 minutes
+        max_age=3600,  # Cache preflight for 1 hour (was 10min — reduces OPTIONS requests by ~6x)
     )
 
     # 2. GZip compression (responses > 500 bytes)

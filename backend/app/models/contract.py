@@ -68,7 +68,9 @@ class Contract(BaseModel):
         nullable=False,
         index=True,
     )
-    job: Mapped["Job"] = relationship("Job", backref="contracts", lazy="selectin")
+    # lazy="raise" on all relationships — prevents silent N+1 queries.
+    # Services use explicit selectinload() to load only what each endpoint needs.
+    job: Mapped["Job"] = relationship("Job", backref="contracts", lazy="raise")
 
     proposal_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -77,7 +79,7 @@ class Contract(BaseModel):
         unique=True,
     )
     proposal: Mapped["Proposal"] = relationship(
-        "Proposal", backref="contract", lazy="selectin"
+        "Proposal", backref="contract", lazy="raise"
     )
 
     client_id: Mapped[uuid.UUID] = mapped_column(
@@ -87,7 +89,7 @@ class Contract(BaseModel):
         index=True,
     )
     client: Mapped["User"] = relationship(
-        "User", foreign_keys=[client_id], backref="client_contracts", lazy="selectin"
+        "User", foreign_keys=[client_id], backref="client_contracts", lazy="raise"
     )
 
     freelancer_id: Mapped[uuid.UUID] = mapped_column(
@@ -97,7 +99,7 @@ class Contract(BaseModel):
         index=True,
     )
     freelancer: Mapped["User"] = relationship(
-        "User", foreign_keys=[freelancer_id], backref="freelancer_contracts", lazy="selectin"
+        "User", foreign_keys=[freelancer_id], backref="freelancer_contracts", lazy="raise"
     )
 
     # === Milestones relationship (loaded via backref from Milestone) ===
@@ -162,7 +164,7 @@ class Milestone(BaseModel):
         index=True,
     )
     contract: Mapped["Contract"] = relationship(
-        "Contract", backref="milestones", lazy="selectin"
+        "Contract", backref="milestones", lazy="raise"
     )
 
     # === Timestamps ===

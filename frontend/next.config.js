@@ -11,8 +11,10 @@ const nextConfig = {
   // Standalone output for Docker production builds
   output: "standalone",
 
-  // Image optimization — restrict to known hosts
+  // Image optimization — restrict to known hosts + prefer modern formats
   images: {
+    formats: ["image/avif", "image/webp"], // Serve AVIF (50% smaller) with WebP fallback
+    minimumCacheTTL: 3600, // Cache optimized images for 1 hour (default: 60s)
     remotePatterns: [
       ...(IS_PRODUCTION
         ? []

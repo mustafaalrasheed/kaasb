@@ -61,7 +61,7 @@ class PaymentAccount(BaseModel):
         index=True,
     )
     user: Mapped["User"] = relationship(
-        "User", backref="payment_accounts", lazy="selectin"
+        "User", backref="payment_accounts", lazy="raise"
     )
 
     provider: Mapped[PaymentProvider] = mapped_column(
@@ -151,7 +151,7 @@ class Transaction(BaseModel):
         index=True,
     )
     payer: Mapped[Optional["User"]] = relationship(
-        "User", foreign_keys=[payer_id], lazy="selectin"
+        "User", foreign_keys=[payer_id], lazy="raise"
     )
 
     payee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -161,7 +161,7 @@ class Transaction(BaseModel):
         index=True,
     )
     payee: Mapped[Optional["User"]] = relationship(
-        "User", foreign_keys=[payee_id], lazy="selectin"
+        "User", foreign_keys=[payee_id], lazy="raise"
     )
 
     # === Related objects ===

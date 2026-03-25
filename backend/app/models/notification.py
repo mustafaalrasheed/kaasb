@@ -75,7 +75,7 @@ class Notification(BaseModel):
         index=True,
     )
     user: Mapped["User"] = relationship(
-        "User", foreign_keys=[user_id], backref="notifications", lazy="selectin"
+        "User", foreign_keys=[user_id], backref="notifications", lazy="raise"
     )
 
     # === Optional link to related entity ===

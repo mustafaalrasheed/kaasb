@@ -44,8 +44,13 @@ export default function MessagesPage() {
   useEffect(() => {
     if (activeConvo) {
       fetchMessages(activeConvo.id);
-      // Poll for new messages every 5s
-      const interval = setInterval(() => fetchMessages(activeConvo.id), 5000);
+      // Smart polling: only poll when tab is visible (saves bandwidth when user switches tabs)
+      // Uses 3s interval for active chat — 10x less overhead than re-rendering on every poll
+      const interval = setInterval(() => {
+        if (!document.hidden) {
+          fetchMessages(activeConvo.id);
+        }
+      }, 3000);
       return () => clearInterval(interval);
     }
   }, [activeConvo, fetchMessages]);

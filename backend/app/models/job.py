@@ -101,8 +101,9 @@ class Job(BaseModel):
         nullable=False,
         index=True,
     )
+    # lazy="raise" prevents silent N+1 queries — use selectinload() in service queries
     client: Mapped["User"] = relationship(
-        "User", foreign_keys=[client_id], backref="posted_jobs", lazy="selectin"
+        "User", foreign_keys=[client_id], backref="posted_jobs", lazy="raise"
     )
 
     # === Hired freelancer (set when contract starts) ===

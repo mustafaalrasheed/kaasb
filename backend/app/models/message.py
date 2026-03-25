@@ -44,7 +44,7 @@ class Conversation(BaseModel):
         index=True,
     )
     participant_one: Mapped["User"] = relationship(
-        "User", foreign_keys=[participant_one_id], lazy="selectin"
+        "User", foreign_keys=[participant_one_id], lazy="raise"
     )
 
     participant_two_id: Mapped[uuid.UUID] = mapped_column(
@@ -54,7 +54,7 @@ class Conversation(BaseModel):
         index=True,
     )
     participant_two: Mapped["User"] = relationship(
-        "User", foreign_keys=[participant_two_id], lazy="selectin"
+        "User", foreign_keys=[participant_two_id], lazy="raise"
     )
 
     # === Context (optional) ===
@@ -63,7 +63,7 @@ class Conversation(BaseModel):
         ForeignKey("jobs.id", ondelete="SET NULL"),
         nullable=True,
     )
-    job: Mapped[Optional["Job"]] = relationship("Job", lazy="selectin")
+    job: Mapped[Optional["Job"]] = relationship("Job", lazy="raise")
 
     # === Last message cache for fast listing ===
     last_message_text: Mapped[Optional[str]] = mapped_column(
@@ -110,7 +110,7 @@ class Message(BaseModel):
         index=True,
     )
     conversation: Mapped["Conversation"] = relationship(
-        "Conversation", backref="messages_list", lazy="selectin"
+        "Conversation", backref="messages_list", lazy="raise"
     )
 
     sender_id: Mapped[uuid.UUID] = mapped_column(
@@ -119,7 +119,7 @@ class Message(BaseModel):
         nullable=False,
         index=True,
     )
-    sender: Mapped["User"] = relationship("User", lazy="selectin")
+    sender: Mapped["User"] = relationship("User", lazy="raise")
 
     def __repr__(self) -> str:
         return f"<Message {self.id} from {self.sender_id}>"

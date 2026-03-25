@@ -12,7 +12,8 @@ DELETE /jobs/{job_id}         - Delete a job (owner only)
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -149,12 +150,15 @@ async def get_my_jobs(
 )
 async def get_job(
     job_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Get full details of a job posting."""
     service = JobService(db)
     job = await service.get_by_id(job_id)
-    await service.increment_view(job)
+    # Deduplicate view counts per IP+job to prevent manipulation
+    client_ip = request.client.host if request.client else "unknown"
+    await service.increment_view_deduplicated(job, client_ip)
     return job
 
 

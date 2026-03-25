@@ -12,6 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
 
+# Note: Notification queries intentionally do NOT load the user relationship —
+# the endpoint already knows the user from auth context, avoiding wasteful JOINs.
+
 
 class NotificationService:
     """Service for notification operations."""

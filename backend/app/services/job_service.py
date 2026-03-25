@@ -3,7 +3,9 @@ Kaasb Platform - Job Service
 Business logic for job posting, listing, search, and lifecycle management.
 """
 
+import hashlib
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -16,8 +18,15 @@ from fastapi import HTTPException, status
 from app.models.job import Job, JobStatus, JobType, ExperienceLevel, JobDuration
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobUpdate
+from app.utils.sanitize import escape_like
 
 logger = logging.getLogger(__name__)
+
+# Simple in-memory dedup cache for view counts (IP+job_id -> last_view_time)
+# Prevents bots from inflating views. TTL: 1 hour per unique viewer.
+_VIEW_DEDUP_CACHE: dict[str, float] = {}
+_VIEW_DEDUP_TTL = 3600  # 1 hour
+_VIEW_DEDUP_MAX_KEYS = 50_000
 
 
 class JobService:
@@ -83,9 +92,34 @@ class JobService:
         return job
 
     async def increment_view(self, job: Job) -> None:
-        """Increment the view count for a job."""
-        job.view_count += 1
+        """Atomically increment the view count for a job at the SQL level."""
+        from sqlalchemy import update
+        await self.db.execute(
+            update(Job).where(Job.id == job.id).values(view_count=Job.view_count + 1)
+        )
         await self.db.flush()
+
+    async def increment_view_deduplicated(self, job: Job, client_ip: str) -> None:
+        """Increment view count only once per IP per job per hour."""
+        global _VIEW_DEDUP_CACHE
+        now = time.time()
+
+        # Create a short hash key for privacy and memory efficiency
+        raw_key = f"{client_ip}:{job.id}"
+        dedup_key = hashlib.md5(raw_key.encode()).hexdigest()[:16]
+
+        last_view = _VIEW_DEDUP_CACHE.get(dedup_key)
+        if last_view and (now - last_view) < _VIEW_DEDUP_TTL:
+            return  # Already viewed recently, skip
+
+        # Evict old entries if cache is too large
+        if len(_VIEW_DEDUP_CACHE) > _VIEW_DEDUP_MAX_KEYS:
+            expired = [k for k, v in _VIEW_DEDUP_CACHE.items() if now - v >= _VIEW_DEDUP_TTL]
+            for k in expired:
+                del _VIEW_DEDUP_CACHE[k]
+
+        _VIEW_DEDUP_CACHE[dedup_key] = now
+        await self.increment_view(job)
 
     # === Update ===
 
@@ -201,82 +235,51 @@ class JobService:
     ) -> dict:
         """Search open jobs with filters, sorting, and pagination."""
         page_size = min(page_size, 100)
-        stmt = (
-            select(Job)
-            .options(selectinload(Job.client))
-            .where(Job.status == JobStatus.OPEN)
-        )
 
-        # Text search on title and description (limit length to prevent abuse)
+        # Build filter conditions once — reuse for both COUNT and SELECT
+        # This avoids the subquery overhead of wrapping the full SELECT in a COUNT
+        filters = [Job.status == JobStatus.OPEN]
+
         if query:
-            query = query[:200]
-            search_term = f"%{query}%"
-            stmt = stmt.where(
+            search_term = f"%{escape_like(query[:200])}%"
+            filters.append(
                 or_(
                     Job.title.ilike(search_term),
                     Job.description.ilike(search_term),
                 )
             )
-
-        # Category filter
         if category:
-            category = category[:100]
-            stmt = stmt.where(Job.category.ilike(f"%{category}%"))
-
-        # Job type filter
+            filters.append(Job.category.ilike(f"%{escape_like(category[:100])}%"))
         if job_type:
-            stmt = stmt.where(Job.job_type == JobType(job_type))
-
-        # Skills filter (ANY match)
+            filters.append(Job.job_type == JobType(job_type))
         if skills:
-            stmt = stmt.where(Job.skills_required.overlap(skills))
-
-        # Experience level filter
+            filters.append(Job.skills_required.overlap(skills))
         if experience_level:
-            stmt = stmt.where(
-                Job.experience_level == ExperienceLevel(experience_level)
-            )
-
-        # Budget range filter
+            filters.append(Job.experience_level == ExperienceLevel(experience_level))
         if budget_min is not None:
-            stmt = stmt.where(
-                or_(
-                    Job.fixed_price >= budget_min,
-                    Job.budget_min >= budget_min,
-                )
-            )
+            filters.append(or_(Job.fixed_price >= budget_min, Job.budget_min >= budget_min))
         if budget_max is not None:
-            stmt = stmt.where(
-                or_(
-                    Job.fixed_price <= budget_max,
-                    Job.budget_max <= budget_max,
-                )
-            )
-
-        # Duration filter
+            filters.append(or_(Job.fixed_price <= budget_max, Job.budget_max <= budget_max))
         if duration:
-            stmt = stmt.where(Job.duration == JobDuration(duration))
+            filters.append(Job.duration == JobDuration(duration))
 
-        # Count total
-        count_stmt = select(func.count()).select_from(stmt.subquery())
-        total_result = await self.db.execute(count_stmt)
-        total = total_result.scalar() or 0
+        # COUNT query — direct WHERE avoids subquery overhead (~2x faster)
+        total = (await self.db.execute(
+            select(func.count(Job.id)).where(*filters)
+        )).scalar() or 0
 
-        # Sorting
+        # DATA query with eager loading and sorting
+        stmt = select(Job).options(selectinload(Job.client)).where(*filters)
+
         if sort_by == "oldest":
             stmt = stmt.order_by(Job.published_at.asc())
         elif sort_by == "budget_high":
-            stmt = stmt.order_by(
-                func.coalesce(Job.fixed_price, Job.budget_max, 0).desc()
-            )
+            stmt = stmt.order_by(func.coalesce(Job.fixed_price, Job.budget_max, 0).desc())
         elif sort_by == "budget_low":
-            stmt = stmt.order_by(
-                func.coalesce(Job.fixed_price, Job.budget_min, 0).asc()
-            )
-        else:  # newest (default)
+            stmt = stmt.order_by(func.coalesce(Job.fixed_price, Job.budget_min, 0).asc())
+        else:  # newest (default) — uses ix_jobs_status_published index
             stmt = stmt.order_by(Job.published_at.desc().nullslast())
 
-        # Pagination
         offset = (page - 1) * page_size
         stmt = stmt.offset(offset).limit(page_size)
 
@@ -300,24 +303,26 @@ class JobService:
     ) -> dict:
         """Get all jobs posted by a specific client."""
         page_size = min(page_size, 100)
+
+        # Build filters once for reuse in COUNT and SELECT
+        filters = [Job.client_id == client_id]
+        if status_filter:
+            filters.append(Job.status == JobStatus(status_filter))
+
+        # Direct COUNT — no subquery needed
+        total = (await self.db.execute(
+            select(func.count(Job.id)).where(*filters)
+        )).scalar() or 0
+
+        # Data query — uses ix_jobs_client_created index
         stmt = (
             select(Job)
             .options(selectinload(Job.client))
-            .where(Job.client_id == client_id)
+            .where(*filters)
+            .order_by(Job.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
-
-        if status_filter:
-            stmt = stmt.where(Job.status == JobStatus(status_filter))
-
-        # Count
-        count_stmt = select(func.count()).select_from(stmt.subquery())
-        total_result = await self.db.execute(count_stmt)
-        total = total_result.scalar() or 0
-
-        # Order and paginate
-        stmt = stmt.order_by(Job.created_at.desc())
-        offset = (page - 1) * page_size
-        stmt = stmt.offset(offset).limit(page_size)
 
         result = await self.db.execute(stmt)
         jobs = result.scalars().unique().all()

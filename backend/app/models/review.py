@@ -54,7 +54,7 @@ class Review(BaseModel):
         index=True,
     )
     contract: Mapped["Contract"] = relationship(
-        "Contract", backref="reviews", lazy="selectin"
+        "Contract", backref="reviews", lazy="raise"
     )
 
     reviewer_id: Mapped[uuid.UUID] = mapped_column(
@@ -64,7 +64,7 @@ class Review(BaseModel):
         index=True,
     )
     reviewer: Mapped["User"] = relationship(
-        "User", foreign_keys=[reviewer_id], backref="reviews_given", lazy="selectin"
+        "User", foreign_keys=[reviewer_id], backref="reviews_given", lazy="raise"
     )
 
     reviewee_id: Mapped[uuid.UUID] = mapped_column(
@@ -74,7 +74,7 @@ class Review(BaseModel):
         index=True,
     )
     reviewee: Mapped["User"] = relationship(
-        "User", foreign_keys=[reviewee_id], backref="reviews_received", lazy="selectin"
+        "User", foreign_keys=[reviewee_id], backref="reviews_received", lazy="raise"
     )
 
     # === Metadata ===

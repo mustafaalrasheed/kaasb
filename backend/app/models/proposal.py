@@ -68,8 +68,9 @@ class Proposal(BaseModel):
         nullable=False,
         index=True,
     )
+    # lazy="raise" prevents silent N+1 — use selectinload() in queries that need relations
     job: Mapped["Job"] = relationship(
-        "Job", backref="proposals", lazy="selectin"
+        "Job", backref="proposals", lazy="raise"
     )
 
     freelancer_id: Mapped[uuid.UUID] = mapped_column(
@@ -79,7 +80,7 @@ class Proposal(BaseModel):
         index=True,
     )
     freelancer: Mapped["User"] = relationship(
-        "User", backref="proposals", lazy="selectin"
+        "User", backref="proposals", lazy="raise"
     )
 
     # === Client response ===
