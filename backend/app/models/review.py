@@ -5,18 +5,17 @@ Each party can only review the other once per contract.
 """
 
 import uuid
-from typing import Optional
 
 from sqlalchemy import (
-    Text,
-    Integer,
     Boolean,
-    ForeignKey,
-    UniqueConstraint,
     CheckConstraint,
+    ForeignKey,
+    Integer,
+    Text,
+    UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
 
@@ -38,13 +37,13 @@ class Review(BaseModel):
 
     # === Rating ===
     rating: Mapped[int] = mapped_column(Integer, nullable=False)  # 1-5 stars
-    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # === Category ratings (optional, 1-5) ===
-    communication_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    quality_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    professionalism_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    timeliness_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    communication_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quality_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    professionalism_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    timeliness_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # === Relationships ===
     contract_id: Mapped[uuid.UUID] = mapped_column(

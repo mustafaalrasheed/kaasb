@@ -4,10 +4,8 @@ Kaasb Platform - Payment Schemas
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
-
 
 # === Payment Account ===
 
@@ -15,22 +13,22 @@ class PaymentAccountSetup(BaseModel):
     """Setup a payment account."""
     provider: str = Field(pattern=r"^(qi_card|stripe|wise)$")
     # Wise-specific
-    wise_email: Optional[str] = Field(None, max_length=255)
+    wise_email: str | None = Field(None, max_length=255)
     wise_currency: str = Field(default="USD", max_length=3)
     # Qi Card-specific (optional — used for account label)
-    qi_card_phone: Optional[str] = Field(None, max_length=20, description="Iraqi phone number linked to Qi Card")
+    qi_card_phone: str | None = Field(None, max_length=20, description="Iraqi phone number linked to Qi Card")
 
 
 class PaymentAccountResponse(BaseModel):
     id: uuid.UUID
     provider: str
     status: str
-    external_account_id: Optional[str] = None
-    wise_email: Optional[str] = None
+    external_account_id: str | None = None
+    wise_email: str | None = None
     wise_currency: str = "USD"
-    qi_card_phone: Optional[str] = None
+    qi_card_phone: str | None = None
     is_default: bool = True
-    verified_at: Optional[datetime] = None
+    verified_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -41,7 +39,7 @@ class PaymentAccountResponse(BaseModel):
 class EscrowFundRequest(BaseModel):
     """Client funds escrow for a milestone."""
     milestone_id: uuid.UUID
-    payment_method_id: Optional[str] = None  # Stripe payment method (legacy)
+    payment_method_id: str | None = None  # Stripe payment method (legacy)
     # callback_url and return_url are server-controlled constants — never user-supplied
 
 
@@ -53,10 +51,10 @@ class EscrowFundResponse(BaseModel):
     freelancer_amount: float
     status: str
     # Qi Card payment redirect
-    payment_redirect_url: Optional[str] = None  # Redirect client here to complete payment
-    qi_card_payment_id: Optional[str] = None
+    payment_redirect_url: str | None = None  # Redirect client here to complete payment
+    qi_card_payment_id: str | None = None
     # Legacy Stripe
-    client_secret: Optional[str] = None
+    client_secret: str | None = None
     message: str
 
     model_config = {"from_attributes": True}
@@ -83,9 +81,9 @@ class TransactionResponse(BaseModel):
     currency: str
     platform_fee: float
     net_amount: float
-    description: Optional[str] = None
-    external_transaction_id: Optional[str] = None
-    completed_at: Optional[datetime] = None
+    description: str | None = None
+    external_transaction_id: str | None = None
+    completed_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -121,7 +119,7 @@ class QiCardWebhookEvent(BaseModel):
     status: str    # "completed" | "failed" | "cancelled"
     amount: int    # Amount in IQD
     merchant_id: str
-    signature: Optional[str] = None  # HMAC-SHA256 signature for verification
+    signature: str | None = None  # HMAC-SHA256 signature for verification
 
 
 # === Legacy Stripe Webhook (kept for compatibility) ===

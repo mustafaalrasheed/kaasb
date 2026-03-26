@@ -6,19 +6,18 @@ Represents a freelancer's bid on a job posting.
 import enum
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
-    String,
-    Enum,
-    Text,
-    Float,
     DateTime,
+    Enum,
+    Float,
     ForeignKey,
+    String,
+    Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
 
@@ -49,7 +48,7 @@ class Proposal(BaseModel):
     # === Bid Details ===
     cover_letter: Mapped[str] = mapped_column(Text, nullable=False)
     bid_amount: Mapped[float] = mapped_column(Float, nullable=False)
-    estimated_duration: Mapped[Optional[str]] = mapped_column(
+    estimated_duration: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )  # e.g., "2 weeks", "1 month"
 
@@ -84,14 +83,14 @@ class Proposal(BaseModel):
     )
 
     # === Client response ===
-    client_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    client_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # === Timestamps ===
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
     )
-    responded_at: Mapped[Optional[datetime]] = mapped_column(
+    responded_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

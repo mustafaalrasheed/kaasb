@@ -5,17 +5,17 @@ Aggregates all endpoint routers under /api/v1.
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints.auth import router as auth_router
-from app.api.v1.endpoints.health import router as health_router
-from app.api.v1.endpoints.users import router as users_router
-from app.api.v1.endpoints.jobs import router as jobs_router
-from app.api.v1.endpoints.proposals import router as proposals_router
-from app.api.v1.endpoints.contracts import router as contracts_router
-from app.api.v1.endpoints.payments import router as payments_router
-from app.api.v1.endpoints.reviews import router as reviews_router
-from app.api.v1.endpoints.notifications import router as notifications_router
-from app.api.v1.endpoints.messages import router as messages_router
 from app.api.v1.endpoints.admin import router as admin_router
+from app.api.v1.endpoints.auth import router as auth_router
+from app.api.v1.endpoints.contracts import router as contracts_router
+from app.api.v1.endpoints.health import router as health_router
+from app.api.v1.endpoints.jobs import router as jobs_router
+from app.api.v1.endpoints.messages import router as messages_router
+from app.api.v1.endpoints.notifications import router as notifications_router
+from app.api.v1.endpoints.payments import router as payments_router
+from app.api.v1.endpoints.proposals import router as proposals_router
+from app.api.v1.endpoints.reviews import router as reviews_router
+from app.api.v1.endpoints.users import router as users_router
 
 api_router = APIRouter()
 

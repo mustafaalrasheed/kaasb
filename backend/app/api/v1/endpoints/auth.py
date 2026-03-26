@@ -11,18 +11,18 @@ POST /auth/logout-all   - Revoke all refresh tokens (all sessions)
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.models.user import User
 from app.schemas.user import (
-    UserRegister,
-    UserLogin,
-    TokenResponse,
     TokenRefresh,
+    TokenResponse,
+    UserLogin,
     UserMe,
+    UserRegister,
 )
 from app.services.auth_service import AuthService
-from app.api.dependencies import get_current_user
-from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()

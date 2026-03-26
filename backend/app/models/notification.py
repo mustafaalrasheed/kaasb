@@ -5,17 +5,16 @@ In-app notifications for key platform events.
 
 import enum
 import uuid
-from typing import Optional
 
 from sqlalchemy import (
-    String,
-    Enum,
-    Text,
     Boolean,
+    Enum,
     ForeignKey,
+    String,
+    Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
 
@@ -79,15 +78,15 @@ class Notification(BaseModel):
     )
 
     # === Optional link to related entity ===
-    link_type: Mapped[Optional[str]] = mapped_column(
+    link_type: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )  # "contract", "job", "proposal", "message"
-    link_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    link_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
 
     # === Sender (optional) ===
-    actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,

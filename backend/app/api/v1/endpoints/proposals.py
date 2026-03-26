@@ -10,26 +10,25 @@ POST   /proposals/{proposal_id}/respond   - Respond to proposal (client)
 """
 
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import (
+    get_current_client,
+    get_current_freelancer,
+    get_current_user,
+)
 from app.core.database import get_db
+from app.models.user import User
 from app.schemas.proposal import (
     ProposalCreate,
-    ProposalUpdate,
-    ProposalRespond,
     ProposalDetail,
     ProposalListResponse,
+    ProposalRespond,
+    ProposalUpdate,
 )
 from app.services.proposal_service import ProposalService
-from app.api.dependencies import (
-    get_current_user,
-    get_current_freelancer,
-    get_current_client,
-)
-from app.models.user import User
 
 router = APIRouter(prefix="/proposals", tags=["Proposals"])
 
@@ -43,7 +42,7 @@ router = APIRouter(prefix="/proposals", tags=["Proposals"])
     summary="Get your submitted proposals",
 )
 async def get_my_proposals(
-    status_filter: Optional[str] = Query(
+    status_filter: str | None = Query(
         None,
         alias="status",
         pattern=r"^(pending|shortlisted|accepted|rejected|withdrawn)$",
@@ -93,7 +92,7 @@ async def submit_proposal(
 )
 async def get_job_proposals(
     job_id: uuid.UUID,
-    status_filter: Optional[str] = Query(
+    status_filter: str | None = Query(
         None,
         alias="status",
         pattern=r"^(pending|shortlisted|accepted|rejected|withdrawn)$",

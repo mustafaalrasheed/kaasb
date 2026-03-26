@@ -4,7 +4,6 @@ Kaasb Platform - Admin Schemas
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -33,7 +32,7 @@ class AdminUserInfo(BaseModel):
     total_earnings: float
     jobs_completed: int
     is_online: bool
-    last_login: Optional[datetime] = None
+    last_login: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -56,9 +55,9 @@ class AdminJobInfo(BaseModel):
     title: str
     status: str
     job_type: str
-    budget_min: Optional[float] = None
-    budget_max: Optional[float] = None
-    category: Optional[str] = None
+    budget_min: float | None = None
+    budget_max: float | None = None
+    category: str | None = None
     proposal_count: int = 0
     created_at: datetime
 
@@ -85,7 +84,7 @@ class AdminTransactionInfo(BaseModel):
     currency: str
     platform_fee: float
     net_amount: float
-    description: Optional[str] = None
+    description: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

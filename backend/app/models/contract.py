@@ -7,22 +7,21 @@ Milestones break the contract into deliverable phases.
 import enum
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
-    String,
-    Enum,
-    Text,
-    Float,
-    Integer,
+    CheckConstraint,
     DateTime,
+    Enum,
     ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
-
 
 # === Contract ===
 
@@ -44,14 +43,19 @@ class Contract(BaseModel):
     """
 
     __tablename__ = "contracts"
+    __table_args__ = (
+        CheckConstraint("total_amount > 0", name="ck_contract_total_amount_positive"),
+        CheckConstraint("amount_paid >= 0", name="ck_contract_amount_paid_non_negative"),
+        CheckConstraint("amount_paid <= total_amount", name="ck_contract_amount_paid_le_total"),
+    )
 
     # === Contract Details ===
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # === Financial ===
-    total_amount: Mapped[float] = mapped_column(Float, nullable=False)
-    amount_paid: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    total_amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    amount_paid: Mapped[float] = mapped_column(Numeric(12, 4), default=0.0, nullable=False)
 
     # === Status ===
     status: Mapped[ContractStatus] = mapped_column(
@@ -108,10 +112,10 @@ class Contract(BaseModel):
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    completed_at: Mapped[Optional[datetime]] = mapped_column(
+    completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deadline: Mapped[Optional[datetime]] = mapped_column(
+    deadline: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -139,14 +143,17 @@ class Milestone(BaseModel):
     """
 
     __tablename__ = "milestones"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_milestone_amount_positive"),
+    )
 
     # === Details ===
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # === Financial ===
-    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
 
     # === Status ===
     status: Mapped[MilestoneStatus] = mapped_column(
@@ -168,24 +175,24 @@ class Milestone(BaseModel):
     )
 
     # === Timestamps ===
-    due_date: Mapped[Optional[datetime]] = mapped_column(
+    due_date: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    submitted_at: Mapped[Optional[datetime]] = mapped_column(
+    submitted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(
+    approved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    paid_at: Mapped[Optional[datetime]] = mapped_column(
+    paid_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # === Freelancer's submission note ===
-    submission_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    submission_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # === Client's feedback ===
-    feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
         return f"<Milestone {self.id} #{self.order} ({self.status.value})>"

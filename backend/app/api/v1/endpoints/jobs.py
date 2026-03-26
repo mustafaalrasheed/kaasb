@@ -10,22 +10,20 @@ DELETE /jobs/{job_id}         - Delete a job (owner only)
 """
 
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_client
 from app.core.database import get_db
+from app.models.user import User
 from app.schemas.job import (
     JobCreate,
-    JobUpdate,
     JobDetail,
     JobListResponse,
+    JobUpdate,
 )
 from app.services.job_service import JobService
-from app.api.dependencies import get_current_client
-from app.models.user import User
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -39,18 +37,18 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
     summary="Browse and search jobs",
 )
 async def search_jobs(
-    q: Optional[str] = Query(None, description="Search by title or description"),
-    category: Optional[str] = Query(None),
-    job_type: Optional[str] = Query(None, pattern=r"^(fixed|hourly)$"),
-    skills: Optional[str] = Query(
+    q: str | None = Query(None, description="Search by title or description"),
+    category: str | None = Query(None),
+    job_type: str | None = Query(None, pattern=r"^(fixed|hourly)$"),
+    skills: str | None = Query(
         None, description="Comma-separated skills filter"
     ),
-    experience_level: Optional[str] = Query(
+    experience_level: str | None = Query(
         None, pattern=r"^(entry|intermediate|expert)$"
     ),
-    budget_min: Optional[float] = Query(None, ge=0),
-    budget_max: Optional[float] = Query(None, le=1000000),
-    duration: Optional[str] = Query(None),
+    budget_min: float | None = Query(None, ge=0),
+    budget_max: float | None = Query(None, le=1000000),
+    duration: str | None = Query(None),
     sort_by: str = Query(
         "newest",
         pattern=r"^(newest|oldest|budget_high|budget_low)$",
@@ -120,7 +118,7 @@ async def create_job(
     summary="Get your posted jobs",
 )
 async def get_my_jobs(
-    status_filter: Optional[str] = Query(
+    status_filter: str | None = Query(
         None,
         alias="status",
         pattern=r"^(draft|open|in_progress|completed|cancelled|closed)$",

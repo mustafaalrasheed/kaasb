@@ -1,0 +1,295 @@
+# =============================================================================
+# Kaasb Platform — PostgreSQL Tuning Configuration
+# Target: Hetzner CPX22 (4 vCPU, 8 GB RAM, SSD NVMe)
+# PostgreSQL version: 15+
+#
+# HOW TO APPLY
+# ------------
+# 1. Copy relevant settings into your postgresql.conf (usually at
+#    /etc/postgresql/15/main/postgresql.conf or inside the Docker container).
+# 2. For Dockerized PostgreSQL, mount this as a custom config:
+#      command: postgres -c config_file=/etc/postgresql/postgresql.conf
+#    Or pass individual settings via POSTGRES_* env vars / command flags.
+# 3. After changing settings, run:  SELECT pg_reload_conf();
+#    (most settings) or restart PostgreSQL (settings marked [restart]).
+# 4. Verify applied settings: SELECT name, setting, unit FROM pg_settings
+#    WHERE name IN ('shared_buffers','work_mem','max_connections',...);
+#
+# NOTES
+# -----
+# - All memory values assume the DB server has ≥ 6 GB available to PostgreSQL
+#   (i.e., not sharing with heavy application load on the same machine).
+# - If running app + DB on the same server, reduce shared_buffers to 1 GB
+#   and effective_cache_size to 3 GB.
+# =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONNECTIONS
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Match the plan in database.py comments:
+#   5 Gunicorn workers × (pool_size=5 + overflow=5) = 50 app connections max
+#   + 25 headroom for: Alembic, admin psql, pg_dump, monitoring, PgBouncer
+max_connections = 75                    # [restart]
+
+# Reserve superuser connections so DBA can always log in even if max_connections
+# is exhausted by application load.
+superuser_reserved_connections = 3
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MEMORY
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 25% of RAM for shared buffer cache. PostgreSQL stores table/index pages here.
+# More = fewer disk reads. Don't exceed 40% or OS page cache shrinks too much.
+shared_buffers = 2GB                    # [restart]
+
+# Hint to the query planner about total available cache (shared_buffers +
+# OS page cache). Does NOT allocate memory — tells the planner how aggressive
+# to be with index-only scans. Set to 75% of RAM.
+effective_cache_size = 6GB
+
+# Per-sort / per-hash memory for a single query operation. Complex joins or
+# sorts use up to work_mem × number_of_sort_nodes bytes.
+# 32 MB is safe for our workload (admin aggregation queries are the heaviest).
+# Increase to 64 MB if EXPLAIN ANALYZE shows many disk sorts.
+work_mem = 32MB
+
+# Memory for VACUUM, CREATE INDEX, ALTER TABLE. Higher = faster index builds
+# and autovacuum runs. Only used during maintenance operations.
+maintenance_work_mem = 512MB
+
+# Allow each background worker (autovacuum, etc.) this much memory.
+autovacuum_work_mem = 256MB             # -1 = use maintenance_work_mem
+
+# Limit per-connection overhead. Each connection uses ~5-10 MB for stack.
+# At max_connections=75, that's ~750 MB committed. Keep this low.
+# (Default is fine — documenting for awareness)
+# temp_buffers = 8MB                    # Per-session temp table buffer
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DISK & I/O (SSD NVMe)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# For SSD: random reads cost ~1.1× sequential (vs 4.0 for HDDs).
+# Lower value = planner prefers index scans over sequential scans.
+random_page_cost = 1.1
+
+# SSD can handle many concurrent I/O requests. PostgreSQL uses this for
+# bitmap heap scans and parallel queries.
+effective_io_concurrency = 200
+
+# For background writes (checkpoint, autovacuum). SSD handles concurrent
+# I/O well, but don't saturate it during peak traffic.
+maintenance_io_concurrency = 100
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WAL (Write-Ahead Log) — Durability & Performance
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 'replica' enables WAL streaming for standby replicas (needed for PITR).
+# Use 'logical' only if logical replication is required (adds overhead).
+wal_level = replica                     # [restart]
+
+# Buffer for WAL writes. 64 MB is well above the 1/32 RAM auto default.
+wal_buffers = 64MB                      # [restart]
+
+# Maximum size of WAL files before checkpoint is forced.
+# Larger = fewer checkpoints = better write throughput, but longer crash recovery.
+max_wal_size = 2GB
+
+# Minimum WAL size retained to avoid frequent file recycling.
+min_wal_size = 512MB
+
+# Spread checkpoint I/O over this fraction of checkpoint_timeout.
+# 0.9 = spread over 90% of the interval → smoother I/O, avoids write spikes.
+checkpoint_completion_target = 0.9
+
+# Time between automatic checkpoints (default 5 min). 15 min is appropriate
+# for write-heavy workloads; reduces checkpoint frequency.
+checkpoint_timeout = 15min
+
+# Enable checksums on data pages (detect storage corruption).
+# NOTE: Must be enabled at initdb time (--data-checksums). Cannot be changed here.
+# Verify: SELECT pg_checksum_enabled FROM pg_available_extensions LIMIT 1;
+# Recommendation: Enable data checksums on next DB initialization.
+# data_checksums = on                   # [initdb only — not changeable here]
+
+# Synchronize WAL to disk on every COMMIT. NEVER disable in production.
+# (off gives ~3x write throughput but risks data loss on crash)
+synchronous_commit = on
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PARALLEL QUERY
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Total background worker slots. Must be ≥ max_parallel_workers + autovacuum_max_workers.
+max_worker_processes = 8                # [restart]
+
+# Max parallel workers per query gather node. 2 is safe for OLTP + some analytics.
+max_parallel_workers_per_gather = 2
+
+# Total parallel workers available across all queries simultaneously.
+max_parallel_workers = 4
+
+# Don't parallelize maintenance (VACUUM, CREATE INDEX) by default — avoids
+# competing with live queries for CPU. Run with SET maintenance_work_mem when needed.
+max_parallel_maintenance_workers = 2
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AUTOVACUUM — Keep Tables Healthy
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Always keep autovacuum on. Manual VACUUM is not a substitute in production.
+autovacuum = on
+
+# Run up to 3 autovacuum workers simultaneously (important for busy tables).
+autovacuum_max_workers = 3              # [restart]
+
+# Start autovacuum when dead_tuple_count exceeds:
+#   base_threshold + scale_factor × table_row_count
+# Defaults are 50 rows + 20% = too aggressive for large tables. Tune per table
+# using ALTER TABLE t SET (autovacuum_vacuum_scale_factor = 0.01) for big tables.
+autovacuum_vacuum_threshold = 50
+autovacuum_vacuum_scale_factor = 0.05   # 5% dead tuples triggers vacuum (was 20%)
+autovacuum_analyze_threshold = 50
+autovacuum_analyze_scale_factor = 0.02  # 2% changed rows triggers analyze
+
+# Give autovacuum more memory so it finishes faster.
+# (autovacuum_work_mem = 256MB is set above)
+
+# Limit autovacuum I/O impact on live queries. -1 = no throttling.
+# 200 = modest throttling; increase if autovacuum is too slow on large tables.
+autovacuum_vacuum_cost_limit = 400      # default=200, range=-1 to 10000
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QUERY TIMEOUTS — Prevent Runaway Queries
+# ─────────────────────────────────────────────────────────────────────────────
+# These are also set per-connection in database.py connect_args, but setting
+# them here ensures they apply to ALL connections (admin, Alembic, etc.).
+
+# Kill any query running longer than 30 seconds.
+statement_timeout = 30000               # milliseconds (30s)
+
+# Kill sessions holding an open transaction for > 60 seconds.
+# Prevents connection leaks from unhandled exceptions.
+idle_in_transaction_session_timeout = 60000  # milliseconds (60s)
+
+# Kill idle connections after 10 minutes (complement to application pool_recycle).
+# Uncomment if using PgBouncer or if idle connections pile up.
+# idle_session_timeout = 600000         # milliseconds (10 min)
+
+# Lock timeout: fail immediately if a lock can't be acquired in 5 seconds.
+# Prevents Alembic migrations from blocking indefinitely on locked tables.
+lock_timeout = 5000                     # milliseconds (5s)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STATISTICS & MONITORING — pg_stat_statements
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Enable pg_stat_statements extension for per-query performance data.
+# After adding this, run: CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+shared_preload_libraries = 'pg_stat_statements'  # [restart]
+
+# Track statistics for up to 5000 distinct queries.
+pg_stat_statements.max = 5000
+# Track all statements (not just top-level ones from the application).
+pg_stat_statements.track = all
+
+# Track row counts in pg_stat_user_tables. Default=on, just documenting.
+track_counts = on
+
+# Track I/O stats in pg_statio_user_tables. Critical for cache hit ratio analysis.
+track_io_timing = on
+
+# Track wait events (pg_stat_activity.wait_event). Useful for diagnosing locks.
+track_activities = on
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LOGGING — Slow Query Detection & Diagnostics
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Log queries taking longer than 1000ms. Adjust to 500ms if you want more detail.
+# Set to 0 to log ALL queries (development only — very noisy).
+log_min_duration_statement = 1000       # milliseconds
+
+# Always log these regardless of duration (critical for audit)
+log_checkpoints = on
+log_lock_waits = on
+log_temp_files = 0                      # Log all temp file creation (0 = log all)
+
+# Rich log prefix: timestamp, PID, username, database, app name, client host.
+# Makes grepping logs by user or application much easier.
+log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+
+# Log connection attempts (useful for detecting unauthorized access attempts).
+log_connections = on
+log_disconnections = on
+
+# Log each SQL statement that causes an error at ERROR level or above.
+log_min_error_statement = error
+
+# Log duration of completed statements that match the log_min_duration threshold.
+log_duration = off                      # Covered by log_min_duration_statement
+
+# Log EXPLAIN output for slow queries automatically (pg 14+).
+# CAUTION: Can log sensitive data. Disable if GDPR/compliance is a concern.
+# auto_explain.log_min_duration = 1000  # Requires: shared_preload_libraries += ',auto_explain'
+# auto_explain.log_analyze = on
+# auto_explain.log_buffers = on
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WAL ARCHIVING — Point-In-Time Recovery (PITR)
+# ─────────────────────────────────────────────────────────────────────────────
+# Enable WAL archiving to copy WAL segments to a backup location.
+# Combined with a base backup, this enables recovery to any point in time.
+#
+# SETUP STEPS:
+#   1. Create archive directory: mkdir -p /opt/kaasb/wal_archive
+#   2. Set archive_mode = on and restart PostgreSQL
+#   3. Configure archive_command to copy files to remote storage
+#   4. Run initial base backup: pg_basebackup -D /opt/kaasb/base_backup -Fp -Xs -P
+
+archive_mode = on                       # [restart]
+
+# Copy each WAL segment to archive directory. Replace with S3 command for
+# off-site archiving: 'aws s3 cp %p s3://kaasb-wal/%f'
+archive_command = 'test ! -f /opt/kaasb/wal_archive/%f && cp %p /opt/kaasb/wal_archive/%f'
+
+# Fail if archive_command fails — do NOT silently continue with full WAL directory.
+archive_status = 'always'
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REPLICATION (Future Read Replica Setup)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Allow up to 2 standby connections (for read replica or hot standby).
+max_wal_senders = 2                     # [restart]
+
+# Retain WAL for standbys that fall behind by up to 1 GB.
+# Prevents primary from recycling WAL before standby has consumed it.
+max_replication_slots = 2              # [restart]
+wal_keep_size = 1GB
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LOCALE & ENCODING
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Should be set at initdb time, not changed here. Documenting expected values.
+# lc_messages = 'en_US.UTF-8'
+# lc_monetary = 'en_US.UTF-8'
+# lc_numeric  = 'en_US.UTF-8'
+# lc_time     = 'en_US.UTF-8'
+# default_text_search_config = 'pg_catalog.english'

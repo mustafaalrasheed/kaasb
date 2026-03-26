@@ -9,23 +9,22 @@ PUT    /users/password             - Change password
 DELETE /users/account              - Deactivate account
 """
 
-from typing import Optional
 
-from fastapi import APIRouter, Depends, UploadFile, File, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_user
 from app.core.database import get_db
+from app.models.user import User
 from app.schemas.user import (
-    UserProfile,
-    UserProfileUpdate,
-    UserMe,
     PasswordChange,
     UserListResponse,
+    UserMe,
+    UserProfile,
+    UserProfileUpdate,
 )
 from app.services.user_service import UserService
-from app.api.dependencies import get_current_user
-from app.models.user import User
-from app.utils.files import save_avatar, delete_avatar
+from app.utils.files import delete_avatar, save_avatar
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -39,16 +38,16 @@ router = APIRouter(prefix="/users", tags=["Users"])
     summary="Search and browse freelancers",
 )
 async def search_freelancers(
-    q: Optional[str] = Query(None, description="Search by name, title, bio"),
-    skills: Optional[str] = Query(
+    q: str | None = Query(None, description="Search by name, title, bio"),
+    skills: str | None = Query(
         None, description="Comma-separated skills filter"
     ),
-    experience_level: Optional[str] = Query(
+    experience_level: str | None = Query(
         None, pattern=r"^(entry|intermediate|expert)$"
     ),
-    min_rate: Optional[float] = Query(None, ge=0),
-    max_rate: Optional[float] = Query(None, le=1000),
-    country: Optional[str] = Query(None),
+    min_rate: float | None = Query(None, ge=0),
+    max_rate: float | None = Query(None, le=1000),
+    country: str | None = Query(None),
     sort_by: str = Query("rating", pattern=r"^(rating|rate_low|rate_high|newest)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),

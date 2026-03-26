@@ -5,10 +5,8 @@ Pydantic models for proposal validation and responses.
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
-
 
 # === Nested Info (embedded in proposal responses) ===
 
@@ -20,13 +18,13 @@ class ProposalFreelancerInfo(BaseModel):
     username: str
     first_name: str
     last_name: str
-    display_name: Optional[str] = None
-    avatar_url: Optional[str] = None
-    title: Optional[str] = None
-    hourly_rate: Optional[float] = None
-    country: Optional[str] = None
-    experience_level: Optional[str] = None
-    skills: Optional[list[str]] = None
+    display_name: str | None = None
+    avatar_url: str | None = None
+    title: str | None = None
+    hourly_rate: float | None = None
+    country: str | None = None
+    experience_level: str | None = None
+    skills: list[str] | None = None
     avg_rating: float = 0.0
     total_reviews: int = 0
     jobs_completed: int = 0
@@ -41,9 +39,9 @@ class ProposalJobInfo(BaseModel):
     title: str
     category: str
     job_type: str
-    budget_min: Optional[float] = None
-    budget_max: Optional[float] = None
-    fixed_price: Optional[float] = None
+    budget_min: float | None = None
+    budget_max: float | None = None
+    fixed_price: float | None = None
     status: str
 
     model_config = {"from_attributes": True}
@@ -57,22 +55,22 @@ class ProposalCreate(BaseModel):
 
     cover_letter: str = Field(min_length=50, max_length=5000)
     bid_amount: float = Field(ge=5, le=100000)
-    estimated_duration: Optional[str] = Field(None, max_length=50)
+    estimated_duration: str | None = Field(None, max_length=50)
 
 
 class ProposalUpdate(BaseModel):
     """Schema for freelancer updating their own proposal (while pending)."""
 
-    cover_letter: Optional[str] = Field(None, min_length=50, max_length=5000)
-    bid_amount: Optional[float] = Field(None, ge=5, le=100000)
-    estimated_duration: Optional[str] = Field(None, max_length=50)
+    cover_letter: str | None = Field(None, min_length=50, max_length=5000)
+    bid_amount: float | None = Field(None, ge=5, le=100000)
+    estimated_duration: str | None = Field(None, max_length=50)
 
 
 class ProposalRespond(BaseModel):
     """Schema for client responding to a proposal (shortlist/accept/reject)."""
 
     status: str = Field(pattern=r"^(shortlisted|accepted|rejected)$")
-    client_note: Optional[str] = Field(None, max_length=2000)
+    client_note: str | None = Field(None, max_length=2000)
 
 
 # === Response Models ===
@@ -84,11 +82,11 @@ class ProposalDetail(BaseModel):
     id: uuid.UUID
     cover_letter: str
     bid_amount: float
-    estimated_duration: Optional[str] = None
+    estimated_duration: str | None = None
     status: str
-    client_note: Optional[str] = None
+    client_note: str | None = None
     submitted_at: datetime
-    responded_at: Optional[datetime] = None
+    responded_at: datetime | None = None
     created_at: datetime
 
     # Embedded relations
@@ -103,7 +101,7 @@ class ProposalSummary(BaseModel):
 
     id: uuid.UUID
     bid_amount: float
-    estimated_duration: Optional[str] = None
+    estimated_duration: str | None = None
     status: str
     submitted_at: datetime
 

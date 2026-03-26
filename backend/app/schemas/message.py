@@ -4,7 +4,6 @@ Kaasb Platform - Message Schemas
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -14,7 +13,7 @@ class MessageUserInfo(BaseModel):
     username: str
     first_name: str
     last_name: str
-    avatar_url: Optional[str] = None
+    avatar_url: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -29,16 +28,16 @@ class ConversationJobInfo(BaseModel):
 class ConversationCreate(BaseModel):
     """Start a new conversation."""
     recipient_id: uuid.UUID
-    job_id: Optional[uuid.UUID] = None
+    job_id: uuid.UUID | None = None
     initial_message: str = Field(min_length=1, max_length=5000)
 
 
 class ConversationSummary(BaseModel):
     id: uuid.UUID
     other_user: MessageUserInfo
-    job: Optional[ConversationJobInfo] = None
-    last_message_text: Optional[str] = None
-    last_message_at: Optional[datetime] = None
+    job: ConversationJobInfo | None = None
+    last_message_text: str | None = None
+    last_message_at: datetime | None = None
     message_count: int = 0
     unread_count: int = 0
     created_at: datetime

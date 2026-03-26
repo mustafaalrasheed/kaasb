@@ -10,20 +10,20 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
-    String,
-    Enum,
-    Text,
-    Float,
     Boolean,
+    CheckConstraint,
     DateTime,
+    Enum,
     ForeignKey,
+    Numeric,
+    String,
+    Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.models.base import BaseModel
-
 
 # === Payment Account ===
 
@@ -74,23 +74,23 @@ class PaymentAccount(BaseModel):
     )
 
     # Provider-specific IDs
-    external_account_id: Mapped[Optional[str]] = mapped_column(
+    external_account_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )  # Stripe customer_id / Wise recipient_id
 
     # Wise-specific fields
-    wise_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    wise_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     wise_currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
 
     # Qi Card-specific fields
-    qi_card_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    qi_card_payment_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Pending payment reference
+    qi_card_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    qi_card_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Pending payment reference
 
     # Metadata (provider-specific data)
-    metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     is_default: Mapped[bool] = mapped_column(Boolean, default=True)
-    verified_at: Mapped[Optional[datetime]] = mapped_column(
+    verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -125,6 +125,11 @@ class Transaction(BaseModel):
     """
 
     __tablename__ = "transactions"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_transaction_amount_positive"),
+        CheckConstraint("platform_fee >= 0", name="ck_transaction_fee_non_negative"),
+        CheckConstraint("net_amount > 0", name="ck_transaction_net_positive"),
+    )
 
     # === Type & Status ===
     transaction_type: Mapped[TransactionType] = mapped_column(
@@ -138,13 +143,13 @@ class Transaction(BaseModel):
     )
 
     # === Financial ===
-    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
-    platform_fee: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    net_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    platform_fee: Mapped[float] = mapped_column(Numeric(12, 4), default=0.0, nullable=False)
+    net_amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
 
     # === Parties ===
-    payer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    payer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -154,7 +159,7 @@ class Transaction(BaseModel):
         "User", foreign_keys=[payer_id], lazy="raise"
     )
 
-    payee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    payee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -165,32 +170,32 @@ class Transaction(BaseModel):
     )
 
     # === Related objects ===
-    contract_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    contract_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("contracts.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    milestone_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    milestone_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("milestones.id", ondelete="SET NULL"),
         nullable=True,
     )
 
     # === Provider details ===
-    provider: Mapped[Optional[PaymentProvider]] = mapped_column(
+    provider: Mapped[PaymentProvider | None] = mapped_column(
         Enum(PaymentProvider), nullable=True
     )
-    external_transaction_id: Mapped[Optional[str]] = mapped_column(
+    external_transaction_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, index=True
     )  # Stripe payment_intent / Wise transfer_id
 
     # === Notes ===
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    failure_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # === Timestamps ===
-    completed_at: Mapped[Optional[datetime]] = mapped_column(
+    completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -218,12 +223,16 @@ class Escrow(BaseModel):
     __tablename__ = "escrows"
     __table_args__ = (
         UniqueConstraint("milestone_id", name="uq_escrow_milestone"),
+        CheckConstraint("amount > 0", name="ck_escrow_amount_positive"),
+        CheckConstraint("platform_fee >= 0", name="ck_escrow_fee_non_negative"),
+        CheckConstraint("freelancer_amount > 0", name="ck_escrow_freelancer_amount_positive"),
+        CheckConstraint("freelancer_amount <= amount", name="ck_escrow_freelancer_le_total"),
     )
 
     # === Financial ===
-    amount: Mapped[float] = mapped_column(Float, nullable=False)
-    platform_fee: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    freelancer_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    platform_fee: Mapped[float] = mapped_column(Numeric(12, 4), default=0.0, nullable=False)
+    freelancer_amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
 
     # === Status ===
@@ -258,12 +267,12 @@ class Escrow(BaseModel):
     )
 
     # === Provider ===
-    funding_transaction_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    funding_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("transactions.id", ondelete="SET NULL"),
         nullable=True,
     )
-    release_transaction_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    release_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("transactions.id", ondelete="SET NULL"),
         nullable=True,
@@ -273,7 +282,7 @@ class Escrow(BaseModel):
     funded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    released_at: Mapped[Optional[datetime]] = mapped_column(
+    released_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

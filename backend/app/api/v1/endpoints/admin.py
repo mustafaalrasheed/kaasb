@@ -4,24 +4,23 @@ All routes require admin/superuser access.
 """
 
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
 from app.api.dependencies import get_current_admin
+from app.core.database import get_db
 from app.models.user import User
-from app.services.admin_service import AdminService
 from app.schemas.admin import (
-    PlatformStats,
-    AdminUserListResponse,
-    AdminUserInfo,
-    AdminUserStatusUpdate,
     AdminJobListResponse,
     AdminJobStatusUpdate,
     AdminTransactionListResponse,
+    AdminUserInfo,
+    AdminUserListResponse,
+    AdminUserStatusUpdate,
+    PlatformStats,
 )
+from app.services.admin_service import AdminService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -50,9 +49,9 @@ async def get_platform_stats(
     summary="List all users",
 )
 async def list_users(
-    role: Optional[str] = Query(None, description="Filter: client|freelancer|admin"),
-    status: Optional[str] = Query(None, description="Filter: active|suspended|deactivated"),
-    search: Optional[str] = Query(None, description="Search by name/email/username"),
+    role: str | None = Query(None, description="Filter: client|freelancer|admin"),
+    status: str | None = Query(None, description="Filter: active|suspended|deactivated"),
+    search: str | None = Query(None, description="Search by name/email/username"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     admin: User = Depends(get_current_admin),
@@ -102,8 +101,8 @@ async def toggle_admin(
     summary="List all jobs",
 )
 async def list_jobs(
-    status: Optional[str] = Query(None, description="Filter: open|in_progress|completed|closed|cancelled"),
-    search: Optional[str] = Query(None),
+    status: str | None = Query(None, description="Filter: open|in_progress|completed|closed|cancelled"),
+    search: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     admin: User = Depends(get_current_admin),
@@ -138,8 +137,8 @@ async def update_job_status(
     summary="List all transactions",
 )
 async def list_transactions(
-    type: Optional[str] = Query(None, description="Filter: escrow_fund|escrow_release|platform_fee|payout"),
-    status: Optional[str] = Query(None, description="Filter: pending|completed|failed"),
+    type: str | None = Query(None, description="Filter: escrow_fund|escrow_release|platform_fee|payout"),
+    status: str | None = Query(None, description="Filter: pending|completed|failed"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     admin: User = Depends(get_current_admin),

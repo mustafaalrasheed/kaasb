@@ -4,13 +4,13 @@ Domain exceptions decoupled from HTTP — services raise these,
 and the global exception handler maps them to HTTP responses.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 
 class KaasbError(Exception):
     """Base exception for all Kaasb domain errors."""
 
-    def __init__(self, message: str = "An error occurred", *, details: Optional[Any] = None) -> None:
+    def __init__(self, message: str = "An error occurred", *, details: Any | None = None) -> None:
         self.message = message
         self.details = details
         super().__init__(message)

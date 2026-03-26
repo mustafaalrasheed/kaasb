@@ -8,16 +8,16 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
-    String,
-    Text,
     Boolean,
     DateTime,
     ForeignKey,
     Integer,
+    String,
+    Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
 
@@ -58,7 +58,7 @@ class Conversation(BaseModel):
     )
 
     # === Context (optional) ===
-    job_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("jobs.id", ondelete="SET NULL"),
         nullable=True,
@@ -66,10 +66,10 @@ class Conversation(BaseModel):
     job: Mapped[Optional["Job"]] = relationship("Job", lazy="raise")
 
     # === Last message cache for fast listing ===
-    last_message_text: Mapped[Optional[str]] = mapped_column(
+    last_message_text: Mapped[str | None] = mapped_column(
         String(500), nullable=True
     )
-    last_message_at: Mapped[Optional[datetime]] = mapped_column(
+    last_message_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     message_count: Mapped[int] = mapped_column(Integer, default=0)

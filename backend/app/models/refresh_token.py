@@ -5,9 +5,9 @@ Stores issued refresh tokens for revocation support.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Boolean, ForeignKey, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
 

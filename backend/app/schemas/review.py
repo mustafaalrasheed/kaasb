@@ -4,7 +4,6 @@ Kaasb Platform - Review Schemas
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -12,11 +11,11 @@ from pydantic import BaseModel, Field
 class ReviewCreate(BaseModel):
     """Submit a review for the other party on a completed contract."""
     rating: int = Field(ge=1, le=5)
-    comment: Optional[str] = Field(None, max_length=2000)
-    communication_rating: Optional[int] = Field(None, ge=1, le=5)
-    quality_rating: Optional[int] = Field(None, ge=1, le=5)
-    professionalism_rating: Optional[int] = Field(None, ge=1, le=5)
-    timeliness_rating: Optional[int] = Field(None, ge=1, le=5)
+    comment: str | None = Field(None, max_length=2000)
+    communication_rating: int | None = Field(None, ge=1, le=5)
+    quality_rating: int | None = Field(None, ge=1, le=5)
+    professionalism_rating: int | None = Field(None, ge=1, le=5)
+    timeliness_rating: int | None = Field(None, ge=1, le=5)
 
 
 class ReviewUserInfo(BaseModel):
@@ -24,7 +23,7 @@ class ReviewUserInfo(BaseModel):
     username: str
     first_name: str
     last_name: str
-    avatar_url: Optional[str] = None
+    avatar_url: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -39,11 +38,11 @@ class ReviewContractInfo(BaseModel):
 class ReviewDetail(BaseModel):
     id: uuid.UUID
     rating: int
-    comment: Optional[str] = None
-    communication_rating: Optional[int] = None
-    quality_rating: Optional[int] = None
-    professionalism_rating: Optional[int] = None
-    timeliness_rating: Optional[int] = None
+    comment: str | None = None
+    communication_rating: int | None = None
+    quality_rating: int | None = None
+    professionalism_rating: int | None = None
+    timeliness_rating: int | None = None
     reviewer: ReviewUserInfo
     reviewee: ReviewUserInfo
     contract: ReviewContractInfo
@@ -58,7 +57,7 @@ class ReviewListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
-    average_rating: Optional[float] = None
+    average_rating: float | None = None
 
 
 class ReviewStats(BaseModel):
@@ -66,7 +65,7 @@ class ReviewStats(BaseModel):
     average_rating: float
     total_reviews: int
     rating_distribution: dict[str, int]  # {"5": 10, "4": 5, ...}
-    avg_communication: Optional[float] = None
-    avg_quality: Optional[float] = None
-    avg_professionalism: Optional[float] = None
-    avg_timeliness: Optional[float] = None
+    avg_communication: float | None = None
+    avg_quality: float | None = None
+    avg_professionalism: float | None = None
+    avg_timeliness: float | None = None

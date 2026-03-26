@@ -84,6 +84,14 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = "noreply@kaasb.com"
 
+    # === Monitoring & Observability ===
+    # Sentry DSN — leave empty to disable error tracking (safe default)
+    SENTRY_DSN: str = ""
+    # Slow request threshold for warning log (milliseconds)
+    SLOW_REQUEST_THRESHOLD_MS: int = 1000
+    # Log level override (DEBUG | INFO | WARNING | ERROR)
+    LOG_LEVEL: str = "INFO"
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

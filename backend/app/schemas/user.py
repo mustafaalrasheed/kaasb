@@ -5,10 +5,8 @@ Pydantic models for request validation and response serialization.
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
-
 
 # === Auth Schemas ===
 
@@ -78,17 +76,17 @@ class UserProfile(BaseModel):
     username: str
     first_name: str
     last_name: str
-    display_name: Optional[str] = None
-    avatar_url: Optional[str] = None
-    bio: Optional[str] = None
-    country: Optional[str] = None
-    city: Optional[str] = None
+    display_name: str | None = None
+    avatar_url: str | None = None
+    bio: str | None = None
+    country: str | None = None
+    city: str | None = None
     primary_role: str
-    title: Optional[str] = None
-    hourly_rate: Optional[float] = None
-    skills: Optional[list[str]] = None
-    experience_level: Optional[str] = None
-    portfolio_url: Optional[str] = None
+    title: str | None = None
+    hourly_rate: float | None = None
+    skills: list[str] | None = None
+    experience_level: str | None = None
+    portfolio_url: str | None = None
     avg_rating: float = 0.0
     total_reviews: int = 0
     jobs_completed: int = 0
@@ -101,19 +99,19 @@ class UserProfile(BaseModel):
 class UserProfileUpdate(BaseModel):
     """Schema for updating user profile."""
 
-    display_name: Optional[str] = Field(None, max_length=100)
-    bio: Optional[str] = Field(None, max_length=2000)
-    country: Optional[str] = Field(None, max_length=100)
-    city: Optional[str] = Field(None, max_length=100)
-    timezone: Optional[str] = Field(None, max_length=50)
-    phone: Optional[str] = Field(None, max_length=20)
-    title: Optional[str] = Field(None, max_length=200)
-    hourly_rate: Optional[float] = Field(None, ge=5.0, le=500.0)
-    skills: Optional[list[str]] = Field(None, max_length=20)
-    experience_level: Optional[str] = Field(
+    display_name: str | None = Field(None, max_length=100)
+    bio: str | None = Field(None, max_length=2000)
+    country: str | None = Field(None, max_length=100)
+    city: str | None = Field(None, max_length=100)
+    timezone: str | None = Field(None, max_length=50)
+    phone: str | None = Field(None, max_length=20)
+    title: str | None = Field(None, max_length=200)
+    hourly_rate: float | None = Field(None, ge=5.0, le=500.0)
+    skills: list[str] | None = Field(None, max_length=20)
+    experience_level: str | None = Field(
         None, pattern=r"^(entry|intermediate|expert)$"
     )
-    portfolio_url: Optional[str] = Field(None, max_length=500)
+    portfolio_url: str | None = Field(None, max_length=500)
 
 
 class UserMe(UserProfile):
@@ -122,11 +120,11 @@ class UserMe(UserProfile):
     email: EmailStr
     is_email_verified: bool
     is_superuser: bool = False
-    timezone: Optional[str] = None
-    phone: Optional[str] = None
+    timezone: str | None = None
+    phone: str | None = None
     total_earnings: float = 0.0
     total_spent: float = 0.0
-    last_login: Optional[datetime] = None
+    last_login: datetime | None = None
 
 
 # === Password Management ===

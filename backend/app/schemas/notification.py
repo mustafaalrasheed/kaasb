@@ -4,7 +4,6 @@ Kaasb Platform - Notification Schemas
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -15,9 +14,9 @@ class NotificationDetail(BaseModel):
     title: str
     message: str
     is_read: bool
-    link_type: Optional[str] = None
-    link_id: Optional[uuid.UUID] = None
-    actor_id: Optional[uuid.UUID] = None
+    link_type: str | None = None
+    link_id: uuid.UUID | None = None
+    actor_id: uuid.UUID | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

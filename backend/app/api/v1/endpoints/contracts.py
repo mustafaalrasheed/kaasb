@@ -2,27 +2,26 @@
 Kaasb Platform - Contract Endpoints
 """
 
-from typing import Optional
 import uuid
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_client, get_current_freelancer, get_current_user
 from app.core.database import get_db
-from app.api.dependencies import get_current_user, get_current_client, get_current_freelancer
 from app.models.user import User
-from app.services.contract_service import ContractService
 from app.schemas.contract import (
-    ContractDetail,
-    ContractListResponse,
     ContractCreate,
-    ContractUserInfo,
+    ContractDetail,
     ContractJobInfo,
+    ContractListResponse,
+    ContractUserInfo,
     MilestoneDetail,
-    MilestoneUpdate,
-    MilestoneSubmit,
     MilestoneReview,
+    MilestoneSubmit,
+    MilestoneUpdate,
 )
+from app.services.contract_service import ContractService
 
 router = APIRouter(prefix="/contracts", tags=["Contracts & Milestones"])
 
@@ -53,7 +52,7 @@ def _serialize_summary(c) -> dict:
     summary="List my contracts",
 )
 async def get_my_contracts(
-    status: Optional[str] = Query(None, description="Filter: active|completed|cancelled|disputed|paused"),
+    status: str | None = Query(None, description="Filter: active|completed|cancelled|disputed|paused"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     current_user: User = Depends(get_current_user),

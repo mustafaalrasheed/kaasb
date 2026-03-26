@@ -3,7 +3,6 @@ Kaasb Platform - Dependencies
 Reusable FastAPI dependencies for authentication and authorization.
 """
 
-from typing import Optional
 
 from fastapi import Cookie, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,8 +15,8 @@ from app.services.auth_service import AuthService
 
 async def _extract_token(
     request: Request,
-    token: Optional[str] = Depends(oauth2_scheme),
-    access_token: Optional[str] = Cookie(default=None),
+    token: str | None = Depends(oauth2_scheme),
+    access_token: str | None = Cookie(default=None),
 ) -> str:
     """Extract JWT token from Authorization header or httpOnly cookie."""
     # Prefer Authorization header, fall back to cookie

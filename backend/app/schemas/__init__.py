@@ -1,44 +1,92 @@
 """Kaasb Platform - Schemas Package"""
 # ruff: noqa: F401  — intentional re-exports
 
-from app.schemas.user import (
-    UserRegister, UserLogin, TokenResponse, TokenRefresh,
-    UserProfile, UserProfileUpdate, UserMe, PasswordChange, UserListResponse,
-)
-from app.schemas.job import (
-    JobCreate, JobUpdate, JobSummary, JobDetail, JobListResponse, JobClientInfo,
-)
-from app.schemas.proposal import (
-    ProposalCreate, ProposalUpdate, ProposalRespond,
-    ProposalDetail, ProposalSummary, ProposalListResponse,
-    ProposalFreelancerInfo, ProposalJobInfo,
+from app.schemas.admin import (
+    AdminJobInfo,
+    AdminJobListResponse,
+    AdminJobStatusUpdate,
+    AdminTransactionInfo,
+    AdminTransactionListResponse,
+    AdminUserInfo,
+    AdminUserListResponse,
+    AdminUserStatusUpdate,
+    PlatformStats,
 )
 from app.schemas.contract import (
-    ContractCreate, ContractDetail, ContractSummary, ContractListResponse,
-    ContractUserInfo, ContractJobInfo,
-    MilestoneCreate, MilestoneUpdate, MilestoneSubmit, MilestoneReview, MilestoneDetail,
+    ContractCreate,
+    ContractDetail,
+    ContractJobInfo,
+    ContractListResponse,
+    ContractSummary,
+    ContractUserInfo,
+    MilestoneCreate,
+    MilestoneDetail,
+    MilestoneReview,
+    MilestoneSubmit,
+    MilestoneUpdate,
 )
-from app.schemas.payment import (
-    PaymentAccountSetup, PaymentAccountResponse,
-    EscrowFundRequest, EscrowFundResponse, EscrowReleaseResponse,
-    TransactionResponse, TransactionListResponse,
-    PaymentSummary, PayoutRequest, PayoutResponse,
-)
-from app.schemas.review import (
-    ReviewCreate, ReviewDetail, ReviewListResponse, ReviewStats,
-    ReviewUserInfo, ReviewContractInfo,
-)
-from app.schemas.notification import (
-    NotificationDetail, NotificationListResponse,
-    NotificationMarkRead, UnreadCount,
+from app.schemas.job import (
+    JobClientInfo,
+    JobCreate,
+    JobDetail,
+    JobListResponse,
+    JobSummary,
+    JobUpdate,
 )
 from app.schemas.message import (
-    ConversationCreate, ConversationSummary, ConversationListResponse,
-    MessageCreate, MessageDetail, MessageListResponse,
-    MessageUserInfo, ConversationJobInfo,
+    ConversationCreate,
+    ConversationJobInfo,
+    ConversationListResponse,
+    ConversationSummary,
+    MessageCreate,
+    MessageDetail,
+    MessageListResponse,
+    MessageUserInfo,
 )
-from app.schemas.admin import (
-    PlatformStats, AdminUserInfo, AdminUserListResponse, AdminUserStatusUpdate,
-    AdminJobInfo, AdminJobListResponse, AdminJobStatusUpdate,
-    AdminTransactionInfo, AdminTransactionListResponse,
+from app.schemas.notification import (
+    NotificationDetail,
+    NotificationListResponse,
+    NotificationMarkRead,
+    UnreadCount,
+)
+from app.schemas.payment import (
+    EscrowFundRequest,
+    EscrowFundResponse,
+    EscrowReleaseResponse,
+    PaymentAccountResponse,
+    PaymentAccountSetup,
+    PaymentSummary,
+    PayoutRequest,
+    PayoutResponse,
+    TransactionListResponse,
+    TransactionResponse,
+)
+from app.schemas.proposal import (
+    ProposalCreate,
+    ProposalDetail,
+    ProposalFreelancerInfo,
+    ProposalJobInfo,
+    ProposalListResponse,
+    ProposalRespond,
+    ProposalSummary,
+    ProposalUpdate,
+)
+from app.schemas.review import (
+    ReviewContractInfo,
+    ReviewCreate,
+    ReviewDetail,
+    ReviewListResponse,
+    ReviewStats,
+    ReviewUserInfo,
+)
+from app.schemas.user import (
+    PasswordChange,
+    TokenRefresh,
+    TokenResponse,
+    UserListResponse,
+    UserLogin,
+    UserMe,
+    UserProfile,
+    UserProfileUpdate,
+    UserRegister,
 )

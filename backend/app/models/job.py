@@ -6,20 +6,20 @@ Represents job postings created by clients.
 import enum
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
-    String,
     Boolean,
-    Enum,
-    Text,
-    Float,
-    Integer,
+    CheckConstraint,
     DateTime,
+    Enum,
     ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
 
 from app.models.base import BaseModel
 
@@ -63,6 +63,15 @@ class Job(BaseModel):
     """
 
     __tablename__ = "jobs"
+    __table_args__ = (
+        CheckConstraint("budget_min >= 0", name="ck_job_budget_min_positive"),
+        CheckConstraint("budget_max >= 0", name="ck_job_budget_max_positive"),
+        CheckConstraint(
+            "budget_max IS NULL OR budget_min IS NULL OR budget_max >= budget_min",
+            name="ck_job_budget_range_valid",
+        ),
+        CheckConstraint("fixed_price IS NULL OR fixed_price > 0", name="ck_job_fixed_price_positive"),
+    )
 
     # === Core Fields ===
     title: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
@@ -73,18 +82,18 @@ class Job(BaseModel):
     job_type: Mapped[JobType] = mapped_column(
         Enum(JobType), nullable=False, default=JobType.FIXED
     )
-    budget_min: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    budget_max: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    fixed_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    budget_min: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
+    budget_max: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
+    fixed_price: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
 
     # === Requirements ===
-    skills_required: Mapped[Optional[list[str]]] = mapped_column(
+    skills_required: Mapped[list[str] | None] = mapped_column(
         ARRAY(String), nullable=True
     )
-    experience_level: Mapped[Optional[ExperienceLevel]] = mapped_column(
+    experience_level: Mapped[ExperienceLevel | None] = mapped_column(
         Enum(ExperienceLevel), nullable=True
     )
-    duration: Mapped[Optional[JobDuration]] = mapped_column(
+    duration: Mapped[JobDuration | None] = mapped_column(
         Enum(JobDuration), nullable=True
     )
 
@@ -107,7 +116,7 @@ class Job(BaseModel):
     )
 
     # === Hired freelancer (set when contract starts) ===
-    freelancer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    freelancer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -118,13 +127,13 @@ class Job(BaseModel):
     view_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # === Timestamps ===
-    published_at: Mapped[Optional[datetime]] = mapped_column(
+    published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    closed_at: Mapped[Optional[datetime]] = mapped_column(
+    closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deadline: Mapped[Optional[datetime]] = mapped_column(
+    deadline: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
