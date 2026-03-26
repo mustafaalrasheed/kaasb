@@ -1,0 +1,144 @@
+# =============================================================================
+# Kaasb Platform — Monitoring Stack
+# Prometheus + Grafana + Node Exporter + cAdvisor
+# =============================================================================
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml \
+#       --env-file .env.production up -d
+#
+# Access Grafana at: http://YOUR_SERVER_IP:3001  (or tunnel via SSH)
+# SSH tunnel:  ssh -L 3001:localhost:3001 root@YOUR_SERVER_IP
+# =============================================================================
+
+services:
+
+  # ===========================================================================
+  # Prometheus — metrics collection
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:v2.49.0
+    container_name: kaasb_prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+      - --web.enable-lifecycle
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - kaasb_net
+      - monitoring_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ===========================================================================
+  # Grafana — dashboards & alerting
+  # ===========================================================================
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: kaasb_grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"   # Only on loopback — access via SSH tunnel
+    environment:
+      GF_SECURITY_ADMIN_USER:     ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-CHANGE_ME_GRAFANA_PASSWORD}
+      GF_SERVER_ROOT_URL:         http://localhost:3001
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - monitoring_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+
+  # ===========================================================================
+  # Node Exporter — host metrics (CPU, RAM, disk, network)
+  # ===========================================================================
+  node_exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: kaasb_node_exporter
+    restart: unless-stopped
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
+    networks:
+      - monitoring_net
+    pid: host
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.1"
+
+  # ===========================================================================
+  # cAdvisor — Docker container metrics
+  # ===========================================================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: kaasb_cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /cgroup:/cgroup:ro
+    networks:
+      - monitoring_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.15"
+
+networks:
+  kaasb_net:
+    external: true
+  monitoring_net:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:

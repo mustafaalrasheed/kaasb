@@ -19,8 +19,10 @@ services:
       - "443:443"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - /var/www/certbot:/var/www/certbot:ro
+      - ./docker/nginx/502.html:/etc/nginx/error_pages/502.html:ro
+      - ./docker/nginx/503.html:/etc/nginx/error_pages/503.html:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
       - nginx_logs:/var/log/nginx
     depends_on:
       backend:
@@ -55,6 +57,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/backend/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
@@ -221,6 +225,24 @@ services:
           memory: 512M
           cpus: "0.5"
 
+  # ===========================================================================
+  # Certbot — Let's Encrypt SSL certificate management
+  # First run: obtains certificate. After that: renews every 12 hours if needed.
+  # ===========================================================================
+  certbot:
+    image: certbot/certbot:latest
+    container_name: kaasb_certbot
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # Check for renewal every 12 hours; Certbot only actually renews if <30 days remaining
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
 # =============================================================================
 # Networks — isolate app traffic from host
 # =============================================================================
@@ -241,3 +263,5 @@ volumes:
   redis_data:
   backend_uploads:
   nginx_logs:
+  letsencrypt:      # SSL certificates — persisted across container restarts
+  certbot_www:      # ACME challenge files served by nginx on port 80

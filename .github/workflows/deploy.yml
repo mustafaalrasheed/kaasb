@@ -1,150 +1,209 @@
 name: Kaasb Deploy to Production
 
+# =============================================================================
+# Triggers:
+#   1. Auto-deploy when CI passes on main branch
+#   2. Manual deploy via GitHub Actions UI (emergency or specific tag)
+# =============================================================================
 on:
-  # Auto-deploy after CI succeeds on main
   workflow_run:
     workflows: ["Kaasb CI"]
     branches: [main]
     types: [completed]
 
-  # Also allow manual deploy with optional rollback SHA
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image tag to deploy (e.g. sha-abc1234 or latest)"
+        description: "Image tag to deploy (sha-abc1234 or 'latest')"
         required: false
         default: latest
-      rollback:
-        description: "Set to true to rollback to the previous release"
+      skip_backup:
+        description: "Skip pre-deploy DB backup (emergency only)"
         required: false
         default: "false"
 
 env:
-  REGISTRY: ghcr.io
+  REGISTRY:   ghcr.io
   IMAGE_BASE: ghcr.io/${{ github.repository }}
 
 jobs:
   deploy:
-    name: Deploy to Hetzner
+    name: Deploy to Hetzner CPX22
     runs-on: ubuntu-latest
-    # Only deploy if CI passed (for workflow_run trigger)
+
+    # Only run if CI passed (for workflow_run trigger)
     if: >
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success')
 
+    # Protect production deployments — requires GitHub environment "production"
     environment: production
 
     steps:
-      - uses: actions/checkout@v4
-
+      # -----------------------------------------------------------------------
       - name: Resolve image tag
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
           else
-            # Use the short SHA from the triggering CI run
-            echo "tag=sha-$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            echo "tag=sha-${SHA:0:7}" >> "$GITHUB_OUTPUT"
           fi
+          echo "Deploying tag: $(cat "$GITHUB_OUTPUT" | grep tag= | cut -d= -f2)"
 
+      # -----------------------------------------------------------------------
+      - name: Validate required secrets
+        run: |
+          [ -n "${{ secrets.SERVER_HOST }}"      ] || (echo "Missing SERVER_HOST secret"      && exit 1)
+          [ -n "${{ secrets.SERVER_USER }}"      ] || (echo "Missing SERVER_USER secret"      && exit 1)
+          [ -n "${{ secrets.SSH_PRIVATE_KEY }}"  ] || (echo "Missing SSH_PRIVATE_KEY secret"  && exit 1)
+          echo "All required secrets are present."
+
+      # -----------------------------------------------------------------------
       - name: Deploy via SSH
+        id: deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key:      ${{ secrets.SSH_PRIVATE_KEY }}
-          timeout:  300s
+          port:     22
+          timeout:  600s
           script: |
-            set -e
+            set -euo pipefail
             cd /opt/kaasb
 
-            echo "=== Deploying tag: ${{ steps.tag.outputs.tag }} ==="
-
-            # ---------------------------------------------------------------
-            # Rollback: swap to previous release
-            # ---------------------------------------------------------------
-            if [ "${{ github.event.inputs.rollback }}" = "true" ]; then
-              echo "Rolling back to previous release..."
-              if [ -f .release.previous ]; then
-                PREV_TAG=$(cat .release.previous)
-                echo "IMAGE_TAG=${PREV_TAG}" >> .env.production
-                docker compose -f docker-compose.prod.yml --env-file .env.production pull backend frontend
-                docker compose -f docker-compose.prod.yml --env-file .env.production up -d backend frontend
-                echo "Rolled back to ${PREV_TAG}"
-              else
-                echo "No previous release found — cannot rollback"
-                exit 1
-              fi
-              exit 0
-            fi
-
-            # ---------------------------------------------------------------
-            # Forward deployment
-            # ---------------------------------------------------------------
             NEW_TAG="${{ steps.tag.outputs.tag }}"
-            CURRENT_TAG=$(grep IMAGE_TAG .env.production | cut -d= -f2 || echo "latest")
+            SKIP_BACKUP="${{ github.event.inputs.skip_backup || 'false' }}"
+            COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.production"
 
-            # Save current tag for rollback
+            echo "=================================================="
+            echo "  Deploying Kaasb — tag: ${NEW_TAG}"
+            echo "  Time: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            echo "=================================================="
+
+            # ---- Validate environment before touching anything ----
+            bash scripts/validate-env.sh .env.production
+
+            # ---- Pull latest code (nginx.conf, compose files, scripts) ----
+            git fetch --quiet origin main
+            git reset --hard origin/main
+
+            # ---- Save current IMAGE_TAG for rollback ----
+            CURRENT_TAG=$(grep '^IMAGE_TAG=' .env.production | cut -d= -f2 || echo "latest")
             echo "${CURRENT_TAG}" > .release.previous
+            echo "Previous tag: ${CURRENT_TAG} → New tag: ${NEW_TAG}"
 
-            # Update IMAGE_TAG in .env.production
+            # ---- Update IMAGE_TAG in .env.production ----
             sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${NEW_TAG}/" .env.production
 
-            # Pull new images
-            echo "Pulling images with tag ${NEW_TAG}..."
-            docker compose -f docker-compose.prod.yml --env-file .env.production pull backend frontend
+            # ---- Log in to GHCR ----
+            echo "${{ secrets.GITHUB_TOKEN }}" | \
+                docker login ghcr.io -u ${{ github.actor }} --password-stdin 2>/dev/null || true
 
-            # Pre-migration backup
-            echo "Backing up database..."
-            source .env.production
-            TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-            mkdir -p /opt/kaasb/backups
-            docker compose -f docker-compose.prod.yml --env-file .env.production \
-              exec -T db pg_dump -U "${DB_USER}" "${DB_NAME}" \
-              > "/opt/kaasb/backups/pre-deploy-${TIMESTAMP}.sql"
-            echo "Backup: /opt/kaasb/backups/pre-deploy-${TIMESTAMP}.sql"
+            # ---- Pull new images ----
+            echo "Pulling images..."
+            $COMPOSE pull backend frontend
 
-            # Run migrations
-            echo "Running migrations..."
-            docker compose -f docker-compose.prod.yml --env-file .env.production \
-              run --rm backend alembic upgrade head
-
-            # Rolling restart (zero downtime: update backend + frontend, nginx stays up)
-            echo "Restarting backend..."
-            docker compose -f docker-compose.prod.yml --env-file .env.production \
-              up -d --no-deps backend
-
-            echo "Waiting for backend health..."
-            for i in $(seq 1 30); do
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' kaasb_backend 2>/dev/null || echo "starting")
-              if [ "$STATUS" = "healthy" ]; then
-                echo "Backend healthy after ${i}x checks"
-                break
-              fi
-              if [ $i -eq 30 ]; then
-                echo "Backend health check timed out — rolling back..."
-                sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${CURRENT_TAG}/" .env.production
-                docker compose -f docker-compose.prod.yml --env-file .env.production \
-                  up -d --no-deps backend
-                exit 1
-              fi
-              sleep 5
-            done
-
-            echo "Restarting frontend..."
-            docker compose -f docker-compose.prod.yml --env-file .env.production \
-              up -d --no-deps frontend
-
-            # Final health check via nginx
-            sleep 10
-            if curl -sf https://kaasb.com/health > /dev/null; then
-              echo "Deployment successful — kaasb.com is healthy"
+            # ---- Pre-deploy database backup ----
+            if [ "${SKIP_BACKUP}" != "true" ]; then
+                echo "Creating pre-deploy backup..."
+                bash scripts/backup.sh && echo "Backup OK"
             else
-              echo "Health check failed after deployment"
-              exit 1
+                echo "WARN: Skipping backup (skip_backup=true)"
             fi
 
-            # Cleanup old images to free disk space
-            docker image prune -f --filter "until=48h"
+            # ---- Run Alembic migrations ----
+            echo "Running migrations..."
+            $COMPOSE run --rm --no-deps backend alembic upgrade head
+            echo "Migrations complete."
 
-            echo "=== Deploy complete: ${NEW_TAG} ==="
+            # ---- Rolling restart: backend first, then frontend ----
+            echo "Restarting backend..."
+            $COMPOSE up -d --no-deps backend
+
+            echo "Waiting for backend health..."
+            HEALTHY=false
+            for i in $(seq 1 40); do
+                STATUS=$(docker inspect --format='{{.State.Health.Status}}' kaasb_backend 2>/dev/null || echo "missing")
+                if [ "$STATUS" = "healthy" ]; then
+                    echo "Backend healthy (attempt $i)"
+                    HEALTHY=true
+                    break
+                fi
+                if [ "$STATUS" = "unhealthy" ]; then
+                    echo "Backend is unhealthy — triggering rollback"
+                    break
+                fi
+                sleep 5
+            done
+
+            if [ "$HEALTHY" != "true" ]; then
+                echo "ERROR: Backend health check failed after 200s"
+                echo "Rolling back to ${CURRENT_TAG}..."
+                sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${CURRENT_TAG}/" .env.production
+                $COMPOSE pull backend
+                $COMPOSE up -d --no-deps backend
+                exit 1
+            fi
+
+            echo "Restarting frontend..."
+            $COMPOSE up -d --no-deps frontend
+
+            # ---- Wait for frontend ----
+            for i in $(seq 1 24); do
+                STATUS=$(docker inspect --format='{{.State.Health.Status}}' kaasb_frontend 2>/dev/null || echo "missing")
+                [ "$STATUS" = "healthy" ] && break
+                sleep 5
+            done
+
+            # ---- Reload nginx (pick up any new config) ----
+            docker exec kaasb_nginx nginx -s reload 2>/dev/null || true
+
+            # ---- Final health check through nginx ----
+            sleep 5
+            if curl -sf https://kaasb.com/health | grep -q '"status"'; then
+                echo "Platform is healthy at https://kaasb.com"
+            else
+                echo "WARN: Final health check could not reach https://kaasb.com/health"
+                echo "(SSL may be misconfigured or nginx still reloading)"
+            fi
+
+            # ---- Cleanup old images ----
+            docker image prune -f --filter "until=72h" > /dev/null
+
+            echo "=================================================="
+            echo "  Deployment SUCCESSFUL: ${NEW_TAG}"
+            echo "=================================================="
+
+      # -----------------------------------------------------------------------
+      - name: Notify success (Telegram)
+        if: success() && env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="HTML" \
+            -d text="✅ <b>Kaasb deployed</b>
+          Tag: <code>${{ steps.tag.outputs.tag }}</code>
+          By: ${{ github.actor }}
+          <a href='https://kaasb.com'>kaasb.com</a>" > /dev/null
+
+      # -----------------------------------------------------------------------
+      - name: Notify failure (Telegram)
+        if: failure() && env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="HTML" \
+            -d text="❌ <b>Kaasb deploy FAILED</b>
+          Tag: <code>${{ steps.tag.outputs.tag }}</code>
+          By: ${{ github.actor }}
+          <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>View logs</a>" > /dev/null

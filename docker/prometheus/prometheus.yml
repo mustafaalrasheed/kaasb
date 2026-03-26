@@ -1,0 +1,52 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: production
+    app: kaasb
+
+# =============================================================================
+# Scrape configurations
+# =============================================================================
+scrape_configs:
+
+  # Prometheus itself
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]
+
+  # Host system metrics (CPU, RAM, disk, network)
+  - job_name: node
+    static_configs:
+      - targets: [node_exporter:9100]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: kaasb-server
+
+  # Docker container metrics
+  - job_name: cadvisor
+    static_configs:
+      - targets: [cadvisor:8080]
+    metric_relabel_configs:
+      # Only keep metrics for our containers
+      - source_labels: [container_label_com_docker_compose_project]
+        regex: kaasb.*
+        action: keep
+
+  # FastAPI backend — exposes /metrics if prometheus_fastapi_instrumentator is added
+  # (add `pip install prometheus-fastapi-instrumentator` and instrument in main.py)
+  # - job_name: fastapi
+  #   static_configs:
+  #     - targets: [backend:8000]
+  #   metrics_path: /metrics
+
+  # PostgreSQL exporter (requires postgres-exporter container — add if needed)
+  # - job_name: postgres
+  #   static_configs:
+  #     - targets: [postgres_exporter:9187]
+
+  # Redis exporter (requires redis-exporter container — add if needed)
+  # - job_name: redis
+  #   static_configs:
+  #     - targets: [redis_exporter:9121]
