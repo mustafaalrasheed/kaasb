@@ -91,6 +91,8 @@ class Settings(BaseSettings):
     SLOW_REQUEST_THRESHOLD_MS: int = 1000
     # Log level override (DEBUG | INFO | WARNING | ERROR)
     LOG_LEVEL: str = "INFO"
+    # Bearer token for /health/detailed endpoint — leave empty to disable endpoint
+    HEALTH_BEARER_TOKEN: str = ""
 
     model_config = {
         "env_file": ".env",

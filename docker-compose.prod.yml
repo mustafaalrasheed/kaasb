@@ -157,6 +157,9 @@ services:
       SMTP_USER:     ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM:     ${SMTP_FROM:-noreply@kaasb.com}
+      # Monitoring
+      SENTRY_DSN:          ${SENTRY_DSN:-}
+      HEALTH_BEARER_TOKEN: ${HEALTH_BEARER_TOKEN:-}
       # Workers
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-5}
     volumes:
@@ -202,6 +205,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL:  https://${DOMAIN}/api/v1
       NEXT_PUBLIC_APP_NAME: Kaasb
+      NEXT_PUBLIC_SITE_URL: https://${DOMAIN}
       NODE_ENV:             production
     depends_on:
       backend:
