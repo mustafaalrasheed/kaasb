@@ -1,90 +1,256 @@
-#!/bin/bash
-# ============================================
-# Kaasb Server Security Hardening Script
-# Run ONCE after setting up the Hetzner server
-# Usage: bash server-setup.sh
-# ============================================
+#!/usr/bin/env bash
+# =============================================================================
+# Kaasb Server Initial Setup & Security Hardening
+# Run ONCE on a fresh Hetzner CX22 (Ubuntu 22.04 LTS)
+# Usage:  bash server-setup.sh
+# =============================================================================
 
-set -e
+set -euo pipefail
 
-echo "============================================"
-echo "  Kaasb Server Setup & Security Hardening"
-echo "============================================"
+# Non-interactive mode for apt and dpkg
+export DEBIAN_FRONTEND=noninteractive
 
+DEPLOY_DIR="/opt/kaasb"
+BACKUP_DIR="/opt/kaasb/backups"
+LOG_DIR="/var/log/kaasb"
+
+echo "============================================================"
+echo "  Kaasb Server Setup — $(date)"
+echo "============================================================"
+
+# ---------------------------------------------------------------------------
 # 1. Update system
-echo "[1/8] Updating system packages..."
-apt update && apt upgrade -y
+# ---------------------------------------------------------------------------
+echo "[1/10] Updating system packages..."
+apt-get update -qq
+apt-get upgrade -y -qq
 
+# ---------------------------------------------------------------------------
 # 2. Install essentials
-echo "[2/8] Installing essentials..."
-apt install -y curl git nano ufw fail2ban htop
+# ---------------------------------------------------------------------------
+echo "[2/10] Installing essentials..."
+apt-get install -y -qq \
+    curl git nano ufw fail2ban htop \
+    unattended-upgrades apt-listchanges \
+    logrotate cron \
+    ca-certificates gnupg lsb-release
 
-# 3. Install Docker
-echo "[3/8] Installing Docker..."
-curl -fsSL https://get.docker.com | sh
-apt install -y docker-compose-plugin
+# ---------------------------------------------------------------------------
+# 3. Install Docker Engine (official repo)
+# ---------------------------------------------------------------------------
+echo "[3/10] Installing Docker Engine..."
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+    gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
 
-# 4. Configure firewall
-echo "[4/8] Configuring firewall (UFW)..."
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | \
+  tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+apt-get update -qq
+apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+systemctl enable --now docker
+echo "Docker $(docker --version) installed"
+
+# ---------------------------------------------------------------------------
+# 4. Install Certbot (Let's Encrypt)
+# ---------------------------------------------------------------------------
+echo "[4/10] Installing Certbot..."
+apt-get install -y -qq snapd
+snap install core && snap refresh core
+snap install --classic certbot
+ln -sf /snap/bin/certbot /usr/bin/certbot
+
+# Create webroot directory for ACME challenges
+mkdir -p /var/www/certbot
+echo "Certbot $(certbot --version 2>&1) installed"
+
+# ---------------------------------------------------------------------------
+# 5. Configure UFW firewall
+# ---------------------------------------------------------------------------
+echo "[5/10] Configuring UFW firewall..."
+ufw --force reset
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow ssh        # Port 22
-ufw allow http       # Port 80
-ufw allow https      # Port 443
+ufw allow 22/tcp   comment "SSH"
+ufw allow 80/tcp   comment "HTTP"
+ufw allow 443/tcp  comment "HTTPS"
 ufw --force enable
-echo "Firewall enabled: only SSH, HTTP, HTTPS allowed"
+echo "Firewall enabled: SSH + HTTP + HTTPS only"
 
-# 5. Configure fail2ban (blocks IPs after failed SSH attempts)
-echo "[5/8] Configuring fail2ban..."
+# ---------------------------------------------------------------------------
+# 6. Configure fail2ban
+# ---------------------------------------------------------------------------
+echo "[6/10] Configuring fail2ban..."
 cat > /etc/fail2ban/jail.local << 'FAIL2BAN'
-[sshd]
-enabled = true
-port = ssh
-filter = sshd
-logpath = /var/log/auth.log
-maxretry = 5
-bantime = 3600
+[DEFAULT]
+bantime  = 3600
 findtime = 600
+maxretry = 5
+backend  = systemd
+
+[sshd]
+enabled  = true
+port     = ssh
+filter   = sshd
+logpath  = /var/log/auth.log
+maxretry = 5
+
+[nginx-http-auth]
+enabled  = true
+filter   = nginx-http-auth
+logpath  = /var/log/nginx/kaasb.error.log
+
+[nginx-limit-req]
+enabled  = true
+filter   = nginx-limit-req
+logpath  = /var/log/nginx/kaasb.error.log
+maxretry = 10
 FAIL2BAN
+
+systemctl enable --now fail2ban
 systemctl restart fail2ban
-echo "fail2ban active: IPs banned after 5 failed SSH attempts"
+echo "fail2ban active: bans after 5 failed attempts"
 
-# 6. Disable root password login (SSH key only)
-echo "[6/8] Securing SSH..."
-sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+# ---------------------------------------------------------------------------
+# 7. Harden SSH (key-only, no root login via password)
+# ---------------------------------------------------------------------------
+echo "[7/10] Hardening SSH..."
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/'   /etc/ssh/sshd_config
+sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
 systemctl restart sshd
-echo "SSH hardened: password login disabled, key-only access"
+echo "SSH hardened: key-only, no root password login"
 
-# 7. Set up automatic security updates
-echo "[7/8] Enabling automatic security updates..."
-apt install -y unattended-upgrades
-dpkg-reconfigure -plow unattended-upgrades
+# ---------------------------------------------------------------------------
+# 8. Automatic security updates
+# ---------------------------------------------------------------------------
+echo "[8/10] Enabling automatic security updates..."
+cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'APT'
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+};
+Unattended-Upgrade::Automatic-Reboot "false";
+Unattended-Upgrade::Automatic-Reboot-Time "03:00";
+APT
 
-# 8. Create swap file (useful for 4GB RAM servers)
-echo "[8/8] Creating 2GB swap file..."
+cat > /etc/apt/apt.conf.d/20auto-upgrades << 'APT'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::AutocleanInterval "7";
+APT'
+
+systemctl enable --now unattended-upgrades
+echo "Automatic security updates enabled"
+
+# ---------------------------------------------------------------------------
+# 9. Swap file (prevents OOM kills on 4 GB RAM)
+# ---------------------------------------------------------------------------
+echo "[9/10] Configuring swap..."
 if [ ! -f /swapfile ]; then
     fallocate -l 2G /swapfile
     chmod 600 /swapfile
     mkswap /swapfile
     swapon /swapfile
     echo '/swapfile none swap sw 0 0' >> /etc/fstab
-    echo "2GB swap file created"
+    # Reduce swappiness for server workload
+    echo 'vm.swappiness=10' >> /etc/sysctl.conf
+    sysctl -p
+    echo "2 GB swap created (swappiness=10)"
 else
-    echo "Swap file already exists"
+    echo "Swap already exists"
 fi
 
+# ---------------------------------------------------------------------------
+# 10. Project structure + log rotation + backup cron
+# ---------------------------------------------------------------------------
+echo "[10/10] Setting up project structure..."
+
+# Deployment directory
+mkdir -p "$DEPLOY_DIR" "$BACKUP_DIR" "$LOG_DIR"
+
+# Log rotation for Kaasb containers
+cat > /etc/logrotate.d/kaasb << LOGROTATE
+${LOG_DIR}/*.log
+/var/lib/docker/containers/*/*.log
+/var/log/nginx/kaasb*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    sharedscripts
+    postrotate
+        docker exec kaasb_nginx nginx -s reopen 2>/dev/null || true
+    endscript
+}
+LOGROTATE
+
+# Database backup cron (runs at 2:00 AM daily, keeps 14 days)
+cat > /etc/cron.d/kaasb-backup << 'CRON'
+# Kaasb daily database backup
+0 2 * * * root /opt/kaasb/scripts/backup.sh >> /var/log/kaasb/backup.log 2>&1
+CRON
+
+# SSL certificate auto-renewal (Certbot) — runs twice a day per Let's Encrypt recommendation
+cat > /etc/cron.d/certbot-renew << 'CRON'
+# Certbot SSL renewal + nginx reload
+0 3,15 * * * root certbot renew --quiet --webroot --webroot-path /var/www/certbot && docker exec kaasb_nginx nginx -s reload 2>/dev/null || true
+CRON
+
+# Backup script
+mkdir -p "$DEPLOY_DIR/scripts"
+cat > "$DEPLOY_DIR/scripts/backup.sh" << 'BACKUP'
+#!/usr/bin/env bash
+set -euo pipefail
+BACKUP_DIR="/opt/kaasb/backups"
+ENV_FILE="/opt/kaasb/.env.production"
+KEEP_DAYS=14
+
+[ -f "$ENV_FILE" ] || exit 0
+set -a; source "$ENV_FILE"; set +a
+
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+OUTFILE="${BACKUP_DIR}/kaasb-auto-${TIMESTAMP}.sql.gz"
+mkdir -p "$BACKUP_DIR"
+
+docker compose -f /opt/kaasb/docker-compose.prod.yml --env-file "$ENV_FILE" \
+    exec -T db pg_dump -U "${DB_USER}" "${DB_NAME}" | gzip > "$OUTFILE"
+
+echo "$(date): Backup saved to $OUTFILE ($(du -sh "$OUTFILE" | cut -f1))"
+
+# Delete backups older than KEEP_DAYS
+find "$BACKUP_DIR" -name "kaasb-auto-*.sql.gz" -mtime +${KEEP_DAYS} -delete
+echo "$(date): Old backups cleaned (keeping last ${KEEP_DAYS} days)"
+BACKUP
+chmod +x "$DEPLOY_DIR/scripts/backup.sh"
+
 echo ""
-echo "============================================"
+echo "============================================================"
 echo "  Server setup complete!"
-echo "============================================"
+echo "============================================================"
 echo ""
-echo "  Firewall:    SSH + HTTP + HTTPS only"
-echo "  fail2ban:    Blocks brute-force SSH"
-echo "  SSH:         Key-only (no passwords)"
-echo "  Updates:     Automatic security patches"
-echo "  Swap:        2GB (prevents OOM kills)"
-echo "  Docker:      $(docker --version)"
+echo "  Firewall:      SSH (22) + HTTP (80) + HTTPS (443)"
+echo "  fail2ban:      Brute-force protection on SSH + Nginx"
+echo "  SSH:           Key-only, no root password"
+echo "  Auto-updates:  Security patches applied nightly"
+echo "  Swap:          2 GB (swappiness=10)"
+echo "  Certbot:       $(certbot --version 2>&1)"
+echo "  Docker:        $(docker --version)"
+echo "  Backup cron:   Daily at 02:00 → $BACKUP_DIR"
+echo "  SSL renewal:   Twice daily auto-renew cron"
+echo "  Log rotation:  Daily, 14-day retention"
 echo ""
-echo "  Next: clone your repo and run deploy.sh"
-echo "============================================"
+echo "  Next steps:"
+echo "  1. cd $DEPLOY_DIR"
+echo "  2. git clone https://github.com/mustafaalrasheed/kaasb.git ."
+echo "  3. cp .env.production.example .env.production && nano .env.production"
+echo "  4. ./deploy.sh --ssl          # Get SSL certificate"
+echo "  5. ./deploy.sh --full         # First deployment"
+echo "============================================================"

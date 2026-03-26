@@ -74,11 +74,15 @@ class Settings(BaseSettings):
     QI_CARD_SANDBOX: bool = True  # Set to False in production
     QI_CARD_CURRENCY: str = "IQD"  # Iraqi Dinar
 
-    # === Email (for future use) ===
+    # === Domain ===
+    DOMAIN: str = "localhost"
+
+    # === Email ===
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "noreply@kaasb.com"
 
     model_config = {
         "env_file": ".env",

@@ -1,58 +1,64 @@
-version: "3.9"
+# =============================================================================
+# Kaasb Platform — Development Docker Compose
+# Usage: docker compose up
+# Hot reload enabled for both frontend and backend.
+# =============================================================================
 
 services:
-  # PostgreSQL Database
+
   db:
     image: postgres:16-alpine
-    container_name: kaasb_db
+    container_name: kaasb_db_dev
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-kaasb_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-kaasb_secret_2024}
-      POSTGRES_DB: ${DB_NAME:-kaasb_db}
+      POSTGRES_USER:     ${DB_USER:-kaasb_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-kaasb_dev_secret}
+      POSTGRES_DB:       ${DB_NAME:-kaasb_db}
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./docker/backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ./docker/backend/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-kaasb_user} -d ${DB_NAME:-kaasb_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Redis for caching & sessions
   redis:
     image: redis:7-alpine
-    container_name: kaasb_redis
+    container_name: kaasb_redis_dev
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - redis_data_dev:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # FastAPI Backend
   backend:
     build:
       context: ./backend
       dockerfile: ../docker/backend/Dockerfile
-    container_name: kaasb_backend
+      target: development
+    container_name: kaasb_backend_dev
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-kaasb_user}:${DB_PASSWORD:-kaasb_secret_2024}@db:5432/${DB_NAME:-kaasb_db}
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production-use-openssl-rand-hex-32}
-      - ENVIRONMENT=development
-      - DEBUG=true
+      DATABASE_URL: "postgresql+asyncpg://${DB_USER:-kaasb_user}:${DB_PASSWORD:-kaasb_dev_secret}@db:5432/${DB_NAME:-kaasb_db}"
+      REDIS_URL:    "redis://redis:6379/0"
+      SECRET_KEY:   "${SECRET_KEY:-dev-secret-key-not-for-production}"
+      ENVIRONMENT:  development
+      DEBUG:        "true"
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:8000"]'
+      UPLOAD_DIR:   /app/uploads
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - backend_uploads_dev:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -60,17 +66,16 @@ services:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-  # Next.js Frontend
   frontend:
     build:
       context: ./frontend
       dockerfile: ../docker/frontend/Dockerfile
       target: development
-    container_name: kaasb_frontend
+    container_name: kaasb_frontend_dev
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-      - NEXT_PUBLIC_APP_NAME=Kaasb
+      NEXT_PUBLIC_API_URL:  "http://localhost:8000/api/v1"
+      NEXT_PUBLIC_APP_NAME: "Kaasb"
     ports:
       - "3000:3000"
     volumes:
@@ -82,5 +87,6 @@ services:
     command: npm run dev
 
 volumes:
-  postgres_data:
-  redis_data:
+  postgres_data_dev:
+  redis_data_dev:
+  backend_uploads_dev:
