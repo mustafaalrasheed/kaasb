@@ -120,8 +120,8 @@ services:
   # ===========================================================================
   backend:
     build:
-      context: ./backend
-      dockerfile: ../docker/backend/Dockerfile
+      context: .
+      dockerfile: docker/backend/Dockerfile
       target: production
     image: ghcr.io/${GITHUB_REPO:-mustafaalrasheed/kaasb}/backend:${IMAGE_TAG:-latest}
     container_name: kaasb_backend

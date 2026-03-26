@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps in a separate cached layer
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Development target — hot reload via mounted volume
 # ============================================================
 FROM base AS development
-COPY . .
+COPY backend/ .
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
@@ -31,8 +31,8 @@ FROM base AS production
 # Non-root user
 RUN groupadd -r kaasb && useradd -r -g kaasb -d /app -s /sbin/nologin kaasb
 
-COPY . .
-COPY ../docker/backend/gunicorn.conf.py /gunicorn.conf.py
+COPY backend/ .
+COPY docker/backend/gunicorn.conf.py /gunicorn.conf.py
 
 # Upload dir owned by app user
 RUN mkdir -p /app/uploads && chown -R kaasb:kaasb /app /gunicorn.conf.py
