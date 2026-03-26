@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "kaasb"
+version = "1.0.0"
+requires-python = ">=3.12"
+
+# =============================================================================
+# Pytest Configuration
+# =============================================================================
+[tool.pytest.ini_options]
+testpaths        = ["tests"]
+python_files     = ["test_*.py", "*_test.py"]
+python_classes   = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode     = "auto"
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--cov-report=xml:coverage.xml",
+    "--cov-fail-under=60",
+]
+markers = [
+    "unit: unit tests (no external services)",
+    "integration: integration tests (requires DB + Redis)",
+    "slow: tests that take >1s",
+    "auth: authentication and authorization tests",
+    "payments: payment flow tests",
+    "admin: admin endpoint tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:passlib",
+    "ignore::DeprecationWarning:jose",
+]
+
+# =============================================================================
+# Ruff — linter + formatter
+# =============================================================================
+[tool.ruff]
+target-version = "py312"
+line-length     = 100
+src             = ["app", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+    "S",   # bandit security
+    "T20", # flake8-print (no print statements)
+]
+ignore = [
+    "S101",  # assert statements allowed in tests
+    "S106",  # hardcoded passwords allowed in test fixtures
+    "B008",  # FastAPI Depends() in default args
+    "N818",  # Exception class naming
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S106", "T20", "S105"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# =============================================================================
+# Coverage
+# =============================================================================
+[tool.coverage.run]
+source   = ["app"]
+omit     = [
+    "app/main.py",         # startup boilerplate
+    "app/core/database.py",
+    "tests/*",
+    "alembic/*",
+]
+
+[tool.coverage.report]
+show_missing  = true
+skip_covered  = false
+fail_under    = 60
