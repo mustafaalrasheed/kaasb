@@ -1,0 +1,396 @@
+groups:
+
+  # ===========================================================================
+  # APPLICATION — Error rates, latency, availability
+  # ===========================================================================
+  - name: kaasb_application
+    rules:
+
+      # 5xx error rate > 5% over 5 minutes
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.05
+        for: 3m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "High 5xx error rate ({{ $value | humanizePercentage }})"
+          description: "More than 5% of requests are returning 5xx errors. Check backend logs immediately."
+          runbook:     "Check: docker compose logs api --tail=200 | grep ERROR"
+
+      # p95 request latency > 2 seconds
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler)
+          ) > 2
+        for: 5m
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "High p95 latency on {{ $labels.handler }}"
+          description: "95th percentile request latency exceeds 2s on {{ $labels.handler }}. Investigate slow queries or external calls."
+          runbook:     "Run db-monitoring.sql Section 2 (slow queries). Check external service timeouts."
+
+      # p99 request latency > 5 seconds
+      - alert: CriticalLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 5
+        for: 3m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "p99 latency exceeds 5 seconds"
+          description: "1% of requests are taking more than 5 seconds. Likely DB or external service issue."
+
+      # API completely down (no successful requests for 2 minutes)
+      - alert: APIDown
+        expr: |
+          sum(rate(http_requests_total{status=~"2.."}[2m])) == 0
+        for: 2m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "Kaasb API is returning no successful responses"
+          description: "Zero 2xx responses in the last 2 minutes. The API may be down or all requests failing."
+          runbook:     "Check: docker compose ps; docker compose logs api --tail=50"
+
+      # Spike in 4xx errors (bad client requests — may indicate attack)
+      - alert: High4xxRate
+        expr: |
+          sum(rate(http_requests_total{status=~"4.."}[5m])) > 50
+        for: 5m
+        labels:
+          severity: medium
+          channel:  slack
+        annotations:
+          summary:     "High 4xx request rate ({{ $value | humanize }}/s)"
+          description: "Unusual number of 4xx errors — may indicate a misconfigured client or scanning attack."
+
+  # ===========================================================================
+  # AUTHENTICATION — Brute force, account abuse
+  # ===========================================================================
+  - name: kaasb_auth
+    rules:
+
+      # Login failure spike (brute force)
+      - alert: LoginFailureSpike
+        expr: |
+          sum(rate(kaasb_auth_events_total{event="login_failure"}[5m])) > 10
+        for: 2m
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "High login failure rate ({{ $value | humanize }}/s)"
+          description: "More than 10 login failures per second over 5 minutes. Possible brute force attack."
+          runbook:     "Check: psql -c \"SELECT * FROM users WHERE failed_login_attempts > 5 ORDER BY updated_at DESC LIMIT 20\""
+
+      # High account lockout rate
+      - alert: AccountLockoutSpike
+        expr: |
+          sum(rate(kaasb_auth_events_total{event="lockout"}[10m])) > 2
+        for: 5m
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "Multiple accounts being locked out"
+          description: "More than 2 account lockouts per minute. Credential stuffing attack in progress."
+
+      # Rate limit being hit excessively on auth endpoints
+      - alert: AuthRateLimitAbuse
+        expr: |
+          sum(rate(kaasb_rate_limit_hits_total{tier="login"}[5m])) > 5
+        for: 3m
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "Auth rate limit being hit frequently"
+          description: "Login rate limit triggered more than 5 times/second — sustained attack possible."
+
+  # ===========================================================================
+  # PAYMENTS — Failures, anomalies
+  # ===========================================================================
+  - name: kaasb_payments
+    rules:
+
+      # Payment failure rate > 10%
+      - alert: HighPaymentFailureRate
+        expr: |
+          (
+            sum(rate(kaasb_payment_events_total{status="failed"}[10m]))
+            /
+            sum(rate(kaasb_payment_events_total[10m]))
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "High payment failure rate ({{ $value | humanizePercentage }})"
+          description: "More than 10% of payment transactions are failing. Check Stripe/QiCard status pages."
+          runbook:     "Check: curl https://status.stripe.com/api/v2/status.json — verify payment provider status"
+
+      # No successful payments in 2 hours during business hours (08:00–22:00 UTC)
+      - alert: NoPaymentsProcessed
+        expr: |
+          (
+            sum(rate(kaasb_payment_events_total{status="completed"}[2h])) == 0
+          ) and on() (hour() >= 8 and hour() <= 22)
+        for: 30m
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "No payments processed in 2 hours (business hours)"
+          description: "Zero completed transactions in the last 2 hours during business hours. Escrow flow may be broken."
+
+  # ===========================================================================
+  # DATABASE — Connections, health, performance
+  # ===========================================================================
+  - name: kaasb_database
+    rules:
+
+      # DB connection pool exhaustion (> 90% of pool in use)
+      - alert: DBPoolExhaustion
+        expr: |
+          (
+            kaasb_db_pool_connections_checked_out
+            /
+            kaasb_db_pool_size_total
+          ) > 0.90
+        for: 2m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "DB connection pool near exhaustion ({{ $value | humanizePercentage }} used)"
+          description: "More than 90% of database connections are in use. API will start returning 500s."
+          runbook:     "Restart API workers: docker compose restart api — then investigate slow queries."
+
+      # High number of PostgreSQL connections
+      - alert: HighPostgresConnections
+        expr: |
+          pg_stat_activity_count{state!="idle"} > 60
+        for: 5m
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "High number of active PostgreSQL connections ({{ $value }})"
+          description: "More than 60 active (non-idle) DB connections. max_connections=75."
+
+      # PostgreSQL down
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "PostgreSQL is down"
+          description: "Cannot connect to PostgreSQL. All API requests will fail."
+          runbook:     "Check: docker compose logs db --tail=50; docker compose restart db"
+
+      # Slow query detected via pg_stat_statements (avg > 1s with > 10 calls)
+      - alert: SlowQueriesDetected
+        expr: |
+          (
+            pg_stat_statements_mean_exec_time_seconds > 1
+            and
+            pg_stat_statements_calls > 10
+          )
+        for: 10m
+        labels:
+          severity: medium
+          channel:  slack
+        annotations:
+          summary:     "Slow database queries detected (avg {{ $value | humanizeDuration }})"
+          description: "One or more queries averaging > 1 second. Run EXPLAIN ANALYZE to investigate."
+
+  # ===========================================================================
+  # REDIS — Health, memory
+  # ===========================================================================
+  - name: kaasb_redis
+    rules:
+
+      # Redis down
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "Redis is down"
+          description: "Cannot connect to Redis. Rate limiting will fall back to in-memory (unbounded). Sessions may break."
+          runbook:     "Check: docker compose logs redis --tail=50; docker compose restart redis"
+
+      # Redis memory > 90% of maxmemory
+      - alert: RedisHighMemory
+        expr: |
+          (redis_memory_used_bytes / redis_memory_max_bytes) > 0.90
+        for: 5m
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "Redis memory usage critical ({{ $value | humanizePercentage }})"
+          description: "Redis is using more than 90% of its configured memory limit. Eviction may start."
+
+  # ===========================================================================
+  # INFRASTRUCTURE — CPU, memory, disk
+  # ===========================================================================
+  - name: kaasb_infrastructure
+    rules:
+
+      # High CPU (> 85%) sustained for 10 minutes
+      - alert: HighCPU
+        expr: |
+          (
+            1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))
+          ) > 0.85
+        for: 10m
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "High CPU usage ({{ $value | humanizePercentage }})"
+          description: "Server CPU above 85% for 10 minutes. Check for runaway processes."
+          runbook:     "Run: docker stats; top -bn1 | head -20"
+
+      # Memory > 90%
+      - alert: HighMemory
+        expr: |
+          (
+            1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+          ) > 0.90
+        for: 5m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "Critical memory usage ({{ $value | humanizePercentage }})"
+          description: "Server memory above 90%. OOM killer may start terminating processes."
+
+      # Disk > 80%
+      - alert: DiskSpaceWarning
+        expr: |
+          (
+            1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"}
+                 / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"})
+          ) > 0.80
+        for: 5m
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "Disk usage above 80% ({{ $value | humanizePercentage }})"
+          description: "Root filesystem above 80%. Clean backup files: ls -lht /opt/kaasb/backups"
+
+      # Disk > 90% (critical)
+      - alert: DiskSpaceCritical
+        expr: |
+          (
+            1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"}
+                 / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"})
+          ) > 0.90
+        for: 2m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "Disk usage CRITICAL ({{ $value | humanizePercentage }})"
+          description: "Root filesystem above 90%. Postgres may crash if it cannot write WAL."
+
+      # Container restart loop
+      - alert: ContainerRestarting
+        expr: |
+          increase(container_last_seen{name=~"kaasb_.*"}[5m]) == 0
+          and on(name) container_start_total{name=~"kaasb_.*"} > 3
+        for: 0m
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "Container {{ $labels.name }} is restart-looping"
+          description: "A Kaasb container has restarted more than 3 times. Check logs immediately."
+
+  # ===========================================================================
+  # BACKUPS — Age monitoring
+  # ===========================================================================
+  - name: kaasb_backups
+    rules:
+
+      # Backup older than 25 hours (nightly backup at 02:00 UTC should be < 25h old)
+      # This rule uses a custom metric written by backup.sh (if you expose it to Prometheus)
+      # Alternatively monitored via healthchecks.io ping from backup.sh
+      - alert: BackupTooOld
+        expr: |
+          (time() - kaasb_last_backup_timestamp_seconds) > 90000
+        for: 0m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "Database backup is more than 25 hours old"
+          description: "The nightly backup may have failed. Run: bash /opt/kaasb/scripts/backup.sh"
+
+  # ===========================================================================
+  # SSL CERTIFICATE — Expiry
+  # ===========================================================================
+  - name: kaasb_ssl
+    rules:
+
+      # SSL cert expires within 14 days
+      - alert: SSLCertExpiringSoon
+        expr: |
+          probe_ssl_earliest_cert_expiry - time() < (14 * 24 * 3600)
+        for: 1h
+        labels:
+          severity: high
+          channel:  telegram
+        annotations:
+          summary:     "SSL certificate expires in {{ $value | humanizeDuration }}"
+          description: "SSL cert for {{ $labels.instance }} expires soon. Run: certbot renew"
+
+      # SSL cert expires within 3 days
+      - alert: SSLCertExpiringCritical
+        expr: |
+          probe_ssl_earliest_cert_expiry - time() < (3 * 24 * 3600)
+        for: 0m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "SSL certificate expires in {{ $value | humanizeDuration }} — CRITICAL"
+          description: "Site will go offline with an SSL error. Renew immediately: certbot renew --force-renewal"
+
+  # ===========================================================================
+  # WEBSOCKET — Connection health
+  # ===========================================================================
+  - name: kaasb_websocket
+    rules:
+
+      # Abnormal WS connection spike (> 500 concurrent — suspicious)
+      - alert: WebSocketConnectionSpike
+        expr: kaasb_websocket_connections_active > 500
+        for: 5m
+        labels:
+          severity: medium
+          channel:  slack
+        annotations:
+          summary:     "Unusual WebSocket connection count ({{ $value }})"
+          description: "More than 500 concurrent WebSocket connections. May indicate a connection leak or DDoS."

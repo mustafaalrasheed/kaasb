@@ -5,18 +5,16 @@ Business logic for user profiles, search, and account management.
 
 import logging
 import uuid
-from typing import Optional
 
-from sqlalchemy import select, func, or_
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.base import BaseService
-
-from app.models.user import User, UserRole, UserStatus
-from app.schemas.user import UserProfileUpdate, PasswordChange
 from app.core.security import hash_password_async, verify_password_async
-from app.utils.sanitize import sanitize_text, sanitize_url, escape_like
+from app.models.user import User, UserRole, UserStatus
+from app.schemas.user import PasswordChange, UserProfileUpdate
+from app.services.base import BaseService
+from app.utils.sanitize import escape_like, sanitize_text, sanitize_url
 
 logger = logging.getLogger(__name__)
 
@@ -143,12 +141,12 @@ class UserService(BaseService):
 
     async def search_freelancers(
         self,
-        query: Optional[str] = None,
-        skills: Optional[list[str]] = None,
-        experience_level: Optional[str] = None,
-        min_rate: Optional[float] = None,
-        max_rate: Optional[float] = None,
-        country: Optional[str] = None,
+        query: str | None = None,
+        skills: list[str] | None = None,
+        experience_level: str | None = None,
+        min_rate: float | None = None,
+        max_rate: float | None = None,
+        country: str | None = None,
         sort_by: str = "rating",  # rating, rate_low, rate_high, newest
         page: int = 1,
         page_size: int = 20,

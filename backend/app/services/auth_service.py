@@ -6,26 +6,25 @@ Business logic for user registration, login, and token management.
 import hashlib
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
+from fastapi import HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException, status
 
-from app.services.base import BaseService
-
-from app.models.user import User, UserRole, UserStatus
-from app.models.refresh_token import RefreshToken
-from app.schemas.user import UserRegister, UserLogin, TokenResponse
+from app.core.config import get_settings
 from app.core.security import (
-    hash_password_async,
-    verify_password_async,
     create_access_token,
     create_refresh_token,
     decode_token,
+    hash_password_async,
+    verify_password_async,
 )
-from app.core.config import get_settings
-from app.utils.sanitize import sanitize_text, sanitize_username, sanitize_email
+from app.models.refresh_token import RefreshToken
+from app.models.user import User, UserRole, UserStatus
+from app.schemas.user import TokenResponse, UserLogin, UserRegister
+from app.services.base import BaseService
+from app.utils.sanitize import sanitize_email, sanitize_text, sanitize_username
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -122,7 +121,7 @@ class AuthService(BaseService):
             )
 
         # Check if account is locked
-        if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+        if user.locked_until and user.locked_until > datetime.now(UTC):
             logger.warning("Login attempt on locked account: user=%s", user.id)
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -132,7 +131,7 @@ class AuthService(BaseService):
         if not await verify_password_async(data.password, user.hashed_password):
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= 10:
-                user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=30)
+                user.locked_until = datetime.now(UTC) + timedelta(minutes=30)
                 logger.warning("Account locked due to failed attempts: user=%s", user.id)
             await self.db.flush()
             logger.warning("Failed login attempt for user=%s", user.id)
@@ -152,7 +151,7 @@ class AuthService(BaseService):
         user.locked_until = None
 
         # Update last login
-        user.last_login = datetime.now(timezone.utc)
+        user.last_login = datetime.now(UTC)
         user.is_online = True
         await self.db.flush()
 
@@ -162,7 +161,7 @@ class AuthService(BaseService):
         refresh_token = create_refresh_token(token_data)
 
         # Store refresh token hash for revocation support
-        expires = datetime.now(timezone.utc) + timedelta(
+        expires = datetime.now(UTC) + timedelta(
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )
         rt = RefreshToken(
@@ -232,7 +231,7 @@ class AuthService(BaseService):
             select(RefreshToken).where(
                 RefreshToken.token_hash == token_hash,
                 RefreshToken.revoked.is_(False),
-                RefreshToken.expires_at > datetime.now(timezone.utc),
+                RefreshToken.expires_at > datetime.now(UTC),
             )
         )
         stored_token = result.scalar_one_or_none()
@@ -271,7 +270,7 @@ class AuthService(BaseService):
         new_refresh_token = create_refresh_token(token_data)
 
         # Store new refresh token
-        expires = datetime.now(timezone.utc) + timedelta(
+        expires = datetime.now(UTC) + timedelta(
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )
         new_rt = RefreshToken(

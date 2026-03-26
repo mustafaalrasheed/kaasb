@@ -5,6 +5,7 @@ In production, this would use Redis pub/sub for multi-worker support.
 """
 
 import uuid
+
 from fastapi import WebSocket
 
 

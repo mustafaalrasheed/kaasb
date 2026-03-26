@@ -1,0 +1,156 @@
+# =============================================================================
+# Kaasb Platform — Alertmanager Configuration
+# Routes alerts from Prometheus to Telegram (critical/high) and email (medium/low)
+# =============================================================================
+#
+# Required environment variables (set in .env.production):
+#   ALERTMANAGER_TELEGRAM_BOT_TOKEN  — Bot token from @BotFather
+#   ALERTMANAGER_TELEGRAM_CHAT_ID    — Chat/channel ID (use negative ID for groups)
+#   ALERTMANAGER_SMTP_FROM           — Sender email address
+#   ALERTMANAGER_SMTP_TO             — Recipient email address
+#   ALERTMANAGER_SMTP_AUTH_USERNAME  — SMTP username
+#   ALERTMANAGER_SMTP_AUTH_PASSWORD  — SMTP password
+#
+# HOW TO GET TELEGRAM CHAT ID:
+#   1. Message your bot once
+#   2. curl https://api.telegram.org/bot<TOKEN>/getUpdates
+#   3. Look for "chat":{"id": <CHAT_ID>}
+# =============================================================================
+
+global:
+  resolve_timeout: 5m
+  smtp_smarthost:  'smtp.gmail.com:587'
+  smtp_from:       '${ALERTMANAGER_SMTP_FROM}'
+  smtp_auth_username: '${ALERTMANAGER_SMTP_AUTH_USERNAME}'
+  smtp_auth_password: '${ALERTMANAGER_SMTP_AUTH_PASSWORD}'
+  smtp_require_tls: true
+
+# ─── Templates ────────────────────────────────────────────────────────────────
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+# ─── Routing tree ─────────────────────────────────────────────────────────────
+route:
+  # Default receiver for anything that doesn't match a sub-route
+  receiver: email_ops
+  group_by: [alertname, severity]
+  group_wait:      30s    # Wait before sending first notification for a group
+  group_interval:  5m     # Wait before re-notifying about the same group
+  repeat_interval: 4h     # Re-send unresolved alerts every 4 hours
+
+  routes:
+    # Critical alerts → Telegram immediately (no grouping delay)
+    - matchers:
+        - severity = critical
+      receiver: telegram_critical
+      group_wait:      0s
+      group_interval:  1m
+      repeat_interval: 30m
+      continue: true    # Also send to default receiver
+
+    # High severity → Telegram with slight delay (batch nearby alerts)
+    - matchers:
+        - severity = high
+      receiver: telegram_high
+      group_wait:      30s
+      group_interval:  5m
+      repeat_interval: 2h
+
+    # Medium severity → email only
+    - matchers:
+        - severity = medium
+      receiver: email_ops
+      group_wait:      5m
+      group_interval:  30m
+      repeat_interval: 12h
+
+    # Inhibit low-severity alerts when critical is firing for same component
+    - matchers:
+        - severity = low
+      receiver: email_ops
+      repeat_interval: 24h
+
+# ─── Inhibition rules ────────────────────────────────────────────────────────
+# Suppress lower-severity alerts when a critical alert is already firing
+inhibit_rules:
+  - source_matchers:
+      - severity = critical
+    target_matchers:
+      - severity =~ high|medium|low
+    equal: [alertname]
+
+  # If API is down, suppress latency/error-rate alerts (they're symptoms)
+  - source_matchers:
+      - alertname = APIDown
+    target_matchers:
+      - alertname =~ HighErrorRate|HighLatencyP95|CriticalLatencyP99
+
+  # If Postgres is down, suppress all DB-related alerts
+  - source_matchers:
+      - alertname = PostgresDown
+    target_matchers:
+      - alertname =~ DBPoolExhaustion|HighPostgresConnections|SlowQueriesDetected
+
+# ─── Receivers ───────────────────────────────────────────────────────────────
+receivers:
+
+  # Telegram — critical alerts (fires immediately, every 30 min until resolved)
+  - name: telegram_critical
+    telegram_configs:
+      - bot_token:  '${ALERTMANAGER_TELEGRAM_BOT_TOKEN}'
+        chat_id:    ${ALERTMANAGER_TELEGRAM_CHAT_ID}
+        api_url:    https://api.telegram.org
+        parse_mode: HTML
+        message: |
+          🚨 <b>CRITICAL ALERT</b>
+
+          <b>{{ .CommonAnnotations.summary }}</b>
+
+          {{ range .Alerts }}
+          📍 {{ .Annotations.description }}
+          🔖 Severity: {{ .Labels.severity }}
+          ⏱ Since: {{ .StartsAt | since }}
+          {{ if .Annotations.runbook }}📖 Runbook: {{ .Annotations.runbook }}{{ end }}
+          {{ end }}
+
+          <b>Status:</b> {{ .Status | title }}
+
+  # Telegram — high severity (batched, every 2 hours)
+  - name: telegram_high
+    telegram_configs:
+      - bot_token:  '${ALERTMANAGER_TELEGRAM_BOT_TOKEN}'
+        chat_id:    ${ALERTMANAGER_TELEGRAM_CHAT_ID}
+        api_url:    https://api.telegram.org
+        parse_mode: HTML
+        message: |
+          ⚠️ <b>HIGH ALERT</b>: {{ .CommonAnnotations.summary }}
+
+          {{ range .Alerts }}
+          {{ .Annotations.description }}
+          Since: {{ .StartsAt | since }}
+          {{ end }}
+
+  # Email — medium/low/default
+  - name: email_ops
+    email_configs:
+      - to:           '${ALERTMANAGER_SMTP_TO}'
+        send_resolved: true
+        headers:
+          Subject: '[Kaasb {{ .Status | title }}] {{ .CommonAnnotations.summary }}'
+        html: |
+          <h2>{{ .CommonAnnotations.summary }}</h2>
+          <p><strong>Environment:</strong> production</p>
+          <table border="1" cellpadding="5">
+            <tr><th>Alert</th><th>Description</th><th>Since</th><th>Severity</th></tr>
+            {{ range .Alerts }}
+            <tr>
+              <td>{{ .Labels.alertname }}</td>
+              <td>{{ .Annotations.description }}</td>
+              <td>{{ .StartsAt }}</td>
+              <td>{{ .Labels.severity }}</td>
+            </tr>
+            {{ end }}
+          </table>
+          {{ if .CommonAnnotations.runbook }}
+          <p><strong>Runbook:</strong> {{ .CommonAnnotations.runbook }}</p>
+          {{ end }}

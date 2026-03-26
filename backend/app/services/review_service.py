@@ -6,17 +6,16 @@ Business logic for reviews and rating aggregation.
 import logging
 import uuid
 
-from sqlalchemy import select, func
+from fastapi import HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException
 
-from app.services.base import BaseService
-
-from app.models.review import Review
 from app.models.contract import Contract, ContractStatus
+from app.models.review import Review
 from app.models.user import User
 from app.schemas.review import ReviewCreate
+from app.services.base import BaseService
 
 logger = logging.getLogger(__name__)
 

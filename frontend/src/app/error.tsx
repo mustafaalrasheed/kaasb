@@ -2,6 +2,14 @@
 
 import { useEffect } from "react";
 
+// Sentry is optional — only imported if the DSN is configured
+let captureException: ((err: unknown) => string) | null = null;
+if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_SENTRY_DSN) {
+  import("@sentry/nextjs").then((Sentry) => {
+    captureException = Sentry.captureException;
+  });
+}
+
 export default function Error({
   error,
   reset,
@@ -10,7 +18,13 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
+    // Always log to console for dev visibility
     console.error("Unhandled error:", error);
+
+    // Report to Sentry (no-op in dev or if DSN is not set)
+    if (captureException) {
+      captureException(error);
+    }
   }, [error]);
 
   return (

@@ -4,9 +4,8 @@ Create and manage in-app notifications.
 """
 
 import uuid
-from typing import Optional
 
-from sqlalchemy import select, func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notification import Notification, NotificationType
@@ -29,9 +28,9 @@ class NotificationService(BaseService):
         type: NotificationType,
         title: str,
         message: str,
-        link_type: Optional[str] = None,
-        link_id: Optional[uuid.UUID] = None,
-        actor_id: Optional[uuid.UUID] = None,
+        link_type: str | None = None,
+        link_id: uuid.UUID | None = None,
+        actor_id: uuid.UUID | None = None,
     ) -> Notification:
         """Create a notification for a user."""
         notification = Notification(

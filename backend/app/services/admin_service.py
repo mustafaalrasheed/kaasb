@@ -5,23 +5,21 @@ Platform administration: stats, user management, job moderation, payments.
 
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, func
+from fastapi import HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException
 
-from app.services.base import BaseService
-
-from app.models.user import User, UserRole, UserStatus
-from app.models.job import Job, JobStatus
 from app.models.contract import Contract, ContractStatus
-from app.models.proposal import Proposal
-from app.models.payment import Transaction, TransactionType, TransactionStatus, Escrow, EscrowStatus
-from app.models.review import Review
+from app.models.job import Job, JobStatus
 from app.models.message import Message
+from app.models.payment import Escrow, EscrowStatus, Transaction, TransactionStatus, TransactionType
+from app.models.proposal import Proposal
+from app.models.review import Review
+from app.models.user import User, UserRole, UserStatus
+from app.services.base import BaseService
 from app.utils.sanitize import escape_like
 
 logger = logging.getLogger(__name__)
@@ -41,7 +39,7 @@ class AdminService(BaseService):
         Optimized: 5 queries instead of 10+ (batched aggregations).
         ~200ms → ~50ms at 100K rows scale.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         thirty_days_ago = now - timedelta(days=30)
         seven_days_ago = now - timedelta(days=7)
 
@@ -154,9 +152,9 @@ class AdminService(BaseService):
 
     async def list_users(
         self,
-        role: Optional[str] = None,
-        status_filter: Optional[str] = None,
-        search: Optional[str] = None,
+        role: str | None = None,
+        status_filter: str | None = None,
+        search: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> dict:
@@ -253,8 +251,8 @@ class AdminService(BaseService):
 
     async def list_jobs_admin(
         self,
-        status_filter: Optional[str] = None,
-        search: Optional[str] = None,
+        status_filter: str | None = None,
+        search: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> dict:
@@ -302,8 +300,8 @@ class AdminService(BaseService):
 
     async def list_transactions_admin(
         self,
-        type_filter: Optional[str] = None,
-        status_filter: Optional[str] = None,
+        type_filter: str | None = None,
+        status_filter: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> dict:

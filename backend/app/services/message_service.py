@@ -5,19 +5,18 @@ Business logic for conversations and messaging.
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import select, func, or_, update
+from fastapi import HTTPException
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException
 
-from app.services.base import BaseService
-
+from app.models.job import Job
 from app.models.message import Conversation, Message
 from app.models.user import User
-from app.models.job import Job
 from app.schemas.message import ConversationCreate, MessageCreate
+from app.services.base import BaseService
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +110,7 @@ class MessageService(BaseService):
         self.db.add(message)
 
         # Atomically update conversation cache at the SQL level to prevent race conditions
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         update_values = {
             "last_message_text": content[:500],
             "last_message_at": now,

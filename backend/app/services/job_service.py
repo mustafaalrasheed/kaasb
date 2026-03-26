@@ -7,19 +7,17 @@ import hashlib
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-from sqlalchemy import select, func, or_, update
+from fastapi import HTTPException, status
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException, status
 
-from app.services.base import BaseService
-
-from app.models.job import Job, JobStatus, JobType, ExperienceLevel, JobDuration
+from app.models.job import ExperienceLevel, Job, JobDuration, JobStatus, JobType
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobUpdate
+from app.services.base import BaseService
 from app.utils.sanitize import escape_like
 
 logger = logging.getLogger(__name__)
@@ -67,7 +65,7 @@ class JobService(BaseService):
             deadline=data.deadline,
             client_id=client.id,
             status=JobStatus.OPEN,
-            published_at=datetime.now(timezone.utc),
+            published_at=datetime.now(UTC),
         )
 
         self.db.add(job)
@@ -186,7 +184,7 @@ class JobService(BaseService):
             )
 
         job.status = JobStatus.CLOSED
-        job.closed_at = datetime.now(timezone.utc)
+        job.closed_at = datetime.now(UTC)
         await self.db.flush()
         await self.db.refresh(job, attribute_names=["client"])
         logger.info("Job closed: %s by client=%s", job.id, client.id)
@@ -222,14 +220,14 @@ class JobService(BaseService):
 
     async def search_jobs(
         self,
-        query: Optional[str] = None,
-        category: Optional[str] = None,
-        job_type: Optional[str] = None,
-        skills: Optional[list[str]] = None,
-        experience_level: Optional[str] = None,
-        budget_min: Optional[float] = None,
-        budget_max: Optional[float] = None,
-        duration: Optional[str] = None,
+        query: str | None = None,
+        category: str | None = None,
+        job_type: str | None = None,
+        skills: list[str] | None = None,
+        experience_level: str | None = None,
+        budget_min: float | None = None,
+        budget_max: float | None = None,
+        duration: str | None = None,
         sort_by: str = "newest",  # newest, oldest, budget_high, budget_low
         page: int = 1,
         page_size: int = 20,
@@ -292,7 +290,7 @@ class JobService(BaseService):
     async def get_client_jobs(
         self,
         client_id: uuid.UUID,
-        status_filter: Optional[str] = None,
+        status_filter: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> dict:

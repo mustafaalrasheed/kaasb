@@ -28,6 +28,7 @@ services:
       - --web.enable-lifecycle
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus_data:/prometheus
     networks:
       - kaasb_net
@@ -133,6 +134,88 @@ services:
           memory: 128M
           cpus: "0.15"
 
+  # ===========================================================================
+  # Alertmanager — routes Prometheus alerts to Telegram / email
+  # ===========================================================================
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: kaasb_alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=:9093
+    volumes:
+      - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    environment:
+      ALERTMANAGER_TELEGRAM_BOT_TOKEN: ${ALERTMANAGER_TELEGRAM_BOT_TOKEN:-}
+      ALERTMANAGER_TELEGRAM_CHAT_ID:   ${ALERTMANAGER_TELEGRAM_CHAT_ID:-0}
+      ALERTMANAGER_SMTP_FROM:          ${ALERTMANAGER_SMTP_FROM:-}
+      ALERTMANAGER_SMTP_TO:            ${ALERTMANAGER_SMTP_TO:-}
+      ALERTMANAGER_SMTP_AUTH_USERNAME: ${ALERTMANAGER_SMTP_AUTH_USERNAME:-}
+      ALERTMANAGER_SMTP_AUTH_PASSWORD: ${ALERTMANAGER_SMTP_AUTH_PASSWORD:-}
+    networks:
+      - monitoring_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.1"
+
+  # ===========================================================================
+  # PostgreSQL Exporter — exports pg_stat_* metrics to Prometheus
+  # ===========================================================================
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: kaasb_postgres_exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable"
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "false"
+    networks:
+      - kaasb_net
+      - monitoring_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.1"
+
+  # ===========================================================================
+  # Redis Exporter — exports Redis metrics to Prometheus
+  # ===========================================================================
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.57.0
+    container_name: kaasb_redis_exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    networks:
+      - kaasb_net
+      - monitoring_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+          cpus: "0.05"
+
 networks:
   kaasb_net:
     external: true
@@ -142,3 +225,4 @@ networks:
 volumes:
   prometheus_data:
   grafana_data:
+  alertmanager_data:

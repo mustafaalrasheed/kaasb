@@ -5,20 +5,18 @@ Business logic for proposal submission, response, and listing.
 
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-from sqlalchemy import select, func, update, case
+from fastapi import HTTPException, status
+from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from fastapi import HTTPException, status
 
-from app.services.base import BaseService
-
-from app.models.proposal import Proposal, ProposalStatus
 from app.models.job import Job, JobStatus
+from app.models.proposal import Proposal, ProposalStatus
 from app.models.user import User
-from app.schemas.proposal import ProposalCreate, ProposalUpdate, ProposalRespond
+from app.schemas.proposal import ProposalCreate, ProposalRespond, ProposalUpdate
+from app.services.base import BaseService
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +113,7 @@ class ProposalService(BaseService):
             status=ProposalStatus.PENDING,
             job_id=job_id,
             freelancer_id=freelancer.id,
-            submitted_at=datetime.now(timezone.utc),
+            submitted_at=datetime.now(UTC),
         )
 
         self.db.add(proposal)
@@ -239,7 +237,7 @@ class ProposalService(BaseService):
 
         proposal.status = new_status
         proposal.client_note = data.client_note
-        proposal.responded_at = datetime.now(timezone.utc)
+        proposal.responded_at = datetime.now(UTC)
 
         # If accepted, update the job (with lock to prevent concurrent acceptance)
         if new_status == ProposalStatus.ACCEPTED:
@@ -270,7 +268,7 @@ class ProposalService(BaseService):
             for other in other_proposals.scalars().all():
                 other.status = ProposalStatus.REJECTED
                 other.client_note = "Another proposal was accepted for this job."
-                other.responded_at = datetime.now(timezone.utc)
+                other.responded_at = datetime.now(UTC)
 
             # Auto-create contract
             from app.services.contract_service import ContractService
@@ -311,7 +309,7 @@ class ProposalService(BaseService):
         self,
         client: User,
         job_id: uuid.UUID,
-        status_filter: Optional[str] = None,
+        status_filter: str | None = None,
         sort_by: str = "newest",
         page: int = 1,
         page_size: int = 20,
@@ -365,7 +363,7 @@ class ProposalService(BaseService):
     async def get_freelancer_proposals(
         self,
         freelancer: User,
-        status_filter: Optional[str] = None,
+        status_filter: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> dict:
