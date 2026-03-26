@@ -1,0 +1,82 @@
+# =============================================================================
+# Kaasb Platform — pre-commit hooks
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+# Update hooks: pre-commit autoupdate
+# =============================================================================
+
+repos:
+  # ---------------------------------------------------------------------------
+  # General file hygiene
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]       # Block files > 500 KB (catches accidental DB dumps)
+      - id: check-case-conflict   # Catches Windows/Mac case-insensitive FS bugs
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key    # Block accidentally committed private keys
+      - id: no-commit-to-branch
+        args: [--branch=main]     # Force all changes through PR on main
+
+  # ---------------------------------------------------------------------------
+  # Secret detection (must come early — blocks commit if secrets found)
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args:
+          - --baseline
+          - .secrets.baseline
+          # Exclude test fixtures and example files
+          - --exclude-files
+          - ".*\\.example$"
+          - --exclude-files
+          - ".*test.*"
+
+  # ---------------------------------------------------------------------------
+  # Python — ruff (lint + autofix) and ruff format
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # ---------------------------------------------------------------------------
+  # Commit message validation (conventional commits)
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - feat
+          - fix
+          - docs
+          - style
+          - refactor
+          - test
+          - chore
+          - perf
+          - ci
+          - build
+          - revert
+          - security
+          - devops
+          - hotfix

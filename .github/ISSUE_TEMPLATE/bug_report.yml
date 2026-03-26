@@ -1,0 +1,91 @@
+name: Bug Report
+description: Something is broken or behaving unexpectedly
+title: "fix: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as possible.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the platform is affected?
+      options:
+        - Backend API
+        - Frontend UI
+        - Authentication / Auth flow
+        - Payments (Qi Card / Stripe)
+        - Jobs / Proposals
+        - Contracts
+        - Messages / Chat
+        - Notifications
+        - Database / Migrations
+        - DevOps / Deployment
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened? What did you expect to happen?
+      placeholder: |
+        When I click "Submit Proposal", the page shows a 500 error instead of
+        redirecting to the proposal confirmation screen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      placeholder: |
+        1. Log in as a freelancer
+        2. Open a job listing
+        3. Click "Submit Proposal"
+        4. Fill in the form and click Submit
+        5. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      placeholder: Should redirect to /proposals/:id with a success message
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Fill in relevant details
+      value: |
+        - OS:
+        - Browser (if frontend):
+        - Backend version / commit:
+        - Docker / local:
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs / Stack Trace
+      description: Paste logs here (redact any credentials)
+      render: text
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 — Production down / data loss
+        - P1 — Major feature broken
+        - P2 — Minor feature broken
+        - P3 — Cosmetic / minor
+    validations:
+      required: true

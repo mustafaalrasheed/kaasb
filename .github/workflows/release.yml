@@ -1,0 +1,183 @@
+name: Kaasb Release
+
+# =============================================================================
+# Triggered by pushing a version tag: git tag v1.2.3 && git push --tags
+# Creates a GitHub Release with auto-generated changelog from conventional commits.
+# =============================================================================
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"       # v1.0.0
+      - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"  # v1.0.0-rc.1
+
+env:
+  REGISTRY:   ghcr.io
+  IMAGE_BASE: ghcr.io/${{ github.repository }}
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history needed for changelog
+
+      - name: Extract version
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          # Determine if pre-release (rc, alpha, beta)
+          if echo "${TAG}" | grep -qE "(rc|alpha|beta)"; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Releasing: ${TAG}"
+
+      # ---- Build release images ----
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push versioned images
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Backend
+          docker buildx build \
+            --file docker/backend/Dockerfile \
+            --target production \
+            --push \
+            --tag "${{ env.IMAGE_BASE }}/backend:${TAG}" \
+            --tag "${{ env.IMAGE_BASE }}/backend:latest" \
+            --cache-from type=gha \
+            ./backend
+
+          # Frontend
+          docker buildx build \
+            --file docker/frontend/Dockerfile \
+            --target production \
+            --push \
+            --build-arg NEXT_PUBLIC_API_URL=https://kaasb.com/api/v1 \
+            --build-arg NEXT_PUBLIC_APP_NAME=Kaasb \
+            --build-arg NEXT_PUBLIC_APP_VERSION="${VERSION}" \
+            --build-arg NEXT_PUBLIC_ENVIRONMENT=production \
+            --tag "${{ env.IMAGE_BASE }}/frontend:${TAG}" \
+            --tag "${{ env.IMAGE_BASE }}/frontend:latest" \
+            --cache-from type=gha \
+            ./frontend
+
+      # ---- Generate changelog from conventional commits ----
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+
+          # Find previous tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "${TAG}" | head -1 || echo "")
+
+          if [ -n "${PREV_TAG}" ]; then
+            RANGE="${PREV_TAG}..${TAG}"
+            echo "Changelog range: ${RANGE}"
+          else
+            RANGE="${TAG}"
+            echo "First release — no previous tag"
+          fi
+
+          # Generate changelog grouped by conventional commit type
+          {
+            echo "## What's Changed"
+            echo ""
+
+            # Features
+            FEATS=$(git log ${RANGE} --pretty=format:"%s (%h)" 2>/dev/null | grep "^feat" || true)
+            if [ -n "${FEATS}" ]; then
+              echo "### Features"
+              echo "${FEATS}" | while IFS= read -r line; do echo "- ${line}"; done
+              echo ""
+            fi
+
+            # Bug fixes
+            FIXES=$(git log ${RANGE} --pretty=format:"%s (%h)" 2>/dev/null | grep "^fix" || true)
+            if [ -n "${FIXES}" ]; then
+              echo "### Bug Fixes"
+              echo "${FIXES}" | while IFS= read -r line; do echo "- ${line}"; done
+              echo ""
+            fi
+
+            # Performance
+            PERFS=$(git log ${RANGE} --pretty=format:"%s (%h)" 2>/dev/null | grep "^perf" || true)
+            if [ -n "${PERFS}" ]; then
+              echo "### Performance"
+              echo "${PERFS}" | while IFS= read -r line; do echo "- ${line}"; done
+              echo ""
+            fi
+
+            # Security
+            SECS=$(git log ${RANGE} --pretty=format:"%s (%h)" 2>/dev/null | grep "^security\|^fix.*security\|^feat.*security" || true)
+            if [ -n "${SECS}" ]; then
+              echo "### Security"
+              echo "${SECS}" | while IFS= read -r line; do echo "- ${line}"; done
+              echo ""
+            fi
+
+            # Infrastructure / DevOps
+            DEVOPS=$(git log ${RANGE} --pretty=format:"%s (%h)" 2>/dev/null | grep "^chore\|^devops\|^ci" || true)
+            if [ -n "${DEVOPS}" ]; then
+              echo "### Infrastructure & CI"
+              echo "${DEVOPS}" | while IFS= read -r line; do echo "- ${line}"; done
+              echo ""
+            fi
+
+            # Docker images
+            echo "### Docker Images"
+            echo "- \`${{ env.IMAGE_BASE }}/backend:${TAG}\`"
+            echo "- \`${{ env.IMAGE_BASE }}/frontend:${TAG}\`"
+            echo ""
+
+            echo "---"
+            echo "**Full diff:** https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"
+          } > changelog_body.md
+
+          echo "Changelog generated:"
+          cat changelog_body.md
+
+      # ---- Create GitHub Release ----
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:   ${{ steps.version.outputs.tag }}
+          name:       "Kaasb ${{ steps.version.outputs.tag }}"
+          body_path:  changelog_body.md
+          prerelease: ${{ steps.version.outputs.prerelease }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- Notify ----
+      - name: Notify release (Telegram)
+        if: steps.version.outputs.prerelease == 'false' && env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="HTML" \
+            -d text="🚀 <b>Kaasb ${{ steps.version.outputs.tag }} released</b>
+          <a href='https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}'>View release notes</a>" > /dev/null

@@ -22,17 +22,25 @@ env/
 .DS_Store
 Thumbs.db
 
-# === Environment Variables ===
+# === Environment Variables — NEVER commit real secrets ===
 .env
 .env.local
+.env.development.local
+.env.test.local
 .env.production
+.env.staging
+# Templates (CHANGE_ME values only) are tracked:
 !.env.production.example
+!.env.staging.example
 !backend/.env.example
 
 # === Node.js ===
 node_modules/
+.npm
 .next/
 out/
+.turbo/
+*.tsbuildinfo
 
 # === Logs ===
 *.log
@@ -42,6 +50,7 @@ logs/
 *.db
 *.sqlite3
 backups/*.sql
+backups/*.sql.gz
 
 # === Uploads (user content) ===
 uploads/*
@@ -57,14 +66,19 @@ ssl/
 *.key
 *.crt
 
-# === Coverage ===
+# === Coverage & Testing ===
 htmlcov/
 .coverage
+.coverage.*
 coverage.xml
-
-# === Testing ===
+coverage/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+junit*.xml
+
+# === Secrets detection baseline ===
+.secrets.baseline
 
 # === Alembic (contains DB URL — use .env instead) ===
 backend/alembic.ini

@@ -1,0 +1,28 @@
+# <type>(<scope>): <short summary — imperative, max 72 chars>
+# │      │          └── Summary: present tense. "add feature" not "added feature"
+# │      └── Scope (optional): auth | jobs | proposals | contracts | payments |
+# │                             messages | users | admin | db | ci | docker | nginx
+# └── Type: feat | fix | docs | style | refactor | test | chore | perf | ci |
+#            build | revert | security | devops | hotfix
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Body (optional — wrap at 72 chars, explain WHY not WHAT):
+#
+#
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Footer (optional):
+# Closes #123
+# Breaking change: describe what breaks and migration path
+# ─────────────────────────────────────────────────────────────────────────────
+# EXAMPLES:
+#   feat(jobs): add budget range filter to job search API
+#   fix(auth): prevent token refresh race condition on concurrent requests
+#   fix(payments): correct IQD rounding error in Qi Card charge calculation
+#   chore(deps): upgrade fastapi to 0.115.6
+#   docs(api): document rate limiting headers in OpenAPI spec
+#   refactor(db): replace Float columns with Numeric(12,4) for monetary fields
+#   perf(proposals): add partial index on proposals.status for freelancer queries
+#   security(auth): rotate JWT secret and invalidate all existing sessions
+#   hotfix(contracts): fix null pointer in contract PDF generation
+# ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,113 @@
+name: Kaasb Deploy to Staging
+
+# =============================================================================
+# Triggers:
+#   1. Auto-deploy when CI passes on develop branch
+#   2. Manual deploy via GitHub Actions UI
+# =============================================================================
+on:
+  workflow_run:
+    workflows: ["Kaasb CI"]
+    branches: [develop]
+    types: [completed]
+
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (sha-abc1234 or 'latest')"
+        required: false
+        default: latest
+
+env:
+  REGISTRY:   ghcr.io
+  IMAGE_BASE: ghcr.io/${{ github.repository }}
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging (staging.kaasb.com)
+    runs-on: ubuntu-latest
+
+    # Only run if CI passed
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success')
+
+    environment: staging
+
+    steps:
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            echo "tag=sha-${SHA:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate required secrets
+        run: |
+          [ -n "${{ secrets.STAGING_HOST }}"     ] || (echo "Missing STAGING_HOST"     && exit 1)
+          [ -n "${{ secrets.STAGING_USER }}"     ] || (echo "Missing STAGING_USER"     && exit 1)
+          [ -n "${{ secrets.SSH_PRIVATE_KEY }}"  ] || (echo "Missing SSH_PRIVATE_KEY"  && exit 1)
+
+      - name: Deploy to staging via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key:      ${{ secrets.SSH_PRIVATE_KEY }}
+          port:     22
+          timeout:  300s
+          script: |
+            set -euo pipefail
+            cd /opt/kaasb
+
+            NEW_TAG="${{ steps.tag.outputs.tag }}"
+            COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.staging"
+
+            echo "Deploying staging — tag: ${NEW_TAG}"
+
+            # Pull latest code
+            git fetch --quiet origin develop
+            git reset --hard origin/develop
+
+            # Update IMAGE_TAG
+            sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${NEW_TAG}/" .env.staging
+
+            # Login to GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | \
+              docker login ghcr.io -u ${{ github.actor }} --password-stdin 2>/dev/null || true
+
+            # Pull images
+            $COMPOSE pull backend frontend
+
+            # Run migrations
+            $COMPOSE run --rm --no-deps backend alembic upgrade head
+
+            # Rolling restart
+            $COMPOSE up -d --no-deps backend
+            sleep 15
+            $COMPOSE up -d --no-deps frontend
+
+            # Reload nginx
+            docker exec kaasb_nginx nginx -s reload 2>/dev/null || true
+
+            echo "Staging deploy complete: ${NEW_TAG}"
+
+      - name: Notify staging deploy (Telegram)
+        if: always() && env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          STATUS="${{ job.status }}"
+          EMOJI="✅"
+          [ "$STATUS" = "failure" ] && EMOJI="❌"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="HTML" \
+            -d text="${EMOJI} <b>Staging deploy ${STATUS}</b>
+          Tag: <code>${{ steps.tag.outputs.tag }}</code>
+          By: ${{ github.actor }}" > /dev/null

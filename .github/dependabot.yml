@@ -1,0 +1,115 @@
+# =============================================================================
+# Kaasb Platform — Dependabot
+# Automated dependency updates for Python, npm, and GitHub Actions.
+# PRs open every Monday morning. Groups related updates together.
+# =============================================================================
+
+version: 2
+
+updates:
+  # ---------------------------------------------------------------------------
+  # Python (pip) — backend/
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: "Asia/Baghdad"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Group minor/patch updates for FastAPI ecosystem together
+      fastapi-stack:
+        patterns:
+          - "fastapi"
+          - "uvicorn*"
+          - "gunicorn"
+          - "pydantic*"
+          - "starlette*"
+      sqlalchemy-stack:
+        patterns:
+          - "sqlalchemy*"
+          - "alembic"
+          - "asyncpg"
+          - "greenlet"
+      monitoring:
+        patterns:
+          - "prometheus*"
+          - "sentry-sdk*"
+    ignore:
+      # Pin major versions manually — review breaking changes first
+      - dependency-name: "fastapi"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "sqlalchemy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pydantic"
+        update-types: ["version-update:semver-major"]
+
+  # ---------------------------------------------------------------------------
+  # npm — frontend/
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: "Asia/Baghdad"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "javascript"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      next-stack:
+        patterns:
+          - "next"
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+      ui-libs:
+        patterns:
+          - "lucide-react"
+          - "clsx"
+          - "tailwind-merge"
+          - "sonner"
+      forms:
+        patterns:
+          - "react-hook-form"
+          - "@hookform/*"
+          - "zod"
+    ignore:
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions — keep action versions up to date
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: "Asia/Baghdad"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      github-actions:
+        patterns:
+          - "*"

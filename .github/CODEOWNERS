@@ -1,0 +1,25 @@
+# =============================================================================
+# Kaasb Platform — CODEOWNERS
+# Routes code review requests automatically.
+# When team grows, update patterns to route to relevant sub-teams.
+# =============================================================================
+
+# Default owner for everything
+* @mustafaalrasheed
+
+# Backend — core services
+/backend/app/core/        @mustafaalrasheed
+/backend/app/models/      @mustafaalrasheed
+/backend/alembic/         @mustafaalrasheed
+
+# Infrastructure & deployment (extra care)
+/docker/                  @mustafaalrasheed
+/docker-compose*.yml      @mustafaalrasheed
+/.github/workflows/       @mustafaalrasheed
+/deploy.sh                @mustafaalrasheed
+/server-setup.sh          @mustafaalrasheed
+
+# Security-sensitive paths (require review before merge)
+/backend/app/api/v1/endpoints/auth.py   @mustafaalrasheed
+/backend/app/middleware/                @mustafaalrasheed
+/backend/app/core/config.py             @mustafaalrasheed

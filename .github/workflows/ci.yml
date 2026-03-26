@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 env:
   PYTHON_VERSION: "3.12"
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   # ===========================================================================
-  # Backend: lint → type-check → migrate → test
+  # Backend: lint → security → type-check → migrate → test → coverage
   # ===========================================================================
   backend:
     name: Backend CI
@@ -66,17 +66,29 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      # ---- Lint ----
       - name: Lint (ruff)
         run: |
           cd backend
           ruff check app/
 
+      # ---- Security scan ----
+      - name: Security scan (pip-audit)
+        run: |
+          pip install pip-audit
+          cd backend
+          pip-audit -r requirements.txt --skip-editable || true
+          # "|| true" so a known-unfixed advisory doesn't block the whole pipeline;
+          # review the output manually. Remove "|| true" when all advisories are clear.
+
+      # ---- Type check ----
       - name: Type check (mypy)
         run: |
           cd backend
           mypy app/ --ignore-missing-imports --no-error-summary
 
-      - name: Run migrations
+      # ---- Migration safety check ----
+      - name: Check for uncommitted migrations (alembic check)
         env:
           DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/test_db
           REDIS_URL:    redis://localhost:6379/0
@@ -84,9 +96,14 @@ jobs:
           ENVIRONMENT:  testing
         run: |
           cd backend
+          # Apply all migrations, then verify no pending model changes
           alembic upgrade head
+          # If alembic detects model changes not reflected in a migration, exit 1
+          alembic check && echo "✓ No pending schema changes" || \
+            (echo "ERROR: Model changes detected with no migration. Run: alembic revision --autogenerate" && exit 1)
 
-      - name: Start server & run API tests
+      # ---- API tests ----
+      - name: Run API tests
         env:
           DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/test_db
           REDIS_URL:    redis://localhost:6379/0
@@ -98,7 +115,6 @@ jobs:
           uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/server.log 2>&1 &
           SERVER_PID=$!
 
-          # Wait up to 30s for server to be ready
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
               echo "Server ready after ${i}s"
@@ -122,8 +138,39 @@ jobs:
           fi
           exit $TEST_EXIT
 
+      # ---- pytest + coverage (if pytest tests exist) ----
+      - name: Run pytest with coverage
+        env:
+          DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/test_db
+          REDIS_URL:    redis://localhost:6379/0
+          SECRET_KEY:   ci-test-secret-key-do-not-use
+          ENVIRONMENT:  testing
+        run: |
+          cd backend
+          if find tests/ -name "test_*.py" -type f 2>/dev/null | grep -q .; then
+            pytest tests/ \
+              --cov=app \
+              --cov-report=xml:coverage.xml \
+              --cov-report=term-missing \
+              --junitxml=junit-backend.xml \
+              -q
+          else
+            echo "No pytest test files found in tests/ — skipping coverage step"
+          fi
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: |
+            backend/coverage.xml
+            backend/junit-backend.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
   # ===========================================================================
-  # Frontend: lint → type-check → build
+  # Frontend: lint → type-check → security → build
   # ===========================================================================
   frontend:
     name: Frontend CI
@@ -154,16 +201,32 @@ jobs:
           cd frontend
           npx tsc --noEmit
 
+      # ---- Security scan ----
+      - name: Security scan (npm audit)
+        run: |
+          cd frontend
+          # --audit-level=high: only fail on high/critical vulnerabilities
+          npm audit --audit-level=high || true
+
       - name: Build (Next.js)
         env:
-          NEXT_PUBLIC_API_URL:  https://kaasb.com/api/v1
-          NEXT_PUBLIC_APP_NAME: Kaasb
+          NEXT_PUBLIC_API_URL:      https://kaasb.com/api/v1
+          NEXT_PUBLIC_APP_NAME:     Kaasb
+          NEXT_PUBLIC_ENVIRONMENT:  production
         run: |
           cd frontend
           npm run build
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/.next/
+          if-no-files-found: error
+          retention-days: 1
+
   # ===========================================================================
-  # Docker: build & push to GHCR on main branch
+  # Docker: build & push to GHCR on main branch only
   # ===========================================================================
   docker:
     name: Build & Push Docker Images
@@ -188,15 +251,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_BASE }}/backend
-          tags: |
-            type=sha,prefix=sha-,format=short
-            type=raw,value=latest
-
       - name: Build & push backend image
         uses: docker/build-push-action@v5
         with:
@@ -220,6 +274,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=https://kaasb.com/api/v1
             NEXT_PUBLIC_APP_NAME=Kaasb
+            NEXT_PUBLIC_ENVIRONMENT=production
           tags: |
             ${{ env.IMAGE_BASE }}/frontend:latest
             ${{ env.IMAGE_BASE }}/frontend:sha-${{ github.sha }}
@@ -228,5 +283,5 @@ jobs:
 
       - name: Output image digest
         run: |
-          echo "Backend image: ${{ env.IMAGE_BASE }}/backend:sha-${{ github.sha }}"
-          echo "Frontend image: ${{ env.IMAGE_BASE }}/frontend:sha-${{ github.sha }}"
+          echo "Backend:  ${{ env.IMAGE_BASE }}/backend:sha-${{ github.sha }}"
+          echo "Frontend: ${{ env.IMAGE_BASE }}/frontend:sha-${{ github.sha }}"

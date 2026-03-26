@@ -1,0 +1,76 @@
+name: Feature Request
+description: Propose a new feature or improvement
+title: "feat: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, search existing issues to avoid duplicates.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Backend API
+        - Frontend UI
+        - Authentication
+        - Payments
+        - Jobs / Proposals
+        - Contracts
+        - Messages / Chat
+        - Notifications
+        - Admin Panel
+        - DevOps / Infrastructure
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Motivation
+      description: What problem does this solve? Why is it needed?
+      placeholder: |
+        Freelancers on the platform can't set their availability calendar,
+        so clients don't know if they're currently open to work.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How should it work?
+      placeholder: |
+        Add an availability toggle to the freelancer profile:
+        - "Available", "Open to offers", "Not available"
+        - Visible on the public profile card
+        - Clients can filter job search by availability
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      placeholder: Could also be a badge on the profile card rather than a full calendar.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (your estimate)
+      options:
+        - P1 — Critical for launch
+        - P2 — Nice to have soon
+        - P3 — Future roadmap
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to implement this feature
