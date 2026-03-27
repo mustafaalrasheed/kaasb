@@ -69,7 +69,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "report_type",
-            sa.Enum("job", "user", "message", "review", name="reporttype"),
+            sa.Enum("job", "user", "message", "review", name="reporttype", create_type=False),
             nullable=False,
         ),
         sa.Column(
@@ -83,13 +83,14 @@ def upgrade() -> None:
                 "spam", "fraud", "harassment", "inappropriate_content",
                 "fake_account", "intellectual_property", "other",
                 name="reportreason",
+                create_type=False,
             ),
             nullable=False,
         ),
         sa.Column("description", sa.Text, nullable=True),
         sa.Column(
             "status",
-            sa.Enum("pending", "reviewed", "resolved", "dismissed", name="reportstatus"),
+            sa.Enum("pending", "reviewed", "resolved", "dismissed", name="reportstatus", create_type=False),
             nullable=False,
             server_default="pending",
         ),
