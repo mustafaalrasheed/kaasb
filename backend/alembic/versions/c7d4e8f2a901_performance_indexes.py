@@ -11,6 +11,8 @@ Revises: b3f9e2a1c456
 Create Date: 2026-03-25 00:00:00.000000
 """
 from typing import Sequence, Union
+
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = 'c7d4e8f2a901'
@@ -25,24 +27,24 @@ def upgrade() -> None:
     op.create_index(
         'ix_jobs_status_published',
         'jobs',
-        ['status', op.desc('published_at')],
+        ['status', sa.text('published_at DESC')],
         postgresql_where="status = 'open'",
     )
     # Job search by category + status
     op.create_index('ix_jobs_status_category', 'jobs', ['status', 'category'])
     # Client's jobs: WHERE client_id=? ORDER BY created_at DESC
-    op.create_index('ix_jobs_client_created', 'jobs', ['client_id', op.desc('created_at')])
+    op.create_index('ix_jobs_client_created', 'jobs', ['client_id', sa.text('created_at DESC')])
 
     # ── PROPOSALS ─────────────────────────────────────────────────────
     # Freelancer's proposals: WHERE freelancer_id=? ORDER BY submitted_at DESC
-    op.create_index('ix_proposals_freelancer_submitted', 'proposals', ['freelancer_id', op.desc('submitted_at')])
+    op.create_index('ix_proposals_freelancer_submitted', 'proposals', ['freelancer_id', sa.text('submitted_at DESC')])
     # Job proposals listing: WHERE job_id=? AND status=? ORDER BY submitted_at DESC
     op.create_index('ix_proposals_job_status', 'proposals', ['job_id', 'status'])
 
     # ── CONTRACTS ─────────────────────────────────────────────────────
     # "My contracts" for client or freelancer, ordered by started_at DESC
-    op.create_index('ix_contracts_client_started', 'contracts', ['client_id', op.desc('started_at')])
-    op.create_index('ix_contracts_freelancer_started', 'contracts', ['freelancer_id', op.desc('started_at')])
+    op.create_index('ix_contracts_client_started', 'contracts', ['client_id', sa.text('started_at DESC')])
+    op.create_index('ix_contracts_freelancer_started', 'contracts', ['freelancer_id', sa.text('started_at DESC')])
 
     # ── MILESTONES ────────────────────────────────────────────────────
     # Milestones by contract, ordered for display
@@ -51,27 +53,27 @@ def upgrade() -> None:
     # ── NOTIFICATIONS ─────────────────────────────────────────────────
     # User's notifications: WHERE user_id=? AND is_read=false ORDER BY created_at DESC
     # Composite index covers both "all" and "unread only" queries
-    op.create_index('ix_notifications_user_read_created', 'notifications', ['user_id', 'is_read', op.desc('created_at')])
+    op.create_index('ix_notifications_user_read_created', 'notifications', ['user_id', 'is_read', sa.text('created_at DESC')])
 
     # ── MESSAGES ──────────────────────────────────────────────────────
     # Messages in conversation: WHERE conversation_id=? ORDER BY created_at DESC
-    op.create_index('ix_messages_conversation_created', 'messages', ['conversation_id', op.desc('created_at')])
+    op.create_index('ix_messages_conversation_created', 'messages', ['conversation_id', sa.text('created_at DESC')])
 
     # ── CONVERSATIONS ─────────────────────────────────────────────────
     # User's conversations ordered by last activity
-    op.create_index('ix_conversations_p1_last_msg', 'conversations', ['participant_one_id', op.desc('last_message_at')])
-    op.create_index('ix_conversations_p2_last_msg', 'conversations', ['participant_two_id', op.desc('last_message_at')])
+    op.create_index('ix_conversations_p1_last_msg', 'conversations', ['participant_one_id', sa.text('last_message_at DESC')])
+    op.create_index('ix_conversations_p2_last_msg', 'conversations', ['participant_two_id', sa.text('last_message_at DESC')])
 
     # ── REVIEWS ───────────────────────────────────────────────────────
     # Reviews for a user (public only): WHERE reviewee_id=? AND is_public=true ORDER BY created_at DESC
-    op.create_index('ix_reviews_reviewee_public', 'reviews', ['reviewee_id', 'is_public', op.desc('created_at')])
+    op.create_index('ix_reviews_reviewee_public', 'reviews', ['reviewee_id', 'is_public', sa.text('created_at DESC')])
 
     # ── TRANSACTIONS ──────────────────────────────────────────────────
     # Admin transaction listing + financial aggregation queries
     op.create_index('ix_transactions_type_status', 'transactions', ['transaction_type', 'status'])
     # User's transactions: WHERE payer_id=? OR payee_id=? ORDER BY created_at DESC
-    op.create_index('ix_transactions_payer_created', 'transactions', ['payer_id', op.desc('created_at')])
-    op.create_index('ix_transactions_payee_created', 'transactions', ['payee_id', op.desc('created_at')])
+    op.create_index('ix_transactions_payer_created', 'transactions', ['payer_id', sa.text('created_at DESC')])
+    op.create_index('ix_transactions_payee_created', 'transactions', ['payee_id', sa.text('created_at DESC')])
 
     # ── ESCROWS ───────────────────────────────────────────────────────
     # Escrow lookup by milestone (1:1 relationship, used in release_escrow)
@@ -94,7 +96,7 @@ def upgrade() -> None:
         postgresql_where="primary_role = 'freelancer' AND status = 'active'",
     )
     # Admin user listing sorted by created_at
-    op.create_index('ix_users_role_status_created', 'users', ['primary_role', 'status', op.desc('created_at')])
+    op.create_index('ix_users_role_status_created', 'users', ['primary_role', 'status', sa.text('created_at DESC')])
 
 
 def downgrade() -> None:
