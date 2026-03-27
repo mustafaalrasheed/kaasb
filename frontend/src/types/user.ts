@@ -37,27 +37,26 @@ export interface TokenResponse {
   token_type: string;
 }
 
-export interface UserProfile
-  extends Pick<
-    User,
-    | "id"
-    | "username"
-    | "first_name"
-    | "last_name"
-    | "display_name"
-    | "avatar_url"
-    | "bio"
-    | "country"
-    | "city"
-    | "primary_role"
-    | "title"
-    | "hourly_rate"
-    | "skills"
-    | "experience_level"
-    | "portfolio_url"
-    | "avg_rating"
-    | "total_reviews"
-    | "jobs_completed"
-    | "is_online"
-    | "created_at"
-  > {}
+export type UserProfile = Pick<
+  User,
+  | "id"
+  | "username"
+  | "first_name"
+  | "last_name"
+  | "display_name"
+  | "avatar_url"
+  | "bio"
+  | "country"
+  | "city"
+  | "primary_role"
+  | "title"
+  | "hourly_rate"
+  | "skills"
+  | "experience_level"
+  | "portfolio_url"
+  | "avg_rating"
+  | "total_reviews"
+  | "jobs_completed"
+  | "is_online"
+  | "created_at"
+>;

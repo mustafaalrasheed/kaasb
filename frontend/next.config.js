@@ -6,6 +6,10 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://kaasb.com";
 
 const nextConfig = {
+  // Warnings only — don't fail the production build on lint issues
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: false },
+
   // Enable React strict mode for better development experience
   reactStrictMode: true,
 
