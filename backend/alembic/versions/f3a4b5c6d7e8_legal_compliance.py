@@ -25,19 +25,30 @@ depends_on = None
 
 def upgrade() -> None:
     # -----------------------------------------------------------------------
-    # 1. Create enum types
+    # 1. Create enum types (idempotent — safe to re-run if migration was
+    #    interrupted after the CREATE TYPE but before CREATE TABLE)
     # -----------------------------------------------------------------------
-    op.execute(
-        "CREATE TYPE reporttype AS ENUM ('job', 'user', 'message', 'review')"
-    )
-    op.execute(
-        "CREATE TYPE reportreason AS ENUM ("
-        "'spam', 'fraud', 'harassment', 'inappropriate_content', "
-        "'fake_account', 'intellectual_property', 'other')"
-    )
-    op.execute(
-        "CREATE TYPE reportstatus AS ENUM ('pending', 'reviewed', 'resolved', 'dismissed')"
-    )
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE reporttype AS ENUM ('job', 'user', 'message', 'review');
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE reportreason AS ENUM (
+                'spam', 'fraud', 'harassment', 'inappropriate_content',
+                'fake_account', 'intellectual_property', 'other'
+            );
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE reportstatus AS ENUM ('pending', 'reviewed', 'resolved', 'dismissed');
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$
+    """)
 
     # -----------------------------------------------------------------------
     # 2. Create reports table
