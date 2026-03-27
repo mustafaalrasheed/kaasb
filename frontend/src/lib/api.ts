@@ -1,6 +1,6 @@
 import axios from "axios";
 import type { User } from "@/types/user";
-import type { Job } from "@/types/job";
+import type { Job, JobDetail } from "@/types/job";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -119,7 +119,7 @@ export const jobsApi = {
     page_size?: number;
   }) => api.get("/jobs", { params }),
 
-  getById: (jobId: string) => api.get<{ data: Job }>(`/jobs/${jobId}`),
+  getById: (jobId: string) => api.get<{ data: JobDetail }>(`/jobs/${jobId}`),
 
   create: (data: {
     title: string;
