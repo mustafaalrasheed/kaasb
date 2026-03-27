@@ -28,7 +28,7 @@ def upgrade() -> None:
         'ix_jobs_status_published',
         'jobs',
         ['status', sa.text('published_at DESC')],
-        postgresql_where="status = 'open'",
+        postgresql_where="status = 'OPEN'",
     )
     # Job search by category + status
     op.create_index('ix_jobs_status_category', 'jobs', ['status', 'category'])
@@ -93,7 +93,7 @@ def upgrade() -> None:
         'ix_users_freelancer_active',
         'users',
         ['primary_role', 'status'],
-        postgresql_where="primary_role = 'freelancer' AND status = 'active'",
+        postgresql_where="primary_role = 'FREELANCER' AND status = 'ACTIVE'",
     )
     # Admin user listing sorted by created_at
     op.create_index('ix_users_role_status_created', 'users', ['primary_role', 'status', sa.text('created_at DESC')])
