@@ -113,7 +113,7 @@ def upgrade() -> None:
     op.create_index(
         'ix_audit_log_changed_at',
         'audit_log',
-        [op.desc('changed_at')],
+        [sa.text('changed_at DESC')],
     )
 
     # ─────────────────────────────────────────────────────────────────────────
