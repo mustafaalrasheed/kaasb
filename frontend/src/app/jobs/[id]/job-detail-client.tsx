@@ -45,7 +45,7 @@ export default function JobDetailClient() {
     async function loadJob() {
       try {
         const response = await jobsApi.getById(jobId);
-        setJob(response.data);
+        setJob(response.data.data);
       } catch (err: any) {
         setError(
           err.response?.status === 404
@@ -104,7 +104,7 @@ export default function JobDetailClient() {
       setEstimatedDuration("");
       // Refresh job to update proposal count
       const response = await jobsApi.getById(jobId);
-      setJob(response.data);
+      setJob(response.data.data);
     } catch (err: any) {
       const detail = err.response?.data?.detail;
       if (Array.isArray(detail)) {

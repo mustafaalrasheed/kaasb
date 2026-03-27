@@ -34,7 +34,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     // Fetch user profile
     const userResponse = await authApi.getMe();
-    set({ user: userResponse.data, isAuthenticated: true });
+    set({ user: userResponse.data.data, isAuthenticated: true });
   },
 
   register: async (data) => {
@@ -43,7 +43,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     // Fetch user profile
     const userResponse = await authApi.getMe();
-    set({ user: userResponse.data, isAuthenticated: true });
+    set({ user: userResponse.data.data, isAuthenticated: true });
   },
 
   logout: () => {
@@ -56,7 +56,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   fetchUser: async () => {
     try {
       const response = await authApi.getMe();
-      set({ user: response.data, isAuthenticated: true });
+      set({ user: response.data.data, isAuthenticated: true });
     } catch {
       set({ user: null, isAuthenticated: false });
     }
@@ -66,7 +66,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       // Cookie is sent automatically — just check if we have a valid session
       const response = await authApi.getMe();
-      set({ user: response.data, isAuthenticated: true, isLoading: false });
+      set({ user: response.data.data, isAuthenticated: true, isLoading: false });
     } catch {
       set({ user: null, isAuthenticated: false, isLoading: false });
     }
