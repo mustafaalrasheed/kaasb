@@ -3,9 +3,10 @@
 import { useEffect } from "react";
 
 // Sentry is optional — only imported if the DSN is configured
+// webpackIgnore: @sentry/nextjs is not installed; install it to enable Sentry
 let captureException: ((err: unknown) => string) | null = null;
 if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_SENTRY_DSN) {
-  import("@sentry/nextjs").then((Sentry) => {
+  import(/* webpackIgnore: true */ "@sentry/nextjs" as string).then((Sentry) => {
     captureException = Sentry.captureException;
   });
 }

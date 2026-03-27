@@ -21,7 +21,8 @@ export async function register() {
 
   if (process.env.NEXT_RUNTIME === "nodejs") {
     // Server-side (Node.js) Sentry — handles API route errors, SSR errors
-    const Sentry = await import("@sentry/nextjs");
+    // webpackIgnore: @sentry/nextjs is optional — install it to enable Sentry
+    const Sentry = await import(/* webpackIgnore: true */ "@sentry/nextjs" as string);
 
     Sentry.init({
       dsn,
@@ -34,7 +35,7 @@ export async function register() {
       // Never send PII to Sentry
       sendDefaultPii: false,
 
-      beforeSend(event) {
+      beforeSend(event: Record<string, unknown>) {
         return scrubEvent(event);
       },
 
@@ -51,7 +52,7 @@ export async function register() {
 
   if (process.env.NEXT_RUNTIME === "edge") {
     // Edge runtime Sentry (middleware, Edge API routes)
-    const Sentry = await import("@sentry/nextjs");
+    const Sentry = await import(/* webpackIgnore: true */ "@sentry/nextjs" as string);
 
     Sentry.init({
       dsn,
