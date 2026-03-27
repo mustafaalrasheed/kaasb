@@ -35,7 +35,7 @@ export const SOCIAL = {
 } as const;
 
 // === Keyword Sets ===
-export const KEYWORDS = {
+export const KEYWORDS: Record<string, string[]> = {
   primary: [
     "Kaasb",
     "freelancing Iraq",
