@@ -47,7 +47,7 @@ export default function JobProposalsPage() {
     async function loadJob() {
       try {
         const response = await jobsApi.getById(jobId);
-        setJob(response.data);
+        setJob(response.data.data);
       } catch {
         setJob(null);
       }
@@ -92,7 +92,7 @@ export default function JobProposalsPage() {
       // Refresh job if accepted
       if (responseAction === "accepted") {
         const jobRes = await jobsApi.getById(jobId);
-        setJob(jobRes.data);
+        setJob(jobRes.data.data);
       }
     } catch (err: any) {
       toast.error(err.response?.data?.detail || "Failed to respond");
