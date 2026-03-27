@@ -187,12 +187,47 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=f"{settings.APP_NAME} API",
         description=(
-            "Kaasb is a freelancing platform connecting talented freelancers "
-            "with clients worldwide. Built with FastAPI and modern best practices."
+            "## Kaasb — Iraqi Freelancing Marketplace\n\n"
+            "REST API for the Kaasb platform connecting Iraqi and MENA freelancers with clients.\n\n"
+            "### Authentication\n"
+            "All protected endpoints require a Bearer token in the `Authorization` header:\n"
+            "```\nAuthorization: Bearer <access_token>\n```\n"
+            "Obtain tokens via `POST /auth/login` or `POST /auth/register`.\n"
+            "Access tokens expire after **30 minutes**. Use `POST /auth/refresh` to renew.\n\n"
+            "### Rate Limits\n"
+            "- Login: 5 req / 5 min\n"
+            "- Register: 3 req / 10 min\n"
+            "- Standard API: 120 req / min\n\n"
+            "### Developer Resources\n"
+            "- [Postman Collection](https://github.com/mustafaalrasheed/kaasb/blob/main/docs/api/postman_collection.json)\n"
+            "- [Developer Guide](https://github.com/mustafaalrasheed/kaasb/blob/main/docs/api/developer_guide.md)\n"
+            "- [Error Code Reference](https://github.com/mustafaalrasheed/kaasb/blob/main/docs/api/error_codes.md)\n"
         ),
         version=settings.APP_VERSION,
+        contact={
+            "name": "Kaasb Platform",
+            "url": f"https://{settings.DOMAIN}",
+            "email": "dev@kaasb.com",
+        },
+        license_info={
+            "name": "Proprietary",
+            "url": f"https://{settings.DOMAIN}/terms",
+        },
         docs_url="/docs" if settings.DEBUG else None,
         redoc_url="/redoc" if settings.DEBUG else None,
+        openapi_tags=[
+            {"name": "Health", "description": "Liveness and readiness probes"},
+            {"name": "Authentication", "description": "Register, login, token management"},
+            {"name": "Users", "description": "User profiles and account management"},
+            {"name": "Jobs", "description": "Job postings — search, create, manage"},
+            {"name": "Proposals", "description": "Freelancer proposals on job postings"},
+            {"name": "Contracts & Milestones", "description": "Active contracts and milestone workflow"},
+            {"name": "Payments", "description": "Escrow, payouts, Stripe, Qi Card, Wise"},
+            {"name": "Reviews & Ratings", "description": "Post-contract reviews and ratings"},
+            {"name": "Messages", "description": "Direct messaging between users"},
+            {"name": "Notifications", "description": "In-app notification management"},
+            {"name": "Admin", "description": "Platform administration (admin role required)"},
+        ],
         lifespan=lifespan,
     )
 

@@ -1,0 +1,1023 @@
+{
+  "info": {
+    "name": "Kaasb API",
+    "_postman_id": "kaasb-api-v1",
+    "description": "Complete API collection for the Kaasb freelancing platform.\n\n## Setup\n1. Import this collection and the `kaasb_environment.json` file.\n2. Set `base_url` in the environment (default: `http://localhost:8000/api/v1`).\n3. Run **Auth / Register** or **Auth / Login** — the token is saved automatically.\n4. All authenticated requests use `{{access_token}}` from the environment.\n\n## Authentication\nAll endpoints except `/auth/register` and `/auth/login` require a Bearer token.\nThe pre-request script on the collection root auto-refreshes expired tokens.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000/api/v1" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" },
+    { "key": "test_job_id", "value": "" },
+    { "key": "test_proposal_id", "value": "" },
+    { "key": "test_contract_id", "value": "" },
+    { "key": "test_milestone_id", "value": "" },
+    { "key": "test_conversation_id", "value": "" },
+    { "key": "test_username", "value": "ali_developer" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Liveness Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
+            "description": "Returns 200 if the application is running. Used by Docker health checks and load balancers."
+          },
+          "response": [
+            {
+              "name": "Healthy",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"status\": \"healthy\", \"db\": \"ok\", \"redis\": \"ok\"}"
+            }
+          ]
+        },
+        {
+          "name": "Readiness Probe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health/ready", "host": ["{{base_url}}"], "path": ["health", "ready"] },
+            "description": "Returns 200 when the app is ready to serve traffic (DB connected, migrations applied)."
+          }
+        },
+        {
+          "name": "Detailed Diagnostics (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{health_bearer_token}}" }],
+            "url": { "raw": "{{base_url}}/health/detailed", "host": ["{{base_url}}"], "path": ["health", "detailed"] },
+            "description": "Full diagnostics including DB pool, Redis info, worker stats. Requires HEALTH_BEARER_TOKEN."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const r = pm.response.json();",
+                  "  pm.environment.set('access_token', r.access_token);",
+                  "  pm.environment.set('refresh_token', r.refresh_token);",
+                  "  pm.test('Registration successful', () => pm.expect(r.access_token).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ali.hassan@example.com\",\n  \"username\": \"ali_developer\",\n  \"password\": \"SecurePass1!\",\n  \"first_name\": \"علي\",\n  \"last_name\": \"حسن\",\n  \"primary_role\": \"freelancer\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] },
+            "description": "Register a new user. Returns JWT tokens on success.\n\n**Rate limit:** 3 requests / 10 min per IP\n\n**Password rules:** min 8 chars, 1 uppercase, 1 digit, 1 special character\n\n**Roles:** `client` or `freelancer`"
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const r = pm.response.json();",
+                  "  pm.environment.set('access_token', r.access_token);",
+                  "  pm.environment.set('refresh_token', r.refresh_token);",
+                  "  pm.test('Login successful', () => pm.expect(r.token_type).to.equal('bearer'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ali.hassan@example.com\",\n  \"password\": \"SecurePass1!\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+            "description": "Login with email and password.\n\n**Rate limit:** 5 requests / 5 min per IP\n\n**Returns:** `access_token` (30 min) + `refresh_token` (7 days)"
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const r = pm.response.json();",
+                  "  pm.environment.set('access_token', r.access_token);",
+                  "  pm.environment.set('refresh_token', r.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/refresh", "host": ["{{base_url}}"], "path": ["auth", "refresh"] },
+            "description": "Exchange a refresh token for new access + refresh tokens. Old refresh token is invalidated (rotation)."
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] },
+            "description": "Get the authenticated user's full profile."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] },
+            "description": "Revoke the current refresh token. Access token expires naturally after 30 min."
+          }
+        },
+        {
+          "name": "Logout All Sessions",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/auth/logout-all", "host": ["{{base_url}}"], "path": ["auth", "logout-all"] },
+            "description": "Revoke ALL refresh tokens for this user. Forces re-login on all devices."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Search Freelancers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/freelancers?skills=Python,FastAPI&min_rate=10&max_rate=100&page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["users", "freelancers"],
+              "query": [
+                { "key": "q", "value": "python developer", "disabled": true },
+                { "key": "skills", "value": "Python,FastAPI" },
+                { "key": "min_rate", "value": "10" },
+                { "key": "max_rate", "value": "100" },
+                { "key": "experience_level", "value": "senior", "disabled": true },
+                { "key": "country", "value": "Iraq", "disabled": true },
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "20" }
+              ]
+            },
+            "description": "Browse and search freelancers with filtering.\n\n**Rate limit:** 120 req/min\n\n**Filters:** `q` (text search), `skills` (comma-separated), `min_rate`/`max_rate` (USD/hr), `experience_level` (junior/mid/senior/expert), `country`"
+          }
+        },
+        {
+          "name": "Get User Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/profile/{{test_username}}",
+              "host": ["{{base_url}}"],
+              "path": ["users", "profile", "{{test_username}}"]
+            },
+            "description": "Get a public user profile by username."
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"علي\",\n  \"last_name\": \"حسن\",\n  \"display_name\": \"Ali Hassan\",\n  \"bio\": \"Senior Python & FastAPI developer with 5 years experience. Specializing in REST APIs and microservices.\",\n  \"title\": \"Senior Backend Developer\",\n  \"hourly_rate\": 45,\n  \"skills\": [\"Python\", \"FastAPI\", \"PostgreSQL\", \"Docker\", \"Redis\"],\n  \"experience_level\": \"senior\",\n  \"country\": \"Iraq\",\n  \"city\": \"Baghdad\",\n  \"portfolio_url\": \"https://ali-dev.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/profile", "host": ["{{base_url}}"], "path": ["users", "profile"] },
+            "description": "Update the authenticated user's profile. Only provided fields are updated."
+          }
+        },
+        {
+          "name": "Upload Avatar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "src": "/path/to/avatar.jpg" }]
+            },
+            "url": { "raw": "{{base_url}}/users/avatar", "host": ["{{base_url}}"], "path": ["users", "avatar"] },
+            "description": "Upload a profile avatar image.\n\n**Accepted:** JPEG, PNG, WebP\n**Max size:** 10 MB\n**Rate limit:** 10 req/min"
+          }
+        },
+        {
+          "name": "Remove Avatar",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{base_url}}/users/avatar", "host": ["{{base_url}}"], "path": ["users", "avatar"] }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"OldPass1!\",\n  \"new_password\": \"NewPass1!\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/users/password", "host": ["{{base_url}}"], "path": ["users", "password"] },
+            "description": "Change password. Requires current password.\n\n**Rate limit:** 5 req/5 min"
+          }
+        },
+        {
+          "name": "Deactivate Account",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{base_url}}/users/account", "host": ["{{base_url}}"], "path": ["users", "account"] },
+            "description": "Soft-delete the account. Cannot be undone via API."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Jobs",
+      "item": [
+        {
+          "name": "Search Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/jobs?q=python&category=web_development&job_type=fixed&page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["jobs"],
+              "query": [
+                { "key": "q", "value": "python" },
+                { "key": "category", "value": "web_development" },
+                { "key": "job_type", "value": "fixed" },
+                { "key": "min_budget", "value": "100", "disabled": true },
+                { "key": "max_budget", "value": "5000", "disabled": true },
+                { "key": "skills", "value": "Python,FastAPI", "disabled": true },
+                { "key": "sort", "value": "newest", "disabled": true },
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "20" }
+              ]
+            },
+            "description": "Browse and search job postings.\n\n**job_type:** `fixed` or `hourly`\n**sort:** `newest` (default), `oldest`, `budget_high`, `budget_low`\n**No auth required** for browsing."
+          }
+        },
+        {
+          "name": "Create Job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.environment.set('test_job_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Build a REST API for an Iraqi e-commerce platform\",\n  \"description\": \"We need a FastAPI backend for our e-commerce platform targeting Iraqi customers. Must support Arabic and English, integrate with Qi Card payment gateway, and handle high traffic during peak hours (7-11pm Baghdad time).\",\n  \"category\": \"web_development\",\n  \"job_type\": \"fixed\",\n  \"budget_min\": 500,\n  \"budget_max\": 1500,\n  \"skills_required\": [\"Python\", \"FastAPI\", \"PostgreSQL\", \"Qi Card API\"],\n  \"experience_level\": \"mid\",\n  \"duration_weeks\": 4,\n  \"location_preference\": \"remote\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/jobs", "host": ["{{base_url}}"], "path": ["jobs"] },
+            "description": "Post a new job. Requires `client` or `admin` role.\n\n**budget:** IQD or USD depending on currency field\n**job_type:** `fixed` (lump sum) or `hourly`"
+          }
+        },
+        {
+          "name": "Get Job Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{test_job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "{{test_job_id}}"]
+            },
+            "description": "Get full job details including proposal count."
+          }
+        },
+        {
+          "name": "Get My Posted Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/jobs/my/posted?status=open&page=1",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "my", "posted"],
+              "query": [
+                { "key": "status", "value": "open" },
+                { "key": "page", "value": "1" }
+              ]
+            },
+            "description": "List jobs posted by the authenticated client."
+          }
+        },
+        {
+          "name": "Update Job",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated: Build a REST API for Iraqi e-commerce\",\n  \"budget_max\": 2000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs/{{test_job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "{{test_job_id}}"]
+            },
+            "description": "Update a job posting. Only the job owner can update. Cannot update after proposals are accepted."
+          }
+        },
+        {
+          "name": "Close Job",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{test_job_id}}/close",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "{{test_job_id}}", "close"]
+            },
+            "description": "Close a job posting. Stops accepting new proposals."
+          }
+        },
+        {
+          "name": "Delete Job",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{test_job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "{{test_job_id}}"]
+            },
+            "description": "Delete a job posting. Only possible if no active contracts exist."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Proposals",
+      "item": [
+        {
+          "name": "Submit Proposal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.environment.set('test_proposal_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cover_letter\": \"مرحباً، أنا مطور Python متخصص في FastAPI وقواعد البيانات. لدي خبرة 5 سنوات في بناء APIs للتجارة الإلكترونية وتكامل بوابات الدفع العراقية مثل Qi Card. يمكنني إتمام المشروع خلال 3 أسابيع بجودة عالية.\",\n  \"bid_amount\": 1200,\n  \"estimated_duration\": \"3 weeks\",\n  \"milestones\": [\n    { \"title\": \"API Design & Database Schema\", \"amount\": 300, \"description\": \"Design REST API endpoints and PostgreSQL schema\" },\n    { \"title\": \"Core API Development\", \"amount\": 600, \"description\": \"Implement all endpoints with authentication\" },\n    { \"title\": \"Payment Integration & Testing\", \"amount\": 300, \"description\": \"Qi Card integration, load testing, deployment\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/proposals/jobs/{{test_job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["proposals", "jobs", "{{test_job_id}}"]
+            },
+            "description": "Submit a proposal on a job. Requires `freelancer` role.\n\n**One proposal per job per freelancer** — 409 if duplicate.\n\n**Rate limit:** Standard API (120 req/min)"
+          }
+        },
+        {
+          "name": "Get My Proposals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/proposals/my?status=pending&page=1",
+              "host": ["{{base_url}}"],
+              "path": ["proposals", "my"],
+              "query": [
+                { "key": "status", "value": "pending" },
+                { "key": "page", "value": "1" }
+              ]
+            },
+            "description": "List proposals submitted by the authenticated freelancer.\n\n**status filter:** `pending`, `shortlisted`, `accepted`, `rejected`, `withdrawn`"
+          }
+        },
+        {
+          "name": "Get Proposals for Job",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/proposals/jobs/{{test_job_id}}/list?status=&sort_by=newest&page=1&page_size=15",
+              "host": ["{{base_url}}"],
+              "path": ["proposals", "jobs", "{{test_job_id}}", "list"],
+              "query": [
+                { "key": "status", "value": "" },
+                { "key": "sort_by", "value": "newest" },
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "15" }
+              ]
+            },
+            "description": "List proposals on a job (client only).\n\n**sort_by:** `newest`, `oldest`, `bid_low`, `bid_high`"
+          }
+        },
+        {
+          "name": "Get Proposal",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/proposals/{{test_proposal_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["proposals", "{{test_proposal_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Proposal",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bid_amount\": 1100,\n  \"cover_letter\": \"Updated: I can complete this in 2.5 weeks with the same quality.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/proposals/{{test_proposal_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["proposals", "{{test_proposal_id}}"]
+            },
+            "description": "Update a pending proposal. Only allowed while status is `pending`."
+          }
+        },
+        {
+          "name": "Withdraw Proposal",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/proposals/{{test_proposal_id}}/withdraw",
+              "host": ["{{base_url}}"],
+              "path": ["proposals", "{{test_proposal_id}}", "withdraw"]
+            }
+          }
+        },
+        {
+          "name": "Respond to Proposal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"accepted\",\n  \"client_note\": \"Great proposal! Looking forward to working with you.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/proposals/{{test_proposal_id}}/respond",
+              "host": ["{{base_url}}"],
+              "path": ["proposals", "{{test_proposal_id}}", "respond"]
+            },
+            "description": "Client responds to a proposal.\n\n**status options:** `shortlisted`, `accepted`, `rejected`\n\nAccepting a proposal automatically creates a contract and rejects all other pending proposals."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contracts & Milestones",
+      "item": [
+        {
+          "name": "Get My Contracts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/contracts/my?status=active&page=1",
+              "host": ["{{base_url}}"],
+              "path": ["contracts", "my"],
+              "query": [
+                { "key": "status", "value": "active" },
+                { "key": "page", "value": "1" }
+              ]
+            },
+            "description": "List contracts for the authenticated user (as client or freelancer)."
+          }
+        },
+        {
+          "name": "Get Contract",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const c = pm.response.json();",
+                  "  if (c.milestones && c.milestones.length > 0) {",
+                  "    pm.environment.set('test_milestone_id', c.milestones[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/contracts/{{test_contract_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["contracts", "{{test_contract_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Add Milestones",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"title\": \"Phase 1: Database Design\",\n    \"description\": \"Design and implement PostgreSQL schema with all tables and indexes\",\n    \"amount\": 300,\n    \"due_date\": \"2026-04-15\"\n  },\n  {\n    \"title\": \"Phase 2: API Development\",\n    \"description\": \"Implement all REST API endpoints with authentication and validation\",\n    \"amount\": 700,\n    \"due_date\": \"2026-05-01\"\n  }\n]"
+            },
+            "url": {
+              "raw": "{{base_url}}/contracts/{{test_contract_id}}/milestones",
+              "host": ["{{base_url}}"],
+              "path": ["contracts", "{{test_contract_id}}", "milestones"]
+            }
+          }
+        },
+        {
+          "name": "Start Milestone",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/contracts/milestones/{{test_milestone_id}}/start",
+              "host": ["{{base_url}}"],
+              "path": ["contracts", "milestones", "{{test_milestone_id}}", "start"]
+            },
+            "description": "Freelancer marks a milestone as started. Transitions: `pending` → `in_progress`"
+          }
+        },
+        {
+          "name": "Submit Milestone",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"submission_note\": \"Completed the database schema design. All tables created with proper indexes and foreign keys. GitHub PR: https://github.com/example/pr/42\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/contracts/milestones/{{test_milestone_id}}/submit",
+              "host": ["{{base_url}}"],
+              "path": ["contracts", "milestones", "{{test_milestone_id}}", "submit"]
+            },
+            "description": "Freelancer submits a milestone for client review. Transitions: `in_progress` → `submitted`"
+          }
+        },
+        {
+          "name": "Review Milestone",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"approve\",\n  \"review_note\": \"Excellent work! The schema is well-designed and all requirements are met.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/contracts/milestones/{{test_milestone_id}}/review",
+              "host": ["{{base_url}}"],
+              "path": ["contracts", "milestones", "{{test_milestone_id}}", "review"]
+            },
+            "description": "Client reviews a submitted milestone.\n\n**action:** `approve` (releases payment) or `request_changes`\n\nApproving triggers escrow release to freelancer."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Payment Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/payments/summary", "host": ["{{base_url}}"], "path": ["payments", "summary"] },
+            "description": "Get the authenticated user's payment dashboard: balance, total earned, total spent, pending."
+          }
+        },
+        {
+          "name": "List Payment Accounts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/payments/accounts", "host": ["{{base_url}}"], "path": ["payments", "accounts"] }
+          }
+        },
+        {
+          "name": "Setup Payment Account (Stripe)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"stripe\",\n  \"account_type\": \"payment\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments/accounts", "host": ["{{base_url}}"], "path": ["payments", "accounts"] }
+          }
+        },
+        {
+          "name": "Setup Payment Account (Qi Card)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"qi_card\",\n  \"account_type\": \"payment\",\n  \"qi_card_number\": \"1234567890123456\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments/accounts", "host": ["{{base_url}}"], "path": ["payments", "accounts"] },
+            "description": "Setup a Qi Card account for Iraqi Dinar (IQD) payments."
+          }
+        },
+        {
+          "name": "List Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payments/transactions?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["payments", "transactions"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Fund Milestone Escrow",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"milestone_id\": \"{{test_milestone_id}}\",\n  \"payment_method\": \"stripe\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments/escrow/fund", "host": ["{{base_url}}"], "path": ["payments", "escrow", "fund"] },
+            "description": "Client funds escrow for a milestone. Money is held until milestone is approved.\n\n**payment_method:** `stripe` (USD) or `qi_card` (IQD)"
+          }
+        },
+        {
+          "name": "Request Payout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 500,\n  \"currency\": \"USD\",\n  \"payout_method\": \"wise\",\n  \"account_id\": \"{{payout_account_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments/payout", "host": ["{{base_url}}"], "path": ["payments", "payout"] },
+            "description": "Freelancer requests payout of available balance.\n\n**payout_method:** `wise` (international) or `qi_card` (Iraq)"
+          }
+        },
+        {
+          "name": "Qi Card Webhook (Server→Server)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-QiCard-Signature", "value": "sha256=..." }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"payment.completed\",\n  \"transaction_id\": \"QI-TXN-20260327-001\",\n  \"amount\": 150000,\n  \"currency\": \"IQD\",\n  \"merchant_reference\": \"KAASB-MS-{{test_milestone_id}}\",\n  \"status\": \"success\",\n  \"timestamp\": \"2026-03-27T19:00:00Z\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments/qi-card/webhook", "host": ["{{base_url}}"], "path": ["payments", "qi-card", "webhook"] },
+            "description": "**Server-to-server only.** Qi Card payment gateway posts events here.\n\nSignature is verified via HMAC-SHA256 using `QI_CARD_SECRET_KEY`.\n\nNo rate limiting on this endpoint. Raw body passthrough enabled in Nginx."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "item": [
+        {
+          "name": "Get User Reviews",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/reviews/user/{{test_user_id}}?page=1&page_size=10",
+              "host": ["{{base_url}}"],
+              "path": ["reviews", "user", "{{test_user_id}}"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Review Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/reviews/user/{{test_user_id}}/stats",
+              "host": ["{{base_url}}"],
+              "path": ["reviews", "user", "{{test_user_id}}", "stats"]
+            },
+            "description": "Get aggregated review statistics: avg rating, breakdown by category (communication, quality, etc.)."
+          }
+        },
+        {
+          "name": "Submit Review",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Exceptional work! Ali delivered the API ahead of schedule with excellent code quality. Communication was great throughout the project — he proactively shared progress updates in Arabic and English.\",\n  \"communication_rating\": 5,\n  \"quality_rating\": 5,\n  \"professionalism_rating\": 5,\n  \"timeliness_rating\": 4\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/reviews/contract/{{test_contract_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["reviews", "contract", "{{test_contract_id}}"]
+            },
+            "description": "Submit a review for a completed contract. Both client and freelancer can review each other once.\n\n**rating:** 1–5 (overall)\n**sub-ratings:** communication, quality, professionalism, timeliness (all 1–5)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "List Conversations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/messages/conversations?page=1",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "conversations"],
+              "query": [{ "key": "page", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "Start Conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.environment.set('test_conversation_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recipient_username\": \"ali_developer\",\n  \"job_id\": \"{{test_job_id}}\",\n  \"initial_message\": \"مرحباً علي، أود مناقشة تفاصيل المشروع معك. هل أنت متاح للاجتماع الأسبوع القادم؟\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/messages/conversations", "host": ["{{base_url}}"], "path": ["messages", "conversations"] }
+          }
+        },
+        {
+          "name": "Get Messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/messages/conversations/{{test_conversation_id}}?page=1&page_size=50",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "conversations", "{{test_conversation_id}}"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "50" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Send Message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"نعم، يمكنني الاجتماع يوم الاثنين الساعة 3 مساءً بتوقيت بغداد. هل يناسبك ذلك؟\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/messages/conversations/{{test_conversation_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["messages", "conversations", "{{test_conversation_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Get Notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications?unread_only=false&page=1",
+              "host": ["{{base_url}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "unread_only", "value": "false" },
+                { "key": "page", "value": "1" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Unread Count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/notifications/unread-count", "host": ["{{base_url}}"], "path": ["notifications", "unread-count"] }
+          }
+        },
+        {
+          "name": "Mark Notifications Read",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notification_ids\": [\"notif-uuid-1\", \"notif-uuid-2\"]\n}"
+            },
+            "url": { "raw": "{{base_url}}/notifications/mark-read", "host": ["{{base_url}}"], "path": ["notifications", "mark-read"] }
+          }
+        },
+        {
+          "name": "Mark All Read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/notifications/mark-all-read", "host": ["{{base_url}}"], "path": ["notifications", "mark-all-read"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Platform Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/admin/stats", "host": ["{{base_url}}"], "path": ["admin", "stats"] },
+            "description": "Get platform-wide stats: total users, jobs, contracts, revenue. Requires `admin` role."
+          }
+        },
+        {
+          "name": "List All Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users?page=1&page_size=50",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "50" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update User Status",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"suspended\",\n  \"reason\": \"Violation of platform terms of service\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/users/{{target_user_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users", "{{target_user_id}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Toggle Admin Privileges",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users/{{target_user_id}}/toggle-admin",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users", "{{target_user_id}}", "toggle-admin"]
+            }
+          }
+        },
+        {
+          "name": "List All Jobs (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/jobs?page=1",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "jobs"],
+              "query": [{ "key": "page", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "Update Job Status (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"removed\",\n  \"reason\": \"Violates platform content policy\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/jobs/{{test_job_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "jobs", "{{test_job_id}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "List All Transactions (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/transactions?page=1",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "transactions"],
+              "query": [{ "key": "page", "value": "1" }]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
