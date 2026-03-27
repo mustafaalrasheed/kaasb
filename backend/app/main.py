@@ -227,6 +227,8 @@ def create_app() -> FastAPI:
             {"name": "Messages", "description": "Direct messaging between users"},
             {"name": "Notifications", "description": "In-app notification management"},
             {"name": "Admin", "description": "Platform administration (admin role required)"},
+            {"name": "GDPR", "description": "Data rights — export your data (Art. 15) or delete your account (Art. 17)"},
+            {"name": "Moderation", "description": "Content moderation — report jobs, users, messages, and reviews"},
         ],
         lifespan=lifespan,
     )

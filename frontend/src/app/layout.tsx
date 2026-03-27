@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import "@/styles/globals.css";
+import Link from "next/link";
 import { Toaster } from "sonner";
 import { Navbar } from "@/components/layout/navbar";
+import { CookieConsent } from "@/components/ui/cookie-consent";
 import {
   OrganizationJsonLd,
   WebSiteJsonLd,
@@ -146,10 +148,34 @@ export default function RootLayout({
         />
         <link rel="dns-prefetch" href="//kaasb.com" />
       </head>
-      <body className="min-h-screen bg-gray-50">
+      <body className="min-h-screen bg-gray-50 flex flex-col">
         <Navbar />
-        <main className="pt-16">{children}</main>
+        <main className="pt-16 flex-1">{children}</main>
+
+        {/* Site Footer */}
+        <footer className="bg-white border-t border-gray-200 mt-auto">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-brand-500">Kaasb</span>
+                <span className="text-gray-400 text-sm">Iraq&apos;s Freelancing Platform</span>
+              </div>
+              <nav className="flex flex-wrap justify-center gap-6 text-sm text-gray-500" aria-label="Footer navigation">
+                <Link href="/jobs" className="hover:text-gray-800 transition-colors">Find Work</Link>
+                <Link href="/freelancers" className="hover:text-gray-800 transition-colors">Find Freelancers</Link>
+                <Link href="/privacy" className="hover:text-gray-800 transition-colors">Privacy Policy</Link>
+                <Link href="/terms" className="hover:text-gray-800 transition-colors">Terms of Service</Link>
+                <a href="mailto:support@kaasb.com" className="hover:text-gray-800 transition-colors">Support</a>
+              </nav>
+            </div>
+            <p className="mt-6 text-center text-xs text-gray-400">
+              &copy; {new Date().getFullYear()} Kaasb Technology LLC. All rights reserved.
+            </p>
+          </div>
+        </footer>
+
         <Toaster position="top-right" richColors />
+        <CookieConsent />
       </body>
     </html>
   );

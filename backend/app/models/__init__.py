@@ -20,6 +20,7 @@ from app.models.payment import (
 )
 from app.models.proposal import Proposal, ProposalStatus
 from app.models.refresh_token import RefreshToken
+from app.models.report import Report, ReportReason, ReportStatus, ReportType
 from app.models.review import Review
 from app.models.user import User, UserRole, UserStatus
 
@@ -36,4 +37,5 @@ __all__ = [
     "Review",
     "Notification", "NotificationType",
     "Conversation", "Message",
+    "Report", "ReportType", "ReportReason", "ReportStatus",
 ]
