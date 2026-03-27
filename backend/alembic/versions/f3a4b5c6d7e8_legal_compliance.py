@@ -12,9 +12,7 @@ Create Date: 2026-03-27
 
 from typing import Union
 
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "f3a4b5c6d7e8"
@@ -51,79 +49,33 @@ def upgrade() -> None:
     """)
 
     # -----------------------------------------------------------------------
-    # 2. Create reports table
+    # 2. Create reports table (raw SQL avoids SQLAlchemy re-emitting CREATE TYPE)
     # -----------------------------------------------------------------------
-    op.create_table(
-        "reports",
-        sa.Column(
-            "id",
-            postgresql.UUID(as_uuid=True),
-            primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
-        ),
-        sa.Column(
-            "reporter_id",
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("users.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column(
-            "report_type",
-            sa.Enum("job", "user", "message", "review", name="reporttype", create_type=False),
-            nullable=False,
-        ),
-        sa.Column(
-            "target_id",
-            postgresql.UUID(as_uuid=True),
-            nullable=False,
-        ),
-        sa.Column(
-            "reason",
-            sa.Enum(
-                "spam", "fraud", "harassment", "inappropriate_content",
-                "fake_account", "intellectual_property", "other",
-                name="reportreason",
-                create_type=False,
-            ),
-            nullable=False,
-        ),
-        sa.Column("description", sa.Text, nullable=True),
-        sa.Column(
-            "status",
-            sa.Enum("pending", "reviewed", "resolved", "dismissed", name="reportstatus", create_type=False),
-            nullable=False,
-            server_default="pending",
-        ),
-        sa.Column(
-            "reviewed_by",
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("admin_note", sa.Text, nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("NOW()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("NOW()"),
-            nullable=False,
-        ),
-    )
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS reports (
+            id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            reporter_id UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            report_type reporttype  NOT NULL,
+            target_id   UUID        NOT NULL,
+            reason      reportreason NOT NULL,
+            description TEXT,
+            status      reportstatus NOT NULL DEFAULT 'pending',
+            reviewed_by UUID        REFERENCES users(id) ON DELETE SET NULL,
+            reviewed_at TIMESTAMPTZ,
+            admin_note  TEXT,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
 
     # -----------------------------------------------------------------------
     # 3. Indexes for common query patterns
     # -----------------------------------------------------------------------
-    op.create_index("ix_reports_id", "reports", ["id"])
-    op.create_index("ix_reports_reporter_id", "reports", ["reporter_id"])
-    op.create_index("ix_reports_report_type", "reports", ["report_type"])
-    op.create_index("ix_reports_target_id", "reports", ["target_id"])
-    op.create_index("ix_reports_status", "reports", ["status"])
+    op.execute("CREATE INDEX IF NOT EXISTS ix_reports_id          ON reports (id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_reports_reporter_id ON reports (reporter_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_reports_report_type ON reports (report_type)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_reports_target_id   ON reports (target_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_reports_status      ON reports (status)")
 
 
 def downgrade() -> None:
