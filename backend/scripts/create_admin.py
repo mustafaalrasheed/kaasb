@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import select
-from app.core.database import async_session_factory
+from app.core.database import async_session as async_session_factory
 from app.models.user import User, UserRole, UserStatus
 from app.core.security import hash_password
 
