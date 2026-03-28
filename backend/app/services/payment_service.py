@@ -46,14 +46,7 @@ from app.schemas.payment import (
     PayoutResponse,
 )
 from app.services.base import BaseService
-from app.services.qi_card_client import (
-    QiCardClient,
-    QiCardError,
-    STATUS_SUCCESS,
-    STATUS_FAILED,
-    STATUS_AUTH_FAILED,
-    usd_to_iqd,
-)
+from app.services.qi_card_client import QiCardClient, QiCardError, usd_to_iqd
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -203,21 +196,20 @@ class PaymentService(BaseService):
         fees = self._calculate_fees(milestone.amount)
         order_id = f"escrow-{milestone.id}"
 
-        # Server-controlled URLs — never user-supplied to prevent SSRF/webhook hijacking
-        base_url = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "https://kaasb.com"
-        # notificationUrl: server-to-server webhook (must be HTTPS in production)
-        callback_url = f"https://{settings.DOMAIN}/api/v1/payments/qi-card/webhook"
-        # finishPaymentUrl: user's browser redirect after payment — frontend page
-        return_url = f"https://{settings.DOMAIN}/payment/result"
+        # Server-controlled redirect URLs — never user-supplied (SSRF protection)
+        base = f"https://{settings.DOMAIN}"
+        success_url = f"{base}/api/v1/payments/qi-card/success"
+        failure_url = f"{base}/api/v1/payments/qi-card/failure"
+        cancel_url  = f"{base}/api/v1/payments/qi-card/cancel"
 
         # Initiate Qi Card payment
         try:
             qi_result = await self.qi_card.create_payment(
                 amount_usd=fees["amount"],
                 order_id=order_id,
-                notification_url=callback_url,
-                finish_url=return_url,
-                description=f"Escrow: {milestone.title[:100]}",
+                success_url=success_url,
+                failure_url=failure_url,
+                cancel_url=cancel_url,
             )
         except QiCardError as e:
             logger.exception("Qi Card error in fund_escrow: %s", e)
@@ -226,9 +218,9 @@ class PaymentService(BaseService):
                 detail="Payment gateway error. Please try again later.",
             ) from e
 
-        qi_payment_id = qi_result["payment_id"]
+        qi_payment_id = order_id   # Qi Card uses our orderId to identify the payment
         amount_iqd = qi_result["amount_iqd"]
-        form_url = qi_result.get("form_url")
+        form_url = qi_result.get("link")
 
         # Create transaction and escrow atomically in a single flush
         transaction = Transaction(
@@ -299,55 +291,22 @@ class PaymentService(BaseService):
             ),
         )
 
-    async def verify_and_confirm_qi_card_payment(self, qi_payment_id: str) -> dict:
+    async def confirm_qi_card_payment(self, order_id: str) -> bool:
         """
-        Called from the payment return URL handler after the user's browser is redirected
-        back from Qi Card. Calls the status API to verify the payment, then confirms in DB.
-
-        Returns:
-            {"status": "SUCCESS"|"FAILED"|"PENDING", "message": "..."}
-        """
-        try:
-            result = await self.qi_card.get_payment_status(qi_payment_id)
-        except QiCardError as e:
-            logger.exception("Qi Card status check failed for %s: %s", qi_payment_id, e)
-            return {"status": "PENDING", "message": "Could not verify payment status. Please wait."}
-
-        qi_status = result["status"]
-
-        if qi_status == STATUS_SUCCESS:
-            confirmed = await self.confirm_qi_card_payment(
-                qi_payment_id=qi_payment_id, order_id=""
-            )
-            if confirmed:
-                return {"status": "SUCCESS", "message": "Payment confirmed. Escrow funded."}
-            return {"status": "SUCCESS", "message": "Payment received — already processed."}
-
-        if qi_status in (STATUS_FAILED, STATUS_AUTH_FAILED):
-            await self.handle_qi_card_payment_failed(qi_payment_id=qi_payment_id)
-            return {"status": "FAILED", "message": "Payment failed or authentication was rejected."}
-
-        # CREATED / FORM_SHOWED — user may still be completing payment
-        return {"status": "PENDING", "message": "Payment is being processed. Please wait."}
-
-    async def confirm_qi_card_payment(
-        self, qi_payment_id: str, order_id: str
-    ) -> bool:
-        """
-        Called from the Qi Card webhook handler when payment is confirmed.
+        Called when Qi Card redirects the browser to successUrl?CartID=<order_id>.
         Marks the escrow as FUNDED and transaction as COMPLETED.
+        order_id is our "escrow-<milestone_id>" string.
         """
-        # Find the transaction by Qi Card payment_id
         result = await self.db.execute(
             select(Transaction).where(
-                Transaction.external_transaction_id == qi_payment_id,
+                Transaction.external_transaction_id == order_id,
                 Transaction.provider == PaymentProvider.QI_CARD,
                 Transaction.transaction_type == TransactionType.ESCROW_FUND,
             )
         )
         transaction = result.scalar_one_or_none()
         if not transaction:
-            logger.warning("Qi Card webhook: no transaction found for payment_id=%s", qi_payment_id)
+            logger.warning("Qi Card success: no transaction found for order_id=%s", order_id)
             return False
 
         if transaction.status == TransactionStatus.COMPLETED:
@@ -376,16 +335,16 @@ class PaymentService(BaseService):
             return False
 
         logger.info(
-            "Qi Card payment confirmed: payment_id=%s transaction=%s escrow=%s",
-            qi_payment_id, transaction.id, escrow.id if escrow else 'not found',
+            "Qi Card payment confirmed: order_id=%s transaction=%s escrow=%s",
+            order_id, transaction.id, escrow.id if escrow else 'not found',
         )
         return True
 
-    async def handle_qi_card_payment_failed(self, qi_payment_id: str) -> bool:
-        """Mark transaction as FAILED when Qi Card payment fails or is cancelled."""
+    async def handle_qi_card_payment_failed(self, order_id: str) -> bool:
+        """Mark transaction as FAILED when Qi Card redirects to failureUrl or cancelUrl."""
         result = await self.db.execute(
             select(Transaction).where(
-                Transaction.external_transaction_id == qi_payment_id,
+                Transaction.external_transaction_id == order_id,
                 Transaction.provider == PaymentProvider.QI_CARD,
                 Transaction.status == TransactionStatus.PENDING,
             )

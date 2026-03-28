@@ -5,7 +5,7 @@ Kaasb Platform - Payment Endpoints
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_client, get_current_freelancer, get_current_user
@@ -19,11 +19,10 @@ from app.schemas.payment import (
     PaymentSummary,
     PayoutRequest,
     PayoutResponse,
-    QiCardWebhookEvent,
     TransactionListResponse,
 )
+from app.core.config import get_settings
 from app.services.payment_service import PaymentService
-from app.services.qi_card_client import QiCardClient, STATUS_SUCCESS, STATUS_FAILED, STATUS_AUTH_FAILED
 
 logger = logging.getLogger(__name__)
 
@@ -136,83 +135,82 @@ async def request_payout(
     return await service.request_payout(current_user, data)
 
 
-# === Qi Card Webhook (server-to-server, called by Qi Card after payment) ===
-
-@router.post(
-    "/qi-card/webhook",
-    summary="Qi Card payment webhook",
-    status_code=200,
-)
-async def qi_card_webhook(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Qi Card POSTs here when a payment status changes.
-    This endpoint is unauthenticated (called by Qi Card servers, not users).
-
-    Security: We verify the payment by calling GET /payment/{id}/status on the
-    Qi Card API before updating our database — never trust webhook payload alone.
-
-    Must return HTTP 200, otherwise Qi Card will retry.
-    """
-    import json
-
-    raw_body = await request.body()
-    try:
-        payload = json.loads(raw_body)
-    except json.JSONDecodeError as e:
-        logger.error("Qi Card webhook: invalid JSON from %s: %s",
-                     request.client.host if request.client else "unknown", e)
-        # Return 200 so Qi Card stops retrying a malformed request
-        return {"received": False, "error": "invalid_json"}
-
-    try:
-        event = QiCardWebhookEvent(**payload)
-    except (ValueError, KeyError) as e:
-        logger.error("Qi Card webhook: payload schema error: %s | body: %s", e, raw_body[:500])
-        return {"received": False, "error": "invalid_payload"}
-
-    logger.info(
-        "Qi Card webhook received: payment_id=%s status=%s amount=%s",
-        event.payment_id, event.status, event.amount,
-    )
-
-    service = PaymentService(db)
-
-    # Always verify status via API before acting (never trust webhook body alone)
-    result = await service.verify_and_confirm_qi_card_payment(event.payment_id)
-    logger.info("Qi Card webhook processed: payment_id=%s result=%s", event.payment_id, result)
-
-    return {"received": True}
-
-
-# === Qi Card Payment Return (browser redirect after payment) ===
+# === Qi Card Redirect Handlers ===
+# Qi Card redirects the user's browser to these URLs after payment.
+# CartID query param contains our order_id ("escrow-<milestone_id>").
 
 @router.get(
-    "/qi-card/verify",
-    summary="Verify Qi Card payment after redirect",
+    "/qi-card/success",
+    summary="Qi Card payment success redirect",
+    include_in_schema=False,
 )
-async def qi_card_verify(
-    payment_id: str = Query(..., description="Qi Card paymentId from redirect URL"),
+async def qi_card_success(
+    CartID: str = Query(..., description="Our order_id returned by Qi Card"),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Called by the frontend after the user is redirected back from Qi Card's payment page.
-    Verifies the payment status with Qi Card and updates the database.
-
-    Frontend usage:
-        After redirect to /payment/result?paymentId=xxx, call:
-        GET /api/v1/payments/qi-card/verify?payment_id=xxx
-
-    Returns:
-        {"status": "SUCCESS"|"FAILED"|"PENDING", "message": "..."}
+    Qi Card redirects here on successful payment: successUrl?CartID=<order_id>
+    Confirms the escrow in the database then redirects the user to the result page.
     """
-    if not payment_id or not payment_id.strip():
-        raise HTTPException(status_code=400, detail="payment_id is required")
+    settings = get_settings()
+    logger.info("Qi Card success redirect: CartID=%s", CartID)
 
     service = PaymentService(db)
-    result = await service.verify_and_confirm_qi_card_payment(payment_id.strip())
+    success = await service.confirm_qi_card_payment(order_id=CartID)
 
-    logger.info("Qi Card verify: payment_id=%s result=%s", payment_id, result)
-    return result
+    if success:
+        return RedirectResponse(
+            url=f"https://{settings.DOMAIN}/payment/result?status=success&order={CartID}",
+            status_code=302,
+        )
+    # Already processed or not found — still redirect to result page
+    return RedirectResponse(
+        url=f"https://{settings.DOMAIN}/payment/result?status=success&order={CartID}",
+        status_code=302,
+    )
+
+
+@router.get(
+    "/qi-card/failure",
+    summary="Qi Card payment failure redirect",
+    include_in_schema=False,
+)
+async def qi_card_failure(
+    CartID: str = Query("", description="Our order_id returned by Qi Card"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Qi Card redirects here on failed payment: failureUrl?CartID=<order_id>"""
+    settings = get_settings()
+    logger.info("Qi Card failure redirect: CartID=%s", CartID)
+
+    if CartID:
+        service = PaymentService(db)
+        await service.handle_qi_card_payment_failed(order_id=CartID)
+
+    return RedirectResponse(
+        url=f"https://{settings.DOMAIN}/payment/result?status=failed&order={CartID}",
+        status_code=302,
+    )
+
+
+@router.get(
+    "/qi-card/cancel",
+    summary="Qi Card payment cancel redirect",
+    include_in_schema=False,
+)
+async def qi_card_cancel(
+    CartID: str = Query("", description="Our order_id returned by Qi Card"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Qi Card redirects here on cancelled payment: cancelUrl?CartID=<order_id>"""
+    settings = get_settings()
+    logger.info("Qi Card cancel redirect: CartID=%s", CartID)
+
+    if CartID:
+        service = PaymentService(db)
+        await service.handle_qi_card_payment_failed(order_id=CartID)
+
+    return RedirectResponse(
+        url=f"https://{settings.DOMAIN}/payment/result?status=cancelled&order={CartID}",
+        status_code=302,
+    )

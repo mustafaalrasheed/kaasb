@@ -160,7 +160,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
     UNSAFE_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
     # Paths that receive external webhooks (no browser origin)
-    WEBHOOK_PATHS = {"/api/v1/payments/qi-card/webhook"}
+    WEBHOOK_PATHS: set = set()  # Qi Card uses browser redirects (GET), not server webhooks
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if settings.ENVIRONMENT == "development" or settings.ENVIRONMENT == "testing":

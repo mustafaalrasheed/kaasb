@@ -67,14 +67,10 @@ class Settings(BaseSettings):
     WISE_ENVIRONMENT: str = "sandbox"  # sandbox | production
 
     # === Qi Card (Iraqi Payment Gateway) ===
-    # QI_CARD_MERCHANT_ID  → Basic Auth username (merchant portal username)
-    # QI_CARD_SECRET_KEY   → Basic Auth password (merchant portal password)
-    # QI_CARD_API_KEY      → X-Api-Key header (APIKey from merchant portal)
-    QI_CARD_MERCHANT_ID: str = ""
-    QI_CARD_SECRET_KEY: str = ""
+    # QI_CARD_API_KEY → Authorization header value (raw key, no prefix)
     QI_CARD_API_KEY: str = ""
-    QI_CARD_BASE_URL: str = "https://api.pay.qi.iq/api/v1"
-    QI_CARD_SANDBOX_URL: str = "https://api.uat.pay.qi.iq/api/v1"
+    QI_CARD_BASE_URL: str = "https://api.pay.qi.iq/api/v0/transactions/business/token"
+    QI_CARD_SANDBOX_URL: str = "https://api.uat.pay.qi.iq/api/v0/transactions/business/token"
     QI_CARD_SANDBOX: bool = True  # Set to False in production
     QI_CARD_CURRENCY: str = "IQD"  # Iraqi Dinar
 
@@ -124,8 +120,8 @@ class Settings(BaseSettings):
                 logger.warning("STRIPE_SECRET_KEY not set — Stripe payments will not work")
             if not self.STRIPE_WEBHOOK_SECRET:
                 logger.warning("STRIPE_WEBHOOK_SECRET not set — Stripe webhooks will not be verified")
-            if not self.QI_CARD_SECRET_KEY and not self.QI_CARD_SANDBOX:
-                raise ValueError("QI_CARD_SECRET_KEY must be set when QI_CARD_SANDBOX is False")
+            if not self.QI_CARD_API_KEY and not self.QI_CARD_SANDBOX:
+                raise ValueError("QI_CARD_API_KEY must be set when QI_CARD_SANDBOX is False")
 
         return self
 
