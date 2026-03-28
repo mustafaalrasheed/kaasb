@@ -1,28 +1,26 @@
 """
 Kaasb Platform - Qi Card Payment Gateway Client
-Iraqi payment gateway integration for escrow funding and freelancer payouts.
 
-API Overview (based on qi.iq developer documentation):
-  POST /create-payment       - Initiate a payment, returns redirect URL
-  GET  /get-payment-status   - Poll payment status by payment_id
-  POST /cancel-payment       - Cancel a pending payment
-  POST /refund-payment       - Refund a completed payment
+UAT endpoint : https://api.uat.pay.qi.iq/api/v1
+Production   : https://api.pay.qi.iq/api/v1
+Docs         : https://docs.pay-uat.qi.iq/
 
-Authentication:
-  - Basic Auth: base64(merchant_id:secret_key)
-  - Optional HMAC-SHA256 signature on the request body
+Authentication (every request):
+  Authorization: Basic base64(QI_CARD_MERCHANT_ID:QI_CARD_SECRET_KEY)
+  X-Api-Key:     QI_CARD_API_KEY
+  Content-Type:  application/json
 
-Currency: IQD (Iraqi Dinar). 1 USD ≈ 1,310 IQD (update rate as needed).
+Payment flow:
+  1. POST /payment            → returns formUrl (redirect user here)
+  2. User completes payment on Qi Card
+  3. Qi Card POSTs to notificationUrl (webhook) AND redirects browser to finishPaymentUrl
+  4. GET  /payment/{id}/status → verify status is SUCCESS before confirming
 
-To go live:
-  1. Contact Qi Card / International Smart Card: https://qi.iq
-  2. Get merchant_id, secret_key, and sandbox credentials
-  3. Set QI_CARD_SANDBOX=false, QI_CARD_MERCHANT_ID, QI_CARD_SECRET_KEY in .env
+Currency: IQD (Iraqi Dinar). Amount in whole dinars (e.g. 50000 = 50,000 IQD).
+USD→IQD conversion: 1 USD ≈ 1,310 IQD (update USD_TO_IQD as needed).
 """
 
 import base64
-import hashlib
-import hmac
 import logging
 import uuid
 from typing import ClassVar
@@ -35,51 +33,70 @@ from app.utils.retry import async_retry
 
 logger = logging.getLogger(__name__)
 
-# Exchange rate placeholder — replace with live rate API in production
+# Exchange rate — update periodically or replace with a live rate API
 USD_TO_IQD = 1310.0
 
 
 def usd_to_iqd(amount_usd: float) -> int:
-    """Convert USD amount to IQD (whole dinars, rounded up)."""
-    return int(amount_usd * USD_TO_IQD) + (1 if (amount_usd * USD_TO_IQD) % 1 > 0 else 0)
+    """Convert USD to whole IQD, rounded up."""
+    raw = amount_usd * USD_TO_IQD
+    return int(raw) + (1 if raw % 1 > 0 else 0)
 
 
 class QiCardError(Exception):
-    """Raised when Qi Card API returns an error."""
+    """Raised when the Qi Card API returns an error response."""
     def __init__(self, message: str, status_code: int = 0, response_body: str = ""):
         super().__init__(message)
         self.status_code = status_code
         self.response_body = response_body
 
 
+# Qi Card payment status values (from API)
+STATUS_SUCCESS = "SUCCESS"
+STATUS_FAILED = "FAILED"
+STATUS_AUTH_FAILED = "AUTHENTICATION_FAILED"
+STATUS_CREATED = "CREATED"
+STATUS_FORM_SHOWED = "FORM_SHOWED"
+
+TERMINAL_STATUSES = {STATUS_SUCCESS, STATUS_FAILED, STATUS_AUTH_FAILED}
+
+
 class QiCardClient:
     """
-    Async HTTP client for the Qi Card payment gateway.
+    Async HTTP client for the Qi Card payment gateway (v1 API).
 
     Usage:
         client = QiCardClient()
-        payment = await client.create_payment(
+
+        # Initiate payment — redirect user to result["form_url"]
+        result = await client.create_payment(
             amount_usd=150.0,
             order_id="escrow-<uuid>",
-            callback_url="https://kaasb.com/api/v1/payments/qi-card/webhook",
-            return_url="https://kaasb.com/payment/result",
+            notification_url="https://kaasb.com/api/v1/payments/qi-card/webhook",
+            finish_url="https://kaasb.com/payment/result",
             description="Milestone: Design mockups",
+            customer_first_name="Ahmed",
+            customer_last_name="Al-Rasheed",
+            customer_email="ahmed@example.com",
+            customer_phone="9647801234567",
         )
-        # Redirect client to payment["redirect_url"]
+        redirect_to(result["form_url"])
+
+        # Verify payment status (always call this before confirming in your DB)
+        status = await client.get_payment_status(result["payment_id"])
+        if status["status"] == "SUCCESS":
+            ...
     """
 
-    # One circuit breaker shared across all instances (class-level)
-    _circuit: ClassVar[CircuitBreaker] = None  # type: ignore[assignment]
+    _circuit: ClassVar[CircuitBreaker | None] = None
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.settings = get_settings()
         self.base_url = (
             self.settings.QI_CARD_SANDBOX_URL
             if self.settings.QI_CARD_SANDBOX
             else self.settings.QI_CARD_BASE_URL
         )
-        self._auth_header = self._build_auth_header()
-        # Initialise circuit breaker once
         if QiCardClient._circuit is None:
             QiCardClient._circuit = CircuitBreaker(
                 name="qi_card",
@@ -88,54 +105,38 @@ class QiCardClient:
                 exceptions=(httpx.RequestError, QiCardError),
             )
 
-    def _build_auth_header(self) -> str:
-        """Build HTTP Basic Auth header from merchant credentials."""
-        credentials = f"{self.settings.QI_CARD_MERCHANT_ID}:{self.settings.QI_CARD_SECRET_KEY}"
-        encoded = base64.b64encode(credentials.encode()).decode()
-        return f"Basic {encoded}"
-
-    def _sign_payload(self, payload: dict) -> str:
-        """
-        Generate HMAC-SHA256 signature for a request payload.
-        Sorted key=value pairs joined with & then signed with secret_key.
-        """
-        message = "&".join(f"{k}={v}" for k, v in sorted(payload.items()))
-        return hmac.new(
-            self.settings.QI_CARD_SECRET_KEY.encode(),
-            message.encode(),
-            hashlib.sha256,
-        ).hexdigest()
-
-    def verify_webhook_signature(self, raw_body: bytes, signature: str) -> bool:
-        """
-        Verify that an incoming webhook came from Qi Card.
-        Qi Card sends an X-QiCard-Signature header with the HMAC.
-        Always requires a valid secret key — never skip verification.
-        """
-        if not self.settings.QI_CARD_SECRET_KEY:
-            logger.error(
-                "QI_CARD_SECRET_KEY not set — rejecting webhook. "
-                "Set QI_CARD_SECRET_KEY even in sandbox mode to verify webhook signatures."
-            )
-            return False
-
-        if not signature:
-            logger.warning("Webhook received without X-QiCard-Signature header — rejecting")
-            return False
-
-        expected = hmac.new(
-            self.settings.QI_CARD_SECRET_KEY.encode(),
-            raw_body,
-            hashlib.sha256,
-        ).hexdigest()
-        return hmac.compare_digest(expected, signature)
+    def _headers(self) -> dict:
+        """Build required auth headers for every Qi Card API request."""
+        creds = base64.b64encode(
+            f"{self.settings.QI_CARD_MERCHANT_ID}:{self.settings.QI_CARD_SECRET_KEY}".encode()
+        ).decode()
+        headers = {
+            "Authorization": f"Basic {creds}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if self.settings.QI_CARD_API_KEY:
+            headers["X-Api-Key"] = self.settings.QI_CARD_API_KEY
+        return headers
 
     def _is_configured(self) -> bool:
-        """True if real credentials are set (not sandbox placeholder)."""
-        return bool(self.settings.QI_CARD_MERCHANT_ID and self.settings.QI_CARD_SECRET_KEY)
+        """True when real merchant credentials are present."""
+        return bool(
+            self.settings.QI_CARD_MERCHANT_ID
+            and self.settings.QI_CARD_SECRET_KEY
+            and self.settings.QI_CARD_API_KEY
+        )
+
+    def _check_error(self, data: dict, context: str) -> None:
+        """Raise QiCardError if the response body contains an error field."""
+        if "error" in data:
+            err = data["error"]
+            code = err.get("code", 0)
+            msg = err.get("message", "Unknown error")
+            raise QiCardError(f"Qi Card {context} error [{code}]: {msg}")
 
     # =========================================================================
-    # Payment Operations
+    # Create Payment
     # =========================================================================
 
     @async_retry(max_attempts=3, base_delay=1.0, exceptions=(httpx.RequestError,))
@@ -143,227 +144,275 @@ class QiCardClient:
         self,
         amount_usd: float,
         order_id: str,
-        callback_url: str,
-        return_url: str,
+        notification_url: str,
+        finish_url: str,
         description: str = "",
+        customer_first_name: str = "",
+        customer_last_name: str = "",
+        customer_email: str = "",
+        customer_phone: str = "",
     ) -> dict:
         """
         Initiate a Qi Card payment.
 
         Returns:
             {
-                "payment_id": "qc_xxxxxxxx",
-                "redirect_url": "https://pay.qi.iq/...",
-                "amount_iqd": 196500,
-                "amount_usd": 150.0,
-                "status": "pending",
+                "payment_id":  "pi_xxxxxxxxxxxx",   # Qi Card's payment ID
+                "form_url":    "https://pay.qi.iq/form?token=xxx",  # redirect user here
+                "request_id":  "<uuid>",
+                "amount_iqd":  65500,
+                "amount_usd":  50.0,
+                "status":      "CREATED",
             }
         """
         amount_iqd = usd_to_iqd(amount_usd)
+        request_id = str(uuid.uuid4())
 
         if not self._is_configured():
-            return self._mock_create_payment(amount_usd, amount_iqd, order_id)
+            return self._mock_create(amount_usd, amount_iqd, order_id, request_id)
 
-        payload = {
-            "merchant_id": self.settings.QI_CARD_MERCHANT_ID,
-            "order_id": order_id,
+        payload: dict = {
+            "requestId": request_id,
             "amount": amount_iqd,
             "currency": "IQD",
+            "locale": "ar_IQ",
+            "finishPaymentUrl": finish_url,
+            "notificationUrl": notification_url,
+            "additionalInfo": {"order_id": order_id},
             "description": description[:255],
-            "callback_url": callback_url,
-            "return_url": return_url,
         }
-        payload["signature"] = self._sign_payload(payload)
+
+        # Include customer info if available (improves 3DS success rate)
+        customer: dict = {}
+        if customer_first_name:
+            customer["firstName"] = customer_first_name
+        if customer_last_name:
+            customer["lastName"] = customer_last_name
+        if customer_email:
+            customer["email"] = customer_email
+        if customer_phone:
+            # Qi Card expects international format: 9647XXXXXXXXX
+            customer["phone"] = customer_phone
+        if customer:
+            payload["customerInfo"] = customer
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as http_client:
+            async with httpx.AsyncClient(timeout=30.0) as http:
                 response = await self._circuit.call(
-                    http_client.post,
-                    f"{self.base_url}/create-payment",
+                    http.post,
+                    f"{self.base_url}/payment",
                     json=payload,
-                    headers={
-                        "Authorization": self._auth_header,
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                    },
+                    headers=self._headers(),
                 )
         except CircuitOpenError as e:
-            logger.warning("Qi Card circuit open in create_payment: %s", e)
-            raise QiCardError(str(e)) from e
+            raise QiCardError(f"Payment gateway unavailable: {e}") from e
         except httpx.RequestError as e:
-            logger.error("Qi Card network error in create_payment: %s", e)
-            raise QiCardError(f"Network error connecting to Qi Card: {e}") from e
+            raise QiCardError(f"Network error reaching Qi Card: {e}") from e
 
         if response.status_code not in (200, 201):
             logger.error(
                 "Qi Card create_payment failed: status=%s body=%s",
-                response.status_code,
-                response.text,
+                response.status_code, response.text,
             )
             raise QiCardError(
-                "Qi Card payment creation failed",
+                "Qi Card rejected payment creation",
                 status_code=response.status_code,
                 response_body=response.text,
             )
 
         data = response.json()
+        self._check_error(data, "create_payment")
+
+        logger.info(
+            "Qi Card payment created: payment_id=%s order_id=%s amount=%s IQD",
+            data.get("paymentId"), order_id, amount_iqd,
+        )
+
         return {
-            "payment_id": data.get("payment_id") or data.get("id"),
-            "redirect_url": data.get("redirect_url") or data.get("payment_url"),
+            "payment_id": data["paymentId"],
+            "form_url": data["formUrl"],
+            "request_id": data.get("requestId", request_id),
             "amount_iqd": amount_iqd,
             "amount_usd": amount_usd,
-            "status": data.get("status", "pending"),
+            "status": data.get("status", STATUS_CREATED),
         }
+
+    # =========================================================================
+    # Get Payment Status
+    # =========================================================================
 
     @async_retry(max_attempts=3, base_delay=1.0, exceptions=(httpx.RequestError,))
     async def get_payment_status(self, payment_id: str) -> dict:
         """
-        Poll Qi Card for the current status of a payment.
+        Fetch the current status of a payment from Qi Card.
+        Always call this to verify before updating your database.
 
         Returns:
             {
-                "payment_id": "qc_xxxxxxxx",
-                "status": "completed" | "pending" | "failed" | "cancelled",
-                "amount_iqd": 196500,
+                "payment_id":  "pi_xxx",
+                "status":      "SUCCESS" | "FAILED" | "AUTHENTICATION_FAILED" | "CREATED" | "FORM_SHOWED",
+                "amount_iqd":  65500,
+                "confirmed_amount": 65500 | None,
+                "canceled":    False,
+                "raw":         { ...full Qi Card response... },
             }
         """
         if not self._is_configured():
-            return {"payment_id": payment_id, "status": "completed", "amount_iqd": 0}
+            # In mock mode, always return success
+            return {
+                "payment_id": payment_id,
+                "status": STATUS_SUCCESS,
+                "amount_iqd": 0,
+                "confirmed_amount": None,
+                "canceled": False,
+                "raw": {},
+            }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as http_client:
+            async with httpx.AsyncClient(timeout=30.0) as http:
                 response = await self._circuit.call(
-                    http_client.get,
-                    f"{self.base_url}/get-payment-status",
-                    params={"payment_id": payment_id, "merchant_id": self.settings.QI_CARD_MERCHANT_ID},
-                    headers={
-                        "Authorization": self._auth_header,
-                        "Accept": "application/json",
-                    },
+                    http.get,
+                    f"{self.base_url}/payment/{payment_id}/status",
+                    headers=self._headers(),
                 )
         except CircuitOpenError as e:
-            logger.warning("Qi Card circuit open in get_payment_status: %s", e)
-            raise QiCardError(str(e)) from e
+            raise QiCardError(f"Payment gateway unavailable: {e}") from e
         except httpx.RequestError as e:
-            logger.error("Qi Card network error in get_payment_status: %s", e)
             raise QiCardError(f"Network error: {e}") from e
 
         if response.status_code != 200:
             raise QiCardError(
-                "Failed to get payment status",
+                f"Failed to fetch payment status for {payment_id}",
                 status_code=response.status_code,
                 response_body=response.text,
             )
 
         data = response.json()
+        self._check_error(data, "get_payment_status")
+
         return {
             "payment_id": payment_id,
-            "status": data.get("status", "unknown"),
+            "status": data.get("status", "UNKNOWN"),
             "amount_iqd": data.get("amount", 0),
+            "confirmed_amount": data.get("confirmedAmount"),
+            "canceled": data.get("canceled", False),
+            "raw": data,
         }
 
+    # =========================================================================
+    # Cancel Payment
+    # =========================================================================
+
     @async_retry(max_attempts=2, base_delay=1.0, exceptions=(httpx.RequestError,))
-    async def cancel_payment(self, payment_id: str) -> bool:
-        """Cancel a pending payment. Returns True on success."""
+    async def cancel_payment(self, payment_id: str, amount_iqd: int) -> bool:
+        """
+        Cancel a pending payment.
+        Only works while payment is in CREATED or FORM_SHOWED status.
+        Returns True on success.
+        """
         if not self._is_configured():
             logger.info("[MOCK] Qi Card cancel_payment: %s", payment_id)
             return True
 
         payload = {
-            "merchant_id": self.settings.QI_CARD_MERCHANT_ID,
-            "payment_id": payment_id,
+            "requestId": str(uuid.uuid4()),
+            "amount": amount_iqd,
         }
-        payload["signature"] = self._sign_payload(payload)
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as http_client:
+            async with httpx.AsyncClient(timeout=30.0) as http:
                 response = await self._circuit.call(
-                    http_client.post,
-                    f"{self.base_url}/cancel-payment",
+                    http.post,
+                    f"{self.base_url}/payment/{payment_id}/cancel",
                     json=payload,
-                    headers={
-                        "Authorization": self._auth_header,
-                        "Content-Type": "application/json",
-                    },
+                    headers=self._headers(),
                 )
         except (CircuitOpenError, httpx.RequestError) as e:
-            logger.error("Qi Card network error in cancel_payment: %s", e)
+            logger.error("Qi Card cancel_payment error: %s", e)
             return False
 
-        return response.status_code in (200, 204)
+        if response.status_code not in (200, 201):
+            logger.warning(
+                "Qi Card cancel_payment failed: payment_id=%s status=%s body=%s",
+                payment_id, response.status_code, response.text,
+            )
+            return False
+
+        data = response.json()
+        return data.get("canceled", False)
+
+    # =========================================================================
+    # Refund Payment
+    # =========================================================================
 
     @async_retry(max_attempts=3, base_delay=1.0, exceptions=(httpx.RequestError,))
     async def refund_payment(self, payment_id: str, amount_iqd: int, reason: str = "") -> dict:
         """
-        Issue a refund for a completed payment.
+        Issue a full or partial refund for a completed payment.
+        Partial refunds are supported — pass any amount ≤ original.
 
         Returns:
-            {"refund_id": "...", "status": "refunded", "amount_iqd": ...}
+            {"refund_id": "...", "status": "SUCCESS", "amount_iqd": ...}
         """
         if not self._is_configured():
-            logger.info("[MOCK] Qi Card refund_payment: %s %s IQD", payment_id, amount_iqd)
+            logger.info("[MOCK] Qi Card refund_payment: %s %d IQD", payment_id, amount_iqd)
             return {
-                "refund_id": f"qc_refund_mock_{uuid.uuid4().hex[:10]}",
-                "status": "refunded",
+                "refund_id": f"ref_mock_{uuid.uuid4().hex[:10]}",
+                "status": STATUS_SUCCESS,
                 "amount_iqd": amount_iqd,
             }
 
         payload = {
-            "merchant_id": self.settings.QI_CARD_MERCHANT_ID,
-            "payment_id": payment_id,
+            "requestId": str(uuid.uuid4()),
             "amount": amount_iqd,
-            "reason": reason[:255],
         }
-        payload["signature"] = self._sign_payload(payload)
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as http_client:
+            async with httpx.AsyncClient(timeout=30.0) as http:
                 response = await self._circuit.call(
-                    http_client.post,
-                    f"{self.base_url}/refund-payment",
+                    http.post,
+                    f"{self.base_url}/payment/{payment_id}/refund",
                     json=payload,
-                    headers={
-                        "Authorization": self._auth_header,
-                        "Content-Type": "application/json",
-                    },
+                    headers=self._headers(),
                 )
         except CircuitOpenError as e:
-            logger.warning("Qi Card circuit open in refund_payment: %s", e)
-            raise QiCardError(str(e)) from e
+            raise QiCardError(f"Payment gateway unavailable: {e}") from e
         except httpx.RequestError as e:
-            logger.error("Qi Card network error in refund_payment: %s", e)
             raise QiCardError(f"Network error: {e}") from e
 
         if response.status_code not in (200, 201):
             raise QiCardError(
-                "Qi Card refund failed",
+                f"Qi Card refund failed for {payment_id}",
                 status_code=response.status_code,
                 response_body=response.text,
             )
 
         data = response.json()
+        self._check_error(data, "refund_payment")
+
         return {
-            "refund_id": data.get("refund_id") or data.get("id"),
-            "status": "refunded",
+            "refund_id": data.get("refundId") or data.get("requestId"),
+            "status": data.get("status", STATUS_SUCCESS),
             "amount_iqd": amount_iqd,
         }
 
     # =========================================================================
-    # Sandbox mock helpers (used when credentials not configured)
+    # Mock helpers (used when credentials not configured)
     # =========================================================================
 
-    def _mock_create_payment(self, amount_usd: float, amount_iqd: int, order_id: str) -> dict:
-        payment_id = f"qc_mock_{uuid.uuid4().hex[:12]}"
+    def _mock_create(
+        self, amount_usd: float, amount_iqd: int, order_id: str, request_id: str
+    ) -> dict:
+        payment_id = f"pi_mock_{uuid.uuid4().hex[:12]}"
         logger.info(
-            "[MOCK] Qi Card create_payment: order_id=%s amount_usd=%s amount_iqd=%s",
-            order_id,
-            amount_usd,
-            amount_iqd,
+            "[MOCK] Qi Card create_payment: order_id=%s amount_usd=%.2f amount_iqd=%d",
+            order_id, amount_usd, amount_iqd,
         )
         return {
             "payment_id": payment_id,
-            "redirect_url": f"https://sandbox.qi.iq/pay/{payment_id}",
+            "form_url": f"https://merchant.uat.pay.qi.iq/mock-pay/{payment_id}",
+            "request_id": request_id,
             "amount_iqd": amount_iqd,
             "amount_usd": amount_usd,
-            "status": "pending",
+            "status": STATUS_CREATED,
         }

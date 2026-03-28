@@ -113,13 +113,22 @@ class PaymentSummary(BaseModel):
 # === Qi Card Webhook ===
 
 class QiCardWebhookEvent(BaseModel):
-    """Qi Card webhook payload sent to our callback URL after payment."""
-    payment_id: str
-    order_id: str  # This is our escrow order_id
-    status: str    # "completed" | "failed" | "cancelled"
-    amount: int    # Amount in IQD
-    merchant_id: str
-    signature: str | None = None  # HMAC-SHA256 signature for verification
+    """
+    Qi Card webhook payload POSTed to notificationUrl after payment status changes.
+    Field names match the actual Qi Card v1 API response (camelCase aliased to snake_case).
+    Security: always call GET /payment/{paymentId}/status to verify before processing.
+    """
+    model_config = {"populate_by_name": True}
+
+    payment_id: str = Field(alias="paymentId")
+    status: str             # SUCCESS | FAILED | AUTHENTICATION_FAILED
+    request_id: str = Field(alias="requestId")
+    amount: int             # Amount in IQD
+    currency: str = "IQD"
+    canceled: bool = False
+
+    # order_id is in additionalInfo — not always present in webhook
+    order_id: str | None = Field(default=None, alias="orderId")
 
 
 # === Legacy Stripe Webhook (kept for compatibility) ===

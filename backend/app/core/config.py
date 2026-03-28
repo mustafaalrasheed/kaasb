@@ -67,10 +67,14 @@ class Settings(BaseSettings):
     WISE_ENVIRONMENT: str = "sandbox"  # sandbox | production
 
     # === Qi Card (Iraqi Payment Gateway) ===
+    # QI_CARD_MERCHANT_ID  → Basic Auth username (merchant portal username)
+    # QI_CARD_SECRET_KEY   → Basic Auth password (merchant portal password)
+    # QI_CARD_API_KEY      → X-Api-Key header (APIKey from merchant portal)
     QI_CARD_MERCHANT_ID: str = ""
     QI_CARD_SECRET_KEY: str = ""
-    QI_CARD_BASE_URL: str = "https://gateway.qi.iq/api/v1"
-    QI_CARD_SANDBOX_URL: str = "https://sandbox.gateway.qi.iq/api/v1"
+    QI_CARD_API_KEY: str = ""
+    QI_CARD_BASE_URL: str = "https://api.pay.qi.iq/api/v1"
+    QI_CARD_SANDBOX_URL: str = "https://api.uat.pay.qi.iq/api/v1"
     QI_CARD_SANDBOX: bool = True  # Set to False in production
     QI_CARD_CURRENCY: str = "IQD"  # Iraqi Dinar
 

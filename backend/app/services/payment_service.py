@@ -46,7 +46,14 @@ from app.schemas.payment import (
     PayoutResponse,
 )
 from app.services.base import BaseService
-from app.services.qi_card_client import QiCardClient, QiCardError, usd_to_iqd
+from app.services.qi_card_client import (
+    QiCardClient,
+    QiCardError,
+    STATUS_SUCCESS,
+    STATUS_FAILED,
+    STATUS_AUTH_FAILED,
+    usd_to_iqd,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -198,16 +205,18 @@ class PaymentService(BaseService):
 
         # Server-controlled URLs — never user-supplied to prevent SSRF/webhook hijacking
         base_url = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "https://kaasb.com"
-        callback_url = f"{base_url}/api/v1/payments/qi-card/webhook"
-        return_url = f"{base_url}/payment/result"
+        # notificationUrl: server-to-server webhook (must be HTTPS in production)
+        callback_url = f"https://{settings.DOMAIN}/api/v1/payments/qi-card/webhook"
+        # finishPaymentUrl: user's browser redirect after payment — frontend page
+        return_url = f"https://{settings.DOMAIN}/payment/result"
 
         # Initiate Qi Card payment
         try:
             qi_result = await self.qi_card.create_payment(
                 amount_usd=fees["amount"],
                 order_id=order_id,
-                callback_url=callback_url,
-                return_url=return_url,
+                notification_url=callback_url,
+                finish_url=return_url,
                 description=f"Escrow: {milestone.title[:100]}",
             )
         except QiCardError as e:
@@ -219,6 +228,7 @@ class PaymentService(BaseService):
 
         qi_payment_id = qi_result["payment_id"]
         amount_iqd = qi_result["amount_iqd"]
+        form_url = qi_result.get("form_url")
 
         # Create transaction and escrow atomically in a single flush
         transaction = Transaction(
@@ -279,7 +289,7 @@ class PaymentService(BaseService):
             platform_fee=fees["platform_fee"],
             freelancer_amount=fees["net_amount"],
             status="pending_payment",
-            payment_redirect_url=qi_result.get("redirect_url"),
+            payment_redirect_url=form_url,
             qi_card_payment_id=qi_payment_id,
             message=(
                 f"Redirect client to complete Qi Card payment. "
@@ -288,6 +298,37 @@ class PaymentService(BaseService):
                 f"{settings.PLATFORM_FEE_PERCENT}% platform fee."
             ),
         )
+
+    async def verify_and_confirm_qi_card_payment(self, qi_payment_id: str) -> dict:
+        """
+        Called from the payment return URL handler after the user's browser is redirected
+        back from Qi Card. Calls the status API to verify the payment, then confirms in DB.
+
+        Returns:
+            {"status": "SUCCESS"|"FAILED"|"PENDING", "message": "..."}
+        """
+        try:
+            result = await self.qi_card.get_payment_status(qi_payment_id)
+        except QiCardError as e:
+            logger.exception("Qi Card status check failed for %s: %s", qi_payment_id, e)
+            return {"status": "PENDING", "message": "Could not verify payment status. Please wait."}
+
+        qi_status = result["status"]
+
+        if qi_status == STATUS_SUCCESS:
+            confirmed = await self.confirm_qi_card_payment(
+                qi_payment_id=qi_payment_id, order_id=""
+            )
+            if confirmed:
+                return {"status": "SUCCESS", "message": "Payment confirmed. Escrow funded."}
+            return {"status": "SUCCESS", "message": "Payment received — already processed."}
+
+        if qi_status in (STATUS_FAILED, STATUS_AUTH_FAILED):
+            await self.handle_qi_card_payment_failed(qi_payment_id=qi_payment_id)
+            return {"status": "FAILED", "message": "Payment failed or authentication was rejected."}
+
+        # CREATED / FORM_SHOWED — user may still be completing payment
+        return {"status": "PENDING", "message": "Payment is being processed. Please wait."}
 
     async def confirm_qi_card_payment(
         self, qi_payment_id: str, order_id: str
