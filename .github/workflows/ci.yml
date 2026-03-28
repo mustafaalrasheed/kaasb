@@ -2,9 +2,9 @@ name: Kaasb CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 env:
   PYTHON_VERSION: "3.12"
@@ -78,8 +78,6 @@ jobs:
           pip install pip-audit
           cd backend
           pip-audit -r requirements.txt --skip-editable || true
-          # "|| true" so a known-unfixed advisory doesn't block the whole pipeline;
-          # review the output manually. Remove "|| true" when all advisories are clear.
 
       # ---- Type check ----
       - name: Type check (mypy)
@@ -96,9 +94,7 @@ jobs:
           ENVIRONMENT:  testing
         run: |
           cd backend
-          # Apply all migrations, then verify no pending model changes
           alembic upgrade head
-          # If alembic detects model changes not reflected in a migration, exit 1
           alembic check && echo "✓ No pending schema changes" || \
             (echo "ERROR: Model changes detected with no migration. Run: alembic revision --autogenerate" && exit 1)
 
@@ -205,7 +201,6 @@ jobs:
       - name: Security scan (npm audit)
         run: |
           cd frontend
-          # --audit-level=high: only fail on high/critical vulnerabilities
           npm audit --audit-level=high || true
 
       - name: Build (Next.js)
