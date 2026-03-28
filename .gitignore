@@ -86,3 +86,6 @@ backend/alembic.ini
 # === OS ===
 .DS_Store
 Desktop.ini
+
+# === Claude Code ===
+.claude/
