@@ -28,9 +28,7 @@ ignore = [
     "RET504",  # unnecessary assignment before return
     "UP007",   # use X | Y for union types (not yet everywhere)
     "SIM108",  # use ternary operator (sometimes less readable)
-    "UP042",   # StrEnum migration — str+Enum pattern still valid in SQLAlchemy
     "N802",    # lowercase function name — Pydantic validators use field name convention
-    "ASYNC230", # blocking open in async — used in sync helper functions
 ]
 
 [lint.per-file-ignores]
