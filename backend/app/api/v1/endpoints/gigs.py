@@ -46,6 +46,7 @@ from app.schemas.gig import (
     GigOrderCreate,
     GigOrderOut,
     GigOut,
+    GigSearchParams,
     GigUpdate,
 )
 from app.services.gig_service import GigService
@@ -77,7 +78,6 @@ async def search_gigs(
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.schemas.gig import GigSearchParams
     params = GigSearchParams(
         q=q,
         category_id=category_id,
