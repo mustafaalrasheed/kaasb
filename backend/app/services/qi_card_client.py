@@ -45,7 +45,7 @@ Currency: IQD (Iraqi Dinar). 1 USD ≈ 1,310 IQD.
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import ClassVar
 
 import httpx
@@ -154,7 +154,7 @@ class QiCardClient:
                 "currency": currency,
                 "orderId": order_id,
             },
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "successUrl": success_url,
             "failureUrl": failure_url,
             "cancelUrl": cancel_url,

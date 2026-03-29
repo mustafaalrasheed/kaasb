@@ -10,7 +10,7 @@ PUT  /reports/{id}/review           - Mark report reviewed with admin note (admi
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
@@ -249,7 +249,7 @@ async def review_report(
     report.status = data.status
     report.admin_note = data.admin_note
     report.reviewed_by = admin.id
-    report.reviewed_at = datetime.now(timezone.utc)
+    report.reviewed_at = datetime.now(UTC)
 
     await db.commit()
     await db.refresh(report)

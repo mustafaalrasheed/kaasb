@@ -325,7 +325,7 @@ class AuthService(BaseService):
         try:
             payload = verify_email_token(token, "verify_email")
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         user = await self._get_user_by_id(payload["sub"])
         if not user:
@@ -367,7 +367,7 @@ class AuthService(BaseService):
         try:
             payload = verify_email_token(token, "password_reset")
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         user = await self._get_user_by_id(payload["sub"])
         if not user:

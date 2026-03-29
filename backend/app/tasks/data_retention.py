@@ -24,7 +24,7 @@ Or via cron (add to /etc/cron.d/kaasb):
 import asyncio
 import logging
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -46,7 +46,7 @@ async def run_retention(db: AsyncSession) -> dict[str, int]:
     Execute all retention policies inside a single transaction.
     Returns a summary dict {policy_name: rows_affected}.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     summary: dict[str, int] = {}
 
     # ------------------------------------------------------------------
@@ -129,7 +129,7 @@ async def run_retention(db: AsyncSession) -> dict[str, int]:
 async def main() -> None:
     settings = get_settings()
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
-    AsyncSessionLocal = sessionmaker(  # type: ignore[call-overload]
+    async_session_local = sessionmaker(  # type: ignore[call-overload]
         engine, class_=AsyncSession, expire_on_commit=False
     )
 

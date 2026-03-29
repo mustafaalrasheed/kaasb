@@ -5,6 +5,16 @@ Import all models here so Alembic can discover them.
 
 from app.models.base import BaseModel
 from app.models.contract import Contract, ContractStatus, Milestone, MilestoneStatus
+from app.models.gig import (
+    Category,
+    Gig,
+    GigOrder,
+    GigOrderStatus,
+    GigPackage,
+    GigPackageTier,
+    GigStatus,
+    Subcategory,
+)
 from app.models.job import ExperienceLevel, Job, JobDuration, JobStatus, JobType
 from app.models.message import Conversation, Message
 from app.models.notification import Notification, NotificationType
@@ -23,16 +33,6 @@ from app.models.refresh_token import RefreshToken
 from app.models.report import Report, ReportReason, ReportStatus, ReportType
 from app.models.review import Review
 from app.models.user import User, UserRole, UserStatus
-from app.models.gig import (
-    Category,
-    Subcategory,
-    Gig,
-    GigStatus,
-    GigPackage,
-    GigPackageTier,
-    GigOrder,
-    GigOrderStatus,
-)
 
 __all__ = [
     "BaseModel",

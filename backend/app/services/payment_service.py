@@ -310,7 +310,7 @@ class PaymentService(BaseService):
             return False
 
         if transaction.status == TransactionStatus.COMPLETED:
-            logger.info("Qi Card webhook: already processed payment_id=%s", qi_payment_id)
+            logger.info("Qi Card webhook: already processed order_id=%s", order_id)
             return True  # Idempotent
 
         # Update transaction
@@ -365,7 +365,7 @@ class PaymentService(BaseService):
             escrow.status = EscrowStatus.REFUNDED  # Nothing was actually charged
 
         await self.db.flush()
-        logger.info("Qi Card payment failed/cancelled: payment_id=%s", qi_payment_id)
+        logger.info("Qi Card payment failed/cancelled: order_id=%s", order_id)
         return True
 
     # === Escrow: Release (called when milestone approved) ===

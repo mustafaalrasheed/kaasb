@@ -5,7 +5,7 @@ Password hashing with bcrypt and JWT token management.
 
 import asyncio
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import partial
 
 from fastapi import HTTPException, status
@@ -90,7 +90,7 @@ get_password_hash = hash_password
 
 def create_email_token(user_id: str, token_type: str, expires_minutes: int) -> str:
     """Create a signed JWT token for email verification or password reset."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
         "type": token_type,

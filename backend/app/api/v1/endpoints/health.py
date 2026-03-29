@@ -7,6 +7,7 @@ Three tiers designed for different consumers:
   /health/detailed → Ops dashboard (auth-protected, full diagnostics + latencies)
 """
 
+import contextlib
 import logging
 import time
 
@@ -118,15 +119,13 @@ async def detailed_health(
     # DB pool stats
     pool = engine.pool
     pool_info = {}
-    try:
+    with contextlib.suppress(Exception):
         pool_info = {
             "size":       pool.size(),
             "checked_out": pool.checkedout(),
             "overflow":   pool.overflow(),
             "invalid":    pool.invalidated(),
         }
-    except Exception:
-        pass
 
     results["database"] = {
         "status":      "connected" if db_ok else "disconnected",

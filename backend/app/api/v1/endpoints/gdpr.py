@@ -7,7 +7,7 @@ DELETE /gdpr/delete - Permanently anonymise account + all personal data
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import text as sql_text
@@ -47,7 +47,7 @@ async def request_data_export(
     logger.info("DSAR export generated for user %s", current_user.id)
     return {
         "data": data,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "format": "json",
         "note": (
             "This export contains all personal data held by Kaasb as of "
@@ -211,8 +211,7 @@ async def _collect_user_data(user: User, db: AsyncSession) -> dict:
             "bio": user.bio,
             "country": user.country,
             "city": user.city,
-            "timezone": user.timezone,
-            "phone": user.phone,
+            "timezone": user."phone": user.phone,
             "primary_role": user.primary_role,
             "status": user.status,
             "created_at": user.created_at.isoformat(),
@@ -234,7 +233,7 @@ def _serialize_row(row: dict) -> dict:
     for k, v in row.items():
         if isinstance(v, datetime):
             result[k] = v.isoformat()
-        elif v is None or isinstance(v, (str, int, float, bool)):
+        elif v is None or isinstance(v, str | int | float | bool):
             result[k] = v
         else:
             result[k] = str(v)

@@ -4,11 +4,12 @@ Kaasb Platform - Payment Endpoints
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_client, get_current_freelancer, get_current_user
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.payment import (
@@ -21,7 +22,6 @@ from app.schemas.payment import (
     PayoutResponse,
     TransactionListResponse,
 )
-from app.core.config import get_settings
 from app.services.payment_service import PaymentService
 
 logger = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ async def request_payout(
     include_in_schema=False,
 )
 async def qi_card_success(
-    CartID: str = Query(..., description="Our order_id returned by Qi Card"),
+    CartID: str = Query(..., description="Our order_id returned by Qi Card"),  # noqa: N803
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -176,7 +176,7 @@ async def qi_card_success(
     include_in_schema=False,
 )
 async def qi_card_failure(
-    CartID: str = Query("", description="Our order_id returned by Qi Card"),
+    CartID: str = Query("", description="Our order_id returned by Qi Card"),  # noqa: N803
     db: AsyncSession = Depends(get_db),
 ):
     """Qi Card redirects here on failed payment: failureUrl?CartID=<order_id>"""
@@ -199,7 +199,7 @@ async def qi_card_failure(
     include_in_schema=False,
 )
 async def qi_card_cancel(
-    CartID: str = Query("", description="Our order_id returned by Qi Card"),
+    CartID: str = Query("", description="Our order_id returned by Qi Card"),  # noqa: N803
     db: AsyncSession = Depends(get_db),
 ):
     """Qi Card redirects here on cancelled payment: cancelUrl?CartID=<order_id>"""

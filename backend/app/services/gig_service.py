@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,7 +21,6 @@ from app.models.gig import (
     GigOrderStatus,
     GigPackage,
     GigStatus,
-    Subcategory,
 )
 from app.models.user import User, UserRole
 from app.schemas.gig import (

@@ -3,9 +3,9 @@ Kaasb Platform - Gig Schemas
 Pydantic v2 request/response schemas for the gig marketplace.
 """
 
-import uuid
 from datetime import datetime
 from typing import Optional
+import uuid
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 

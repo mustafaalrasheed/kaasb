@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect } from "react";
 
 // Sentry is optional — only imported if the DSN is configured
@@ -42,9 +43,9 @@ export default function Error({
           <button onClick={reset} className="btn-primary py-2.5 px-6">
             Try Again
           </button>
-          <a href="/" className="btn-secondary py-2.5 px-6">
+          <Link href="/" className="btn-secondary py-2.5 px-6">
             Go Home
-          </a>
+          </Link>
         </div>
       </div>
     </div>
