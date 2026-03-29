@@ -31,7 +31,6 @@ ignore = [
     "UP042",   # StrEnum migration — str+Enum pattern still valid in SQLAlchemy
     "N802",    # lowercase function name — Pydantic validators use field name convention
     "ASYNC230", # blocking open in async — used in sync helper functions
-    "LOG014",  # exc_info outside handler — used intentionally in global exception handler
 ]
 
 [lint.per-file-ignores]
