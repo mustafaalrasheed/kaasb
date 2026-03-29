@@ -15,9 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.security import (
     create_access_token,
+    create_email_token,
     create_refresh_token,
     decode_token,
     hash_password_async,
+    verify_email_token,
     verify_password_async,
 )
 from app.models.refresh_token import RefreshToken
@@ -320,9 +322,8 @@ class AuthService(BaseService):
 
     async def verify_email_token(self, token: str) -> None:
         """Verify email using JWT token."""
-        from app.core.security import verify_email_token as decode_token
         try:
-            payload = decode_token(token, "verify_email")
+            payload = verify_email_token(token, "verify_email")
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
@@ -339,7 +340,6 @@ class AuthService(BaseService):
 
     async def resend_verification(self, email: str, email_service) -> None:
         """Resend verification email. Silent if user not found (anti-enumeration)."""
-        from app.core.security import create_email_token
         user = await self._get_user_by_email(email)
         if not user or user.is_email_verified:
             return
@@ -352,7 +352,6 @@ class AuthService(BaseService):
 
     async def request_password_reset(self, email: str, email_service) -> None:
         """Send password reset email. Silent if user not found (anti-enumeration)."""
-        from app.core.security import create_email_token
         user = await self._get_user_by_email(email)
         if not user or user.status == UserStatus.SUSPENDED:
             return
@@ -365,10 +364,8 @@ class AuthService(BaseService):
 
     async def reset_password(self, token: str, new_password: str) -> None:
         """Reset password with JWT token."""
-        from app.core.security import verify_email_token as decode_token
-        from app.core.security import hash_password_async
         try:
-            payload = decode_token(token, "password_reset")
+            payload = verify_email_token(token, "password_reset")
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
