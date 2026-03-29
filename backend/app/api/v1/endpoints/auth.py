@@ -1,12 +1,18 @@
 """
 Kaasb Platform - Authentication Endpoints
-POST /auth/register     - Create new account
-POST /auth/login        - Get JWT tokens
-POST /auth/refresh      - Refresh JWT tokens
-GET  /auth/me           - Get current user profile
-POST /auth/logout       - Revoke current refresh token
-POST /auth/logout-all   - Revoke all refresh tokens (all sessions)
+POST /auth/register            - Create new account
+POST /auth/login               - Get JWT tokens
+POST /auth/refresh             - Refresh JWT tokens
+GET  /auth/me                  - Get current user profile
+POST /auth/logout              - Revoke current refresh token
+POST /auth/logout-all          - Revoke all refresh tokens (all sessions)
+POST /auth/verify-email        - Verify email address with token
+POST /auth/resend-verification - Resend email verification
+POST /auth/forgot-password     - Request password reset email
+POST /auth/reset-password      - Reset password with token
 """
+
+import asyncio
 
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,15 +20,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.security import create_email_token
 from app.models.user import User
 from app.schemas.user import (
+    ForgotPasswordRequest,
+    ResendVerificationRequest,
+    ResetPasswordRequest,
     TokenRefresh,
     TokenResponse,
     UserLogin,
     UserMe,
     UserRegister,
+    VerifyEmailRequest,
 )
 from app.services.auth_service import AuthService
+from app.services.email_service import EmailService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()
@@ -83,6 +95,20 @@ async def register(
     login_data = UserLogin(email=data.email, password=data.password)
     tokens = await auth_service.login(login_data)
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
+
+    # Send verification email in background (non-blocking)
+    email_service = EmailService()
+    user = await auth_service._get_user_by_email(data.email)
+    if user:
+        vtoken = create_email_token(str(user.id), "verify_email", 24 * 60)
+        asyncio.create_task(
+            email_service.send_verification_email(
+                to_email=user.email,
+                user_name=user.first_name,
+                token=vtoken,
+            )
+        )
+
     return tokens
 
 
@@ -161,3 +187,50 @@ async def logout_all(
     service = AuthService(db)
     await service.logout_all(current_user)
     return {"message": "All sessions terminated"}
+
+
+@router.post("/verify-email", summary="Verify email address with token")
+async def verify_email(
+    data: VerifyEmailRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify email using the token sent to the user's inbox."""
+    auth_service = AuthService(db)
+    await auth_service.verify_email_token(data.token)
+    return {"message": "Email verified successfully. You can now log in."}
+
+
+@router.post("/resend-verification", summary="Resend email verification")
+async def resend_verification(
+    data: ResendVerificationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Resend verification email. Rate limited to 3 per hour per email."""
+    auth_service = AuthService(db)
+    email_service = EmailService()
+    await auth_service.resend_verification(data.email, email_service)
+    # Always return success to prevent email enumeration
+    return {"message": "If the email exists and is unverified, a new verification link has been sent."}
+
+
+@router.post("/forgot-password", summary="Request password reset email")
+async def forgot_password(
+    data: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Send password reset email. Always returns success (prevents email enumeration)."""
+    auth_service = AuthService(db)
+    email_service = EmailService()
+    await auth_service.request_password_reset(data.email, email_service)
+    return {"message": "If the email exists, a password reset link has been sent."}
+
+
+@router.post("/reset-password", summary="Reset password with token")
+async def reset_password(
+    data: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset password using the token from the reset email. Token is single-use."""
+    auth_service = AuthService(db)
+    await auth_service.reset_password(data.token, data.new_password)
+    return {"message": "Password reset successfully. Please log in with your new password."}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% set lang = "en" %}{% set dir = "ltr" %}
+{% block content %}
+<h1>🎉 Your account is now active!</h1>
+<p>Hi {{ user_name }},</p>
+<p>Welcome to Kaasb — Iraq's first professional freelancing platform. We're excited to have you!</p>
+<p>You can now:</p>
+<ul style="margin: 16px 0 16px 24px; color: #555; line-height: 2;">
+  <li>Browse jobs and submit proposals</li>
+  <li>Build your professional profile</li>
+  <li>Connect with clients and freelancers</li>
+  <li>Manage contracts and payments securely</li>
+</ul>
+<div style="text-align: center; margin: 32px 0;">
+  <a href="{{ dashboard_url }}" class="btn">🚀 Get Started</a>
+</div>
+<p>If you have any questions, our team is always here at <a href="mailto:support@kaasb.com">support@kaasb.com</a></p>
+{% endblock %}

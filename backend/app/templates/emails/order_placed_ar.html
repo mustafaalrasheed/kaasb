@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% set lang = "ar" %}{% set dir = "rtl" %}
+{% block content %}
+<h1>📦 طلب جديد وصلك!</h1>
+<p>مرحباً {{ user_name }}،</p>
+<p>تلقيت طلباً جديداً على خدمة: <strong>{{ order_title }}</strong></p>
+<div style="text-align: center; margin: 32px 0;">
+  <a href="{{ order_url }}" class="btn">عرض الطلب</a>
+</div>
+<p>يرجى الرد على الطلب في أقرب وقت ممكن للحفاظ على تقييمك العالي.</p>
+{% endblock %}

@@ -1,0 +1,433 @@
+{
+  "common": {
+    "appName": "Kaasb",
+    "tagline": "Iraq's Freelancing Platform",
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "view": "View",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "search": "Search",
+    "filter": "Filter",
+    "clear": "Clear",
+    "submit": "Submit",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "or": "or",
+    "and": "and",
+    "required": "Required",
+    "optional": "Optional",
+    "success": "Success",
+    "failed": "Failed",
+    "notFound": "Not found",
+    "noResults": "No results",
+    "noData": "No data",
+    "seeAll": "See all",
+    "learnMore": "Learn more",
+    "currency": "IQD",
+    "perHour": "per hour",
+    "verified": "Verified",
+    "online": "Online",
+    "offline": "Offline",
+    "new": "New",
+    "featured": "Featured",
+    "popular": "Popular"
+  },
+  "nav": {
+    "findWork": "Find Work",
+    "findFreelancers": "Find Freelancers",
+    "gigs": "Services",
+    "jobs": "Jobs",
+    "howItWorks": "How It Works",
+    "login": "Login",
+    "register": "Sign Up",
+    "dashboard": "Dashboard",
+    "profile": "Profile",
+    "messages": "Messages",
+    "notifications": "Notifications",
+    "settings": "Settings",
+    "logout": "Logout",
+    "admin": "Admin"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign In",
+      "subtitle": "Welcome back",
+      "email": "Email",
+      "emailPlaceholder": "example@email.com",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "rememberMe": "Remember me",
+      "forgotPassword": "Forgot password?",
+      "loginButton": "Sign In",
+      "noAccount": "Don't have an account?",
+      "createAccount": "Create account",
+      "errors": {
+        "invalidCredentials": "Invalid email or password",
+        "accountSuspended": "Your account has been suspended. Contact support.",
+        "emailNotVerified": "Please verify your email first"
+      }
+    },
+    "register": {
+      "title": "Create Account",
+      "subtitle": "Join thousands of freelancers and clients in Iraq",
+      "firstName": "First Name",
+      "firstNamePlaceholder": "Ahmed",
+      "lastName": "Last Name",
+      "lastNamePlaceholder": "Mohammed",
+      "email": "Email",
+      "emailPlaceholder": "example@email.com",
+      "username": "Username",
+      "usernamePlaceholder": "ahmed_dev",
+      "password": "Password",
+      "passwordPlaceholder": "At least 8 characters",
+      "role": "I am...",
+      "roleClient": "A client looking for talent",
+      "roleFreelancer": "A freelancer offering services",
+      "registerButton": "Create Account",
+      "hasAccount": "Already have an account?",
+      "loginLink": "Sign in",
+      "terms": "By creating an account, you agree to our",
+      "termsLink": "Terms of Service",
+      "privacyLink": "Privacy Policy",
+      "verifyEmailSent": "A verification email has been sent to your inbox",
+      "errors": {
+        "emailTaken": "This email is already registered",
+        "usernameTaken": "This username is not available",
+        "weakPassword": "Password is too weak. Use at least one uppercase letter and number"
+      }
+    },
+    "forgotPassword": {
+      "title": "Forgot Password",
+      "subtitle": "Enter your email and we'll send you a reset link",
+      "email": "Email",
+      "sendButton": "Send Reset Link",
+      "backToLogin": "Back to login",
+      "sent": "Sent! Check your inbox"
+    },
+    "resetPassword": {
+      "title": "Reset Password",
+      "newPassword": "New Password",
+      "confirmPassword": "Confirm Password",
+      "resetButton": "Reset Password",
+      "success": "Password changed successfully",
+      "passwordMismatch": "Passwords do not match"
+    },
+    "verifyEmail": {
+      "title": "Verify Email",
+      "success": "Your email has been verified successfully!",
+      "invalid": "Link is invalid or expired",
+      "resend": "Resend verification email"
+    }
+  },
+  "jobs": {
+    "title": "Available Jobs",
+    "subtitle": "Find your perfect project",
+    "post": "Post a Job",
+    "search": "Search jobs...",
+    "filters": {
+      "category": "Category",
+      "type": "Job Type",
+      "budget": "Budget",
+      "experience": "Experience Level",
+      "duration": "Duration",
+      "skills": "Skills",
+      "sortBy": "Sort By",
+      "newest": "Newest",
+      "budget_high": "Highest Budget",
+      "most_proposals": "Most Proposals"
+    },
+    "card": {
+      "proposals": "proposals",
+      "budget": "Budget",
+      "posted": "Posted",
+      "deadline": "Deadline",
+      "apply": "Submit Proposal",
+      "viewDetails": "View Details"
+    },
+    "detail": {
+      "description": "Job Description",
+      "requirements": "Requirements",
+      "skillsRequired": "Skills Required",
+      "aboutClient": "About the Client",
+      "submitProposal": "Submit Your Proposal",
+      "proposalCount": "Proposals Submitted"
+    },
+    "create": {
+      "title": "Post a New Job",
+      "jobTitle": "Job Title",
+      "jobTitlePlaceholder": "e.g., Design a website",
+      "description": "Job Description",
+      "descriptionPlaceholder": "Describe what you need in detail...",
+      "category": "Category",
+      "skills": "Required Skills",
+      "budgetType": "Budget Type",
+      "fixed": "Fixed Price",
+      "hourly": "Hourly",
+      "minBudget": "Minimum Budget",
+      "maxBudget": "Maximum Budget",
+      "experience": "Experience Level",
+      "duration": "Project Duration",
+      "deadline": "Deadline",
+      "publish": "Publish Job",
+      "saveDraft": "Save as Draft"
+    },
+    "status": {
+      "open": "Open",
+      "in_progress": "In Progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "closed": "Closed"
+    },
+    "empty": "No jobs available right now. Be the first to post!"
+  },
+  "gigs": {
+    "title": "Available Services",
+    "subtitle": "Hire a freelancer for a specific service",
+    "create": "Add Your Service",
+    "search": "Search services...",
+    "categories": "Categories",
+    "allCategories": "All Categories",
+    "packages": {
+      "basic": "Basic",
+      "standard": "Standard",
+      "premium": "Premium",
+      "orderNow": "Order Now",
+      "deliveryDays": "day delivery",
+      "revisions": "revision"
+    },
+    "status": {
+      "draft": "Draft",
+      "pending_review": "Under Review",
+      "active": "Active",
+      "paused": "Paused",
+      "rejected": "Rejected",
+      "archived": "Archived"
+    },
+    "filters": {
+      "sortBy": "Sort By",
+      "best_match": "Best Match",
+      "newest": "Newest",
+      "top_rated": "Top Rated",
+      "price_low": "Price: Low to High",
+      "price_high": "Price: High to Low",
+      "deliveryTime": "Delivery Time",
+      "price": "Price",
+      "rating": "Rating"
+    },
+    "card": {
+      "startingAt": "Starting at",
+      "orderNow": "Order Now",
+      "delivery": "Delivery",
+      "days": "days"
+    },
+    "create": {
+      "title": "Create New Service",
+      "steps": {
+        "overview": "Overview",
+        "pricing": "Pricing",
+        "description": "Description",
+        "gallery": "Gallery",
+        "publish": "Publish"
+      },
+      "gigTitle": "Service Title",
+      "gigTitlePlaceholder": "e.g., I will design a professional logo",
+      "category": "Category",
+      "subcategory": "Subcategory",
+      "tags": "Tags",
+      "description": "Service Description",
+      "requirements": "Requirements from Client",
+      "faq": "FAQ",
+      "addFaq": "Add Question",
+      "gallery": "Service Images",
+      "galleryHint": "Add up to 6 images to showcase your work (max 5MB per image)",
+      "saveDraft": "Save as Draft",
+      "submitReview": "Submit for Review",
+      "basicPackage": "Basic Package",
+      "standardPackage": "Standard Package",
+      "premiumPackage": "Premium Package",
+      "packageTitle": "Package Title",
+      "packageDescription": "Package Description",
+      "price": "Price (IQD)",
+      "deliveryDays": "Delivery Days",
+      "revisions": "Revisions",
+      "unlimited": "Unlimited",
+      "features": "Features"
+    },
+    "detail": {
+      "aboutSeller": "About the Seller",
+      "reviews": "Reviews",
+      "relatedGigs": "Related Services",
+      "contactSeller": "Contact Seller",
+      "share": "Share",
+      "save": "Save",
+      "comparePackages": "Compare Packages"
+    },
+    "empty": "No services in this category yet",
+    "myGigs": {
+      "title": "My Services",
+      "manage": "Manage Services",
+      "noGigs": "You haven't posted any services yet",
+      "createFirst": "Create your first service now"
+    }
+  },
+  "freelancers": {
+    "title": "Freelancers",
+    "subtitle": "Find the perfect freelancer for your project",
+    "search": "Search by name or skills...",
+    "filters": {
+      "skills": "Skills",
+      "experience": "Experience Level",
+      "rate": "Hourly Rate",
+      "country": "Country",
+      "availability": "Availability"
+    },
+    "card": {
+      "hire": "Hire",
+      "viewProfile": "View Profile",
+      "reviews": "review",
+      "jobs": "project",
+      "successRate": "Success Rate"
+    },
+    "empty": "No freelancers match your search"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome",
+    "overview": "Overview",
+    "stats": {
+      "totalEarnings": "Total Earnings",
+      "totalSpent": "Total Spent",
+      "activeJobs": "Active Jobs",
+      "completedJobs": "Completed Jobs",
+      "activeContracts": "Active Contracts",
+      "pendingPayments": "Pending Payments"
+    },
+    "recentActivity": "Recent Activity",
+    "jobs": {
+      "title": "My Jobs",
+      "posted": "Posted",
+      "active": "Active",
+      "completed": "Completed"
+    },
+    "proposals": {
+      "title": "My Proposals",
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "rejected": "Rejected"
+    },
+    "contracts": {
+      "title": "My Contracts",
+      "active": "Active",
+      "completed": "Completed"
+    },
+    "payments": {
+      "title": "Payments",
+      "earnings": "Earnings",
+      "withdrawals": "Withdrawals",
+      "pending": "Pending",
+      "history": "Transaction History"
+    },
+    "messages": {
+      "title": "Messages",
+      "noMessages": "No messages yet"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "markAllRead": "Mark all as read",
+      "noNotifications": "No notifications"
+    },
+    "profile": {
+      "title": "Profile",
+      "edit": "Edit Profile",
+      "completeness": "Profile Completeness",
+      "addSkills": "Add your skills",
+      "addBio": "Add a bio"
+    },
+    "settings": {
+      "title": "Settings",
+      "account": "Account Settings",
+      "security": "Security",
+      "notifications": "Notification Settings",
+      "language": "Language",
+      "changePassword": "Change Password"
+    },
+    "gigs": {
+      "title": "My Services",
+      "active": "Active",
+      "pending": "Under Review",
+      "draft": "Drafts",
+      "paused": "Paused",
+      "createNew": "Create New Service",
+      "earnings": "Service Earnings",
+      "orders": "Orders",
+      "views": "Views"
+    }
+  },
+  "profile": {
+    "title": "Profile",
+    "about": "About",
+    "skills": "Skills",
+    "portfolio": "Portfolio",
+    "reviews": "Reviews",
+    "stats": {
+      "rating": "Rating",
+      "jobsDone": "projects done",
+      "memberSince": "Member since"
+    },
+    "contact": "Contact"
+  },
+  "payments": {
+    "title": "Payments",
+    "method": "Payment Method",
+    "qiCard": "Qi Card",
+    "amount": "Amount",
+    "currency": "Currency",
+    "status": {
+      "pending": "Pending",
+      "completed": "Completed",
+      "failed": "Failed",
+      "refunded": "Refunded"
+    },
+    "escrow": {
+      "title": "Secure Escrow",
+      "description": "Your funds are held securely until work is completed"
+    }
+  },
+  "errors": {
+    "404": {
+      "title": "Page Not Found",
+      "description": "Sorry, the page you're looking for doesn't exist or has been moved.",
+      "goHome": "Go to Homepage"
+    },
+    "500": {
+      "title": "Server Error",
+      "description": "An unexpected error occurred. Our team is working on it.",
+      "tryAgain": "Try Again"
+    },
+    "unauthorized": "You must be logged in to access this page",
+    "forbidden": "You don't have permission to access this",
+    "networkError": "Connection error. Check your internet connection"
+  },
+  "footer": {
+    "findWork": "Find Work",
+    "findFreelancers": "Find Freelancers",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "support": "Support",
+    "rights": "All rights reserved",
+    "tagline": "Iraq's Freelancing Platform"
+  },
+  "language": {
+    "ar": "العربية",
+    "en": "English",
+    "switch": "Switch Language"
+  }
+}

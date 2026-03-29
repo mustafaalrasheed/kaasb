@@ -4,7 +4,8 @@ Password hashing with bcrypt and JWT token management.
 """
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+import uuid
+from datetime import UTC, datetime, timedelta, timezone
 from functools import partial
 
 from fastapi import HTTPException, status
@@ -81,3 +82,31 @@ def decode_token(token: str) -> dict:
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         ) from e
+
+
+# Alias used by auth_service and other callers
+get_password_hash = hash_password
+
+
+def create_email_token(user_id: str, token_type: str, expires_minutes: int) -> str:
+    """Create a signed JWT token for email verification or password reset."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user_id),
+        "type": token_type,
+        "jti": str(uuid.uuid4()),  # Unique ID for single-use enforcement
+        "iat": now,
+        "exp": now + timedelta(minutes=expires_minutes),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def verify_email_token(token: str, expected_type: str) -> dict:
+    """Decode and validate an email token. Returns payload or raises ValueError."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != expected_type:
+            raise ValueError("Invalid token type")
+        return payload
+    except JWTError as exc:
+        raise ValueError(f"Invalid or expired token: {exc}") from exc

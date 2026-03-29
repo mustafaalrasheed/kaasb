@@ -1,0 +1,64 @@
+'use client';
+
+import React, { createContext, useContext, useState, useEffect, useTransition } from 'react';
+import { NextIntlClientProvider } from 'next-intl';
+
+interface LocaleContextType {
+  locale: 'ar' | 'en';
+  setLocale: (locale: 'ar' | 'en') => void;
+  isRTL: boolean;
+  isPending: boolean;
+}
+
+const LocaleContext = createContext<LocaleContextType>({
+  locale: 'ar',
+  setLocale: () => {},
+  isRTL: true,
+  isPending: false,
+});
+
+export function useLocale() {
+  return useContext(LocaleContext);
+}
+
+interface LocaleProviderProps {
+  children: React.ReactNode;
+  initialLocale: 'ar' | 'en';
+  messages: Record<string, unknown>;
+}
+
+export function LocaleProvider({ children, initialLocale, messages }: LocaleProviderProps) {
+  const [locale, setLocaleState] = useState<'ar' | 'en'>(initialLocale);
+  const [currentMessages, setCurrentMessages] = useState(messages);
+  const [isPending, startTransition] = useTransition();
+
+  const setLocale = async (newLocale: 'ar' | 'en') => {
+    startTransition(async () => {
+      // Save to cookie
+      document.cookie = `locale=${newLocale};path=/;max-age=31536000;samesite=lax`;
+
+      // Load new messages
+      const newMessages = (await import(`../messages/${newLocale}.json`)).default;
+
+      setLocaleState(newLocale);
+      setCurrentMessages(newMessages);
+
+      // Update HTML dir and lang attributes
+      document.documentElement.dir = newLocale === 'ar' ? 'rtl' : 'ltr';
+      document.documentElement.lang = newLocale;
+    });
+  };
+
+  useEffect(() => {
+    document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = locale;
+  }, [locale]);
+
+  return (
+    <LocaleContext.Provider value={{ locale, setLocale, isRTL: locale === 'ar', isPending }}>
+      <NextIntlClientProvider locale={locale} messages={currentMessages}>
+        {children}
+      </NextIntlClientProvider>
+    </LocaleContext.Provider>
+  );
+}

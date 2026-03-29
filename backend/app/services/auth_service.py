@@ -317,3 +317,74 @@ class AuthService(BaseService):
         user.token_version += 1
         await self.db.flush()
         logger.info("All sessions terminated: user=%s", user.id)
+
+    async def verify_email_token(self, token: str) -> None:
+        """Verify email using JWT token."""
+        from app.core.security import verify_email_token as decode_token
+        try:
+            payload = decode_token(token, "verify_email")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        user = await self._get_user_by_id(payload["sub"])
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if user.is_email_verified:
+            return  # Already verified - idempotent
+
+        user.is_email_verified = True
+        user.status = UserStatus.ACTIVE
+        self.db.add(user)
+        await self.db.commit()
+
+    async def resend_verification(self, email: str, email_service) -> None:
+        """Resend verification email. Silent if user not found (anti-enumeration)."""
+        from app.core.security import create_email_token
+        user = await self._get_user_by_email(email)
+        if not user or user.is_email_verified:
+            return
+        token = create_email_token(str(user.id), "verify_email", 24 * 60)
+        await email_service.send_verification_email(
+            to_email=user.email,
+            user_name=user.first_name,
+            token=token,
+        )
+
+    async def request_password_reset(self, email: str, email_service) -> None:
+        """Send password reset email. Silent if user not found (anti-enumeration)."""
+        from app.core.security import create_email_token
+        user = await self._get_user_by_email(email)
+        if not user or user.status == UserStatus.SUSPENDED:
+            return
+        token = create_email_token(str(user.id), "password_reset", 60)
+        await email_service.send_password_reset(
+            to_email=user.email,
+            user_name=user.first_name,
+            token=token,
+        )
+
+    async def reset_password(self, token: str, new_password: str) -> None:
+        """Reset password with JWT token."""
+        from app.core.security import verify_email_token as decode_token
+        from app.core.security import hash_password_async
+        try:
+            payload = decode_token(token, "password_reset")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        user = await self._get_user_by_id(payload["sub"])
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user.hashed_password = await hash_password_async(new_password)
+        user.token_version += 1  # Invalidate all existing sessions
+        self.db.add(user)
+        await self.db.commit()
+
+    async def _get_user_by_email(self, email: str):
+        result = await self.db.execute(select(User).where(User.email == email))
+        return result.scalar_one_or_none()
+
+    async def _get_user_by_id(self, user_id: str):
+        result = await self.db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+        return result.scalar_one_or_none()

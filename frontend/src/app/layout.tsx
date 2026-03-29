@@ -19,6 +19,8 @@ import {
   KEYWORDS,
   SOCIAL,
 } from "@/lib/seo";
+import { cookies } from "next/headers";
+import { LocaleProvider } from "@/providers/locale-provider";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -106,16 +108,8 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
 
-  // === Verification (add real IDs when available) ===
-  // verification: {
-  //   google: "google-site-verification-id",
-  //   yandex: "yandex-verification-id",
-  // },
-
-  // === Category ===
   category: "technology",
 
-  // === Additional (WhatsApp/Telegram optimization) ===
   other: {
     "mobile-web-app-capable": "yes",
     "apple-mobile-web-app-capable": "yes",
@@ -124,14 +118,31 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const cookieStore = await cookies();
+  const localeCookie = cookieStore.get("locale")?.value;
+  const locale = (localeCookie === "en" ? "en" : "ar") as "ar" | "en";
+  const dir = locale === "ar" ? "rtl" : "ltr";
+  const htmlLang = locale === "ar" ? "ar" : "en";
+
+  // Load messages for the detected locale
+  const messages = (await import(`@/messages/${locale}.json`)).default;
+
   return (
-    <html lang="en" dir="ltr">
+    <html lang={htmlLang} dir={dir} className={locale === "ar" ? "font-arabic" : ""}>
       <head>
+        {/* Google Fonts — Tajawal for Arabic */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;900&display=swap"
+          rel="stylesheet"
+        />
+
         {/* Structured Data */}
         <OrganizationJsonLd />
         <WebSiteJsonLd />
@@ -149,33 +160,53 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="//kaasb.com" />
       </head>
       <body className="min-h-screen bg-gray-50 flex flex-col">
-        <Navbar />
-        <main className="pt-16 flex-1">{children}</main>
+        <LocaleProvider initialLocale={locale} messages={messages}>
+          <Navbar />
+          <main className="pt-16 flex-1">{children}</main>
 
-        {/* Site Footer */}
-        <footer className="bg-white border-t border-gray-200 mt-auto">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-bold text-brand-500">Kaasb</span>
-                <span className="text-gray-400 text-sm">Iraq&apos;s Freelancing Platform</span>
+          {/* Site Footer */}
+          <footer className="bg-white border-t border-gray-200 mt-auto">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold text-brand-500">
+                    {locale === "ar" ? "كاسب" : "Kaasb"}
+                  </span>
+                  <span className="text-gray-400 text-sm">
+                    {locale === "ar" ? "منصة المستقلين العراقية" : "Iraq's Freelancing Platform"}
+                  </span>
+                </div>
+                <nav className="flex flex-wrap justify-center gap-6 text-sm text-gray-500" aria-label="Footer navigation">
+                  <Link href="/jobs" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "ابحث عن عمل" : "Find Work"}
+                  </Link>
+                  <Link href="/freelancers" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "ابحث عن مستقلين" : "Find Freelancers"}
+                  </Link>
+                  <Link href="/gigs" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "الخدمات" : "Services"}
+                  </Link>
+                  <Link href="/privacy" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "سياسة الخصوصية" : "Privacy Policy"}
+                  </Link>
+                  <Link href="/terms" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "شروط الخدمة" : "Terms of Service"}
+                  </Link>
+                  <a href="mailto:support@kaasb.com" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "الدعم" : "Support"}
+                  </a>
+                </nav>
               </div>
-              <nav className="flex flex-wrap justify-center gap-6 text-sm text-gray-500" aria-label="Footer navigation">
-                <Link href="/jobs" className="hover:text-gray-800 transition-colors">Find Work</Link>
-                <Link href="/freelancers" className="hover:text-gray-800 transition-colors">Find Freelancers</Link>
-                <Link href="/privacy" className="hover:text-gray-800 transition-colors">Privacy Policy</Link>
-                <Link href="/terms" className="hover:text-gray-800 transition-colors">Terms of Service</Link>
-                <a href="mailto:support@kaasb.com" className="hover:text-gray-800 transition-colors">Support</a>
-              </nav>
+              <p className="mt-6 text-center text-xs text-gray-400">
+                &copy; {new Date().getFullYear()} Kaasb Technology LLC.{" "}
+                {locale === "ar" ? "جميع الحقوق محفوظة." : "All rights reserved."}
+              </p>
             </div>
-            <p className="mt-6 text-center text-xs text-gray-400">
-              &copy; {new Date().getFullYear()} Kaasb Technology LLC. All rights reserved.
-            </p>
-          </div>
-        </footer>
+          </footer>
 
-        <Toaster position="top-right" richColors />
-        <CookieConsent />
+          <Toaster position={locale === "ar" ? "top-left" : "top-right"} richColors />
+          <CookieConsent />
+        </LocaleProvider>
       </body>
     </html>
   );

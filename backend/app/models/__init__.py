@@ -23,6 +23,16 @@ from app.models.refresh_token import RefreshToken
 from app.models.report import Report, ReportReason, ReportStatus, ReportType
 from app.models.review import Review
 from app.models.user import User, UserRole, UserStatus
+from app.models.gig import (
+    Category,
+    Subcategory,
+    Gig,
+    GigStatus,
+    GigPackage,
+    GigPackageTier,
+    GigOrder,
+    GigOrderStatus,
+)
 
 __all__ = [
     "BaseModel",
@@ -38,4 +48,7 @@ __all__ = [
     "Notification", "NotificationType",
     "Conversation", "Message",
     "Report", "ReportType", "ReportReason", "ReportStatus",
+    "Category", "Subcategory",
+    "Gig", "GigStatus", "GigPackage", "GigPackageTier",
+    "GigOrder", "GigOrderStatus",
 ]

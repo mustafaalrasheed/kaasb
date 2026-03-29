@@ -80,9 +80,9 @@ const nextConfig = {
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline'",
-              "style-src 'self' 'unsafe-inline'",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               imgSrc,
-              "font-src 'self'",
+              "font-src 'self' https://fonts.gstatic.com",
               connectSrc,
               "frame-ancestors 'none'",
               "base-uri 'self'",

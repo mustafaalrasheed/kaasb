@@ -77,12 +77,11 @@ class Settings(BaseSettings):
     # === Domain ===
     DOMAIN: str = "localhost"
 
-    # === Email ===
-    SMTP_HOST: str = ""
-    SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
-    SMTP_FROM: str = "noreply@kaasb.com"
+    # === Email (Resend) ===
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "Kaasb <noreply@kaasb.com>"
+    EMAIL_FROM_NAME: str = "Kaasb"
+    FRONTEND_URL: str = "http://localhost:3000"
 
     # === Monitoring & Observability ===
     # Sentry DSN — leave empty to disable error tracking (safe default)
@@ -122,6 +121,17 @@ class Settings(BaseSettings):
                 logger.warning("STRIPE_WEBHOOK_SECRET not set — Stripe webhooks will not be verified")
             if not self.QI_CARD_API_KEY and not self.QI_CARD_SANDBOX:
                 raise ValueError("QI_CARD_API_KEY must be set when QI_CARD_SANDBOX is False")
+            if not self.RESEND_API_KEY:
+                logger.warning("RESEND_API_KEY not set — transactional emails will not be sent")
+            # Auto-add domain to CORS origins in production
+            if self.DOMAIN and self.DOMAIN != "localhost":
+                prod_origins = [
+                    f"https://{self.DOMAIN}",
+                    f"https://www.{self.DOMAIN}",
+                ]
+                for origin in prod_origins:
+                    if origin not in self.CORS_ORIGINS:
+                        self.CORS_ORIGINS.append(origin)
 
         return self
 

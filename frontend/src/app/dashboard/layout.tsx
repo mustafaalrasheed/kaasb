@@ -16,6 +16,8 @@ const sidebarLinks = [
   { href: "/dashboard/reviews", label: "Reviews", icon: "⭐", roles: ["client", "freelancer"] },
   { href: "/dashboard/my-jobs", label: "My Jobs", icon: "📋", roles: ["client"] },
   { href: "/jobs/new", label: "Post a Job", icon: "✏️", roles: ["client"] },
+  { href: "/dashboard/gigs", label: "My Gigs", icon: "🛍️", roles: ["freelancer"] },
+  { href: "/dashboard/gigs/new", label: "Create Gig", icon: "✨", roles: ["freelancer"] },
   { href: "/dashboard/my-proposals", label: "My Proposals", icon: "📨", roles: ["freelancer"] },
   { href: "/jobs", label: "Find Work", icon: "🔍", roles: ["freelancer"] },
   { href: "/dashboard/profile/edit", label: "Edit Profile", icon: "👤", roles: ["client", "freelancer"] },

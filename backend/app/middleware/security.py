@@ -103,12 +103,14 @@ rate_limiter = RateLimiter()
 
 # Rate limit tiers
 RATE_LIMITS = {
-    "login": {"limit": 5, "window": 300},          # 5 per 5 min
-    "register": {"limit": 3, "window": 600},        # 3 per 10 min
-    "password_change": {"limit": 5, "window": 300}, # 5 per 5 min (brute-force protection)
-    "upload": {"limit": 10, "window": 60},           # 10 per min
-    "api_write": {"limit": 120, "window": 60},       # 120 writes per min
-    "api_read": {"limit": 120, "window": 60},        # 120 reads per min
+    "login": {"limit": 5, "window": 300},               # 5 per 5 min
+    "register": {"limit": 3, "window": 600},             # 3 per 10 min
+    "password_change": {"limit": 5, "window": 300},      # 5 per 5 min (brute-force protection)
+    "password_reset": {"limit": 3, "window": 3600},      # 3 per hour (abuse prevention)
+    "email_verification": {"limit": 3, "window": 3600},  # 3 per hour
+    "upload": {"limit": 10, "window": 60},               # 10 per min
+    "api_write": {"limit": 120, "window": 60},           # 120 writes per min
+    "api_read": {"limit": 120, "window": 60},            # 120 reads per min
 }
 
 
@@ -143,6 +145,10 @@ def _get_rate_limit_tier(request: Request) -> str:
         return "register"
     if "/users/password" in path and method == "PUT":
         return "password_change"
+    if ("/auth/forgot-password" in path or "/auth/reset-password" in path) and method == "POST":
+        return "password_reset"
+    if ("/auth/resend-verification" in path or "/auth/verify-email" in path) and method == "POST":
+        return "email_verification"
     if "/avatar" in path and method == "POST":
         return "upload"
     if method in ("POST", "PUT", "DELETE", "PATCH"):

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% set lang = "en" %}{% set dir = "ltr" %}
+{% block content %}
+<h1>Hi {{ user_name }}, welcome to Kaasb!</h1>
+<p>Thank you for signing up. To activate your account, please verify your email address by clicking the button below.</p>
+<div style="text-align: center; margin: 32px 0;">
+  <a href="{{ verification_url }}" class="btn">✉️ Verify Email Address</a>
+</div>
+<p>This link is valid for <strong>24 hours</strong>.</p>
+<hr class="divider">
+<p>If you didn't create a Kaasb account, you can safely ignore this email.</p>
+<p class="link-note">If the button doesn't work, copy this link into your browser:<br>{{ verification_url }}</p>
+{% endblock %}

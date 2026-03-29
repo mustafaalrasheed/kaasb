@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% set lang = "ar" %}{% set dir = "rtl" %}
+{% block content %}
+<h1>🎉 تم تفعيل حسابك بنجاح!</h1>
+<p>مرحباً {{ user_name }}،</p>
+<p>يسعدنا أنك الآن جزء من مجتمع كاسب — المنصة الأولى للمستقلين العراقيين.</p>
+<p>يمكنك الآن:</p>
+<ul style="margin: 16px 0 16px 24px; color: #555; line-height: 2;">
+  <li>تصفح الوظائف وتقديم عروضك</li>
+  <li>إنشاء ملفك المهني وعرض مهاراتك</li>
+  <li>التواصل مع العملاء والمستقلين</li>
+  <li>إدارة العقود والمدفوعات بأمان</li>
+</ul>
+<div style="text-align: center; margin: 32px 0;">
+  <a href="{{ dashboard_url }}" class="btn">🚀 ابدأ الآن</a>
+</div>
+<p>إذا كان لديك أي سؤال، فريقنا دائماً هنا للمساعدة على <a href="mailto:support@kaasb.com">support@kaasb.com</a></p>
+{% endblock %}

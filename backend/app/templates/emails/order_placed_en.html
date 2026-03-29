@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% set lang = "en" %}{% set dir = "ltr" %}
+{% block content %}
+<h1>📦 New order received!</h1>
+<p>Hi {{ user_name }},</p>
+<p>You received a new order for: <strong>{{ order_title }}</strong></p>
+<div style="text-align: center; margin: 32px 0;">
+  <a href="{{ order_url }}" class="btn">View Order</a>
+</div>
+<p>Please respond as soon as possible to maintain your response rate.</p>
+{% endblock %}

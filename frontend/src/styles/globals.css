@@ -57,3 +57,44 @@
     @apply bg-white rounded-xl border border-gray-200 shadow-sm;
   }
 }
+
+/* === RTL / Arabic Support === */
+
+/* Arabic font applied at html level via class */
+html.font-arabic body,
+html[lang="ar"] body {
+  font-family: "Tajawal", system-ui, sans-serif;
+}
+
+/* RTL-aware layout helpers */
+[dir="rtl"] .rtl-flip {
+  transform: scaleX(-1);
+}
+
+/* Ensure icons that indicate direction flip in RTL */
+[dir="rtl"] .icon-directional {
+  transform: scaleX(-1);
+}
+
+/* Fix text alignment for RTL */
+[dir="rtl"] .text-start {
+  text-align: right;
+}
+[dir="ltr"] .text-start {
+  text-align: left;
+}
+
+/* Fix border sides for RTL */
+[dir="rtl"] .border-s {
+  border-right-width: 1px;
+  border-left-width: 0;
+}
+[dir="rtl"] .border-e {
+  border-left-width: 1px;
+  border-right-width: 0;
+}
+
+/* Smooth locale switch transition */
+html {
+  transition: direction 0.1s;
+}

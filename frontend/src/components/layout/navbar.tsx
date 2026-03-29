@@ -3,11 +3,25 @@
 import Link from "next/link";
 import { useState, useCallback } from "react";
 import { useAuthStore } from "@/lib/auth-store";
+import { LanguageSwitcher } from "@/components/ui/language-switcher";
+import { NotificationBell } from "@/components/ui/notification-bell";
+import { useLocale } from "@/providers/locale-provider";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const { user, isAuthenticated, logout } = useAuthStore();
   const toggleMobileMenu = useCallback(() => setMobileMenuOpen((prev) => !prev), []);
+  const { locale } = useLocale();
+  const t = {
+    findWork: locale === "ar" ? "ابحث عن عمل" : "Find Work",
+    findFreelancers: locale === "ar" ? "ابحث عن مستقلين" : "Find Freelancers",
+    services: locale === "ar" ? "الخدمات" : "Services",
+    dashboard: locale === "ar" ? "لوحة التحكم" : "Dashboard",
+    messages: locale === "ar" ? "الرسائل" : "Messages",
+    logout: locale === "ar" ? "تسجيل الخروج" : "Log out",
+    login: locale === "ar" ? "تسجيل الدخول" : "Log In",
+    register: locale === "ar" ? "إنشاء حساب" : "Sign Up",
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200">
@@ -15,22 +29,30 @@ export function Navbar() {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-2xl font-bold text-brand-500">Kaasb</span>
+            <span className="text-2xl font-bold text-brand-500">
+              {locale === "ar" ? "كاسب" : "Kaasb"}
+            </span>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden md:flex items-center gap-6">
             <Link
               href="/jobs"
               className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
             >
-              Find Work
+              {t.findWork}
             </Link>
             <Link
               href="/freelancers"
               className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
             >
-              Find Freelancers
+              {t.findFreelancers}
+            </Link>
+            <Link
+              href="/gigs"
+              className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
+            >
+              {t.services}
             </Link>
 
             {isAuthenticated ? (
@@ -39,14 +61,15 @@ export function Navbar() {
                   href="/dashboard"
                   className="text-gray-600 hover:text-gray-900 font-medium"
                 >
-                  Dashboard
+                  {t.dashboard}
                 </Link>
                 <Link
-                  href="/messages"
+                  href="/dashboard/messages"
                   className="text-gray-600 hover:text-gray-900 font-medium"
                 >
-                  Messages
+                  {t.messages}
                 </Link>
+                <NotificationBell />
                 <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
                   <div className="w-8 h-8 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center font-semibold text-sm">
                     {user?.first_name?.[0]}
@@ -56,7 +79,7 @@ export function Navbar() {
                     onClick={logout}
                     className="text-sm text-gray-500 hover:text-gray-700"
                   >
-                    Log out
+                    {t.logout}
                   </button>
                 </div>
               </div>
@@ -66,45 +89,35 @@ export function Navbar() {
                   href="/auth/login"
                   className="text-gray-600 hover:text-gray-900 font-medium"
                 >
-                  Log In
+                  {t.login}
                 </Link>
                 <Link href="/auth/register" className="btn-primary py-2 px-5">
-                  Sign Up
+                  {t.register}
                 </Link>
               </div>
             )}
+
+            <LanguageSwitcher />
           </div>
 
-          {/* Mobile menu button */}
-          <button
-            className="md:hidden p-2"
-            onClick={toggleMobileMenu}
-            aria-label="Toggle mobile menu"
-            aria-expanded={mobileMenuOpen}
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          {/* Mobile: language + menu button */}
+          <div className="md:hidden flex items-center gap-2">
+            <LanguageSwitcher />
+            <button
+              className="p-2"
+              onClick={toggleMobileMenu}
+              aria-label="Toggle mobile menu"
+              aria-expanded={mobileMenuOpen}
             >
-              {mobileMenuOpen ? (
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              ) : (
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              )}
-            </svg>
-          </button>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {mobileMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -112,27 +125,39 @@ export function Navbar() {
       {mobileMenuOpen && (
         <div className="md:hidden bg-white border-t border-gray-100 py-4 px-4 space-y-3">
           <Link href="/jobs" className="block py-2 text-gray-700 font-medium">
-            Find Work
+            {t.findWork}
           </Link>
-          <Link
-            href="/freelancers"
-            className="block py-2 text-gray-700 font-medium"
-          >
-            Find Freelancers
+          <Link href="/freelancers" className="block py-2 text-gray-700 font-medium">
+            {t.findFreelancers}
           </Link>
-          {!isAuthenticated && (
+          <Link href="/gigs" className="block py-2 text-gray-700 font-medium">
+            {t.services}
+          </Link>
+          {isAuthenticated ? (
             <>
-              <Link
-                href="/auth/login"
-                className="block py-2 text-gray-700 font-medium"
-              >
-                Log In
+              <Link href="/dashboard" className="block py-2 text-gray-700 font-medium">
+                {t.dashboard}
               </Link>
-              <Link
-                href="/auth/register"
-                className="block btn-primary text-center"
+              <Link href="/dashboard/messages" className="block py-2 text-gray-700 font-medium">
+                {t.messages}
+              </Link>
+              <Link href="/dashboard/notifications" className="block py-2 text-gray-700 font-medium">
+                {locale === "ar" ? "الإشعارات" : "Notifications"}
+              </Link>
+              <button
+                onClick={logout}
+                className="block w-full text-start py-2 text-gray-700 font-medium"
               >
-                Sign Up
+                {t.logout}
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href="/auth/login" className="block py-2 text-gray-700 font-medium">
+                {t.login}
+              </Link>
+              <Link href="/auth/register" className="block btn-primary text-center">
+                {t.register}
               </Link>
             </>
           )}

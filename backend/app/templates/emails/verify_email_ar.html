@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% set lang = "ar" %}{% set dir = "rtl" %}
+{% block content %}
+<h1>مرحباً {{ user_name }}، أهلاً بك في كاسب!</h1>
+<p>شكراً لتسجيلك في منصة كاسب. لتفعيل حسابك والبدء في استخدام المنصة، يرجى تأكيد عنوان بريدك الإلكتروني.</p>
+<div style="text-align: center; margin: 32px 0;">
+  <a href="{{ verification_url }}" class="btn">✉️ تأكيد البريد الإلكتروني</a>
+</div>
+<p>هذا الرابط صالح لمدة <strong>24 ساعة</strong> فقط.</p>
+<hr class="divider">
+<p>إذا لم تقم بإنشاء حساب في كاسب، يمكنك تجاهل هذا البريد بأمان.</p>
+<p class="link-note">إذا كان الزر لا يعمل، انسخ الرابط التالي في متصفحك:<br>{{ verification_url }}</p>
+{% endblock %}

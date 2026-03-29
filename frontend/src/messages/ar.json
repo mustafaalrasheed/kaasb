@@ -1,0 +1,433 @@
+{
+  "common": {
+    "appName": "كاسب",
+    "tagline": "منصة المستقلين العراقية",
+    "loading": "جاري التحميل...",
+    "error": "حدث خطأ",
+    "retry": "إعادة المحاولة",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "view": "عرض",
+    "back": "رجوع",
+    "next": "التالي",
+    "previous": "السابق",
+    "search": "بحث",
+    "filter": "تصفية",
+    "clear": "مسح",
+    "submit": "إرسال",
+    "confirm": "تأكيد",
+    "yes": "نعم",
+    "no": "لا",
+    "or": "أو",
+    "and": "و",
+    "required": "مطلوب",
+    "optional": "اختياري",
+    "success": "تم بنجاح",
+    "failed": "فشل",
+    "notFound": "غير موجود",
+    "noResults": "لا توجد نتائج",
+    "noData": "لا توجد بيانات",
+    "seeAll": "عرض الكل",
+    "learnMore": "معرفة المزيد",
+    "currency": "د.ع",
+    "perHour": "لكل ساعة",
+    "verified": "موثق",
+    "online": "متصل",
+    "offline": "غير متصل",
+    "new": "جديد",
+    "featured": "مميز",
+    "popular": "الأكثر طلباً"
+  },
+  "nav": {
+    "findWork": "ابحث عن عمل",
+    "findFreelancers": "ابحث عن مستقل",
+    "gigs": "الخدمات",
+    "jobs": "الوظائف",
+    "howItWorks": "كيف يعمل",
+    "login": "تسجيل الدخول",
+    "register": "إنشاء حساب",
+    "dashboard": "لوحة التحكم",
+    "profile": "الملف الشخصي",
+    "messages": "الرسائل",
+    "notifications": "الإشعارات",
+    "settings": "الإعدادات",
+    "logout": "تسجيل الخروج",
+    "admin": "الإدارة"
+  },
+  "auth": {
+    "login": {
+      "title": "تسجيل الدخول",
+      "subtitle": "أهلاً بعودتك",
+      "email": "البريد الإلكتروني",
+      "emailPlaceholder": "example@email.com",
+      "password": "كلمة المرور",
+      "passwordPlaceholder": "أدخل كلمة مرورك",
+      "rememberMe": "تذكرني",
+      "forgotPassword": "نسيت كلمة المرور؟",
+      "loginButton": "تسجيل الدخول",
+      "noAccount": "ليس لديك حساب؟",
+      "createAccount": "إنشاء حساب جديد",
+      "errors": {
+        "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة",
+        "accountSuspended": "تم تعليق حسابك. تواصل مع الدعم",
+        "emailNotVerified": "يرجى تأكيد بريدك الإلكتروني أولاً"
+      }
+    },
+    "register": {
+      "title": "إنشاء حساب جديد",
+      "subtitle": "انضم إلى آلاف المستقلين والعملاء في العراق",
+      "firstName": "الاسم الأول",
+      "firstNamePlaceholder": "أحمد",
+      "lastName": "اسم العائلة",
+      "lastNamePlaceholder": "محمد",
+      "email": "البريد الإلكتروني",
+      "emailPlaceholder": "example@email.com",
+      "username": "اسم المستخدم",
+      "usernamePlaceholder": "ahmed_dev",
+      "password": "كلمة المرور",
+      "passwordPlaceholder": "8 أحرف على الأقل",
+      "role": "أنا...",
+      "roleClient": "عميل أبحث عن مواهب",
+      "roleFreelancer": "مستقل أعرض خدماتي",
+      "registerButton": "إنشاء الحساب",
+      "hasAccount": "لديك حساب بالفعل؟",
+      "loginLink": "تسجيل الدخول",
+      "terms": "بإنشاء حساب، أنت توافق على",
+      "termsLink": "شروط الخدمة",
+      "privacyLink": "سياسة الخصوصية",
+      "verifyEmailSent": "تم إرسال رسالة تحقق إلى بريدك الإلكتروني",
+      "errors": {
+        "emailTaken": "هذا البريد الإلكتروني مستخدم بالفعل",
+        "usernameTaken": "اسم المستخدم هذا غير متاح",
+        "weakPassword": "كلمة المرور ضعيفة. استخدم حرفاً كبيراً ورقماً على الأقل"
+      }
+    },
+    "forgotPassword": {
+      "title": "نسيت كلمة المرور",
+      "subtitle": "أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين",
+      "email": "البريد الإلكتروني",
+      "sendButton": "إرسال رابط الاستعادة",
+      "backToLogin": "العودة لتسجيل الدخول",
+      "sent": "تم الإرسال! تحقق من صندوق الوارد"
+    },
+    "resetPassword": {
+      "title": "إعادة تعيين كلمة المرور",
+      "newPassword": "كلمة المرور الجديدة",
+      "confirmPassword": "تأكيد كلمة المرور",
+      "resetButton": "إعادة تعيين كلمة المرور",
+      "success": "تم تغيير كلمة المرور بنجاح",
+      "passwordMismatch": "كلمتا المرور غير متطابقتين"
+    },
+    "verifyEmail": {
+      "title": "تأكيد البريد الإلكتروني",
+      "success": "تم تأكيد بريدك الإلكتروني بنجاح!",
+      "invalid": "الرابط غير صالح أو منتهي الصلاحية",
+      "resend": "إعادة إرسال رسالة التأكيد"
+    }
+  },
+  "jobs": {
+    "title": "الوظائف المتاحة",
+    "subtitle": "اعثر على مشروعك المثالي",
+    "post": "نشر وظيفة",
+    "search": "ابحث عن وظائف...",
+    "filters": {
+      "category": "التخصص",
+      "type": "نوع العمل",
+      "budget": "الميزانية",
+      "experience": "مستوى الخبرة",
+      "duration": "المدة",
+      "skills": "المهارات",
+      "sortBy": "ترتيب حسب",
+      "newest": "الأحدث",
+      "budget_high": "الأعلى ميزانية",
+      "most_proposals": "الأكثر عروضاً"
+    },
+    "card": {
+      "proposals": "عرض",
+      "budget": "الميزانية",
+      "posted": "نُشر",
+      "deadline": "الموعد النهائي",
+      "apply": "تقديم عرض",
+      "viewDetails": "عرض التفاصيل"
+    },
+    "detail": {
+      "description": "وصف الوظيفة",
+      "requirements": "المتطلبات",
+      "skillsRequired": "المهارات المطلوبة",
+      "aboutClient": "عن العميل",
+      "submitProposal": "تقديم عرضك",
+      "proposalCount": "العروض المقدمة"
+    },
+    "create": {
+      "title": "نشر وظيفة جديدة",
+      "jobTitle": "عنوان الوظيفة",
+      "jobTitlePlaceholder": "مثال: تصميم موقع إلكتروني",
+      "description": "وصف الوظيفة",
+      "descriptionPlaceholder": "اشرح ما تحتاجه بالتفصيل...",
+      "category": "التخصص",
+      "skills": "المهارات المطلوبة",
+      "budgetType": "نوع الميزانية",
+      "fixed": "سعر ثابت",
+      "hourly": "بالساعة",
+      "minBudget": "الحد الأدنى للميزانية",
+      "maxBudget": "الحد الأقصى للميزانية",
+      "experience": "مستوى الخبرة",
+      "duration": "مدة المشروع",
+      "deadline": "الموعد النهائي",
+      "publish": "نشر الوظيفة",
+      "saveDraft": "حفظ كمسودة"
+    },
+    "status": {
+      "open": "مفتوح",
+      "in_progress": "جارٍ العمل",
+      "completed": "مكتمل",
+      "cancelled": "ملغي",
+      "closed": "مغلق"
+    },
+    "empty": "لا توجد وظائف متاحة حالياً. كن أول من ينشر وظيفة!"
+  },
+  "gigs": {
+    "title": "الخدمات المتاحة",
+    "subtitle": "استأجر مستقلاً لخدمة محددة",
+    "create": "أضف خدمتك",
+    "search": "ابحث عن خدمات...",
+    "categories": "التصنيفات",
+    "allCategories": "جميع التصنيفات",
+    "packages": {
+      "basic": "أساسي",
+      "standard": "قياسي",
+      "premium": "مميز",
+      "orderNow": "اطلب الآن",
+      "deliveryDays": "يوم تسليم",
+      "revisions": "تعديل"
+    },
+    "status": {
+      "draft": "مسودة",
+      "pending_review": "قيد المراجعة",
+      "active": "نشط",
+      "paused": "موقوف",
+      "rejected": "مرفوض",
+      "archived": "مؤرشف"
+    },
+    "filters": {
+      "sortBy": "ترتيب حسب",
+      "best_match": "الأنسب",
+      "newest": "الأحدث",
+      "top_rated": "الأعلى تقييماً",
+      "price_low": "الأقل سعراً",
+      "price_high": "الأعلى سعراً",
+      "deliveryTime": "وقت التسليم",
+      "price": "السعر",
+      "rating": "التقييم"
+    },
+    "card": {
+      "startingAt": "يبدأ من",
+      "orderNow": "اطلب الآن",
+      "delivery": "التسليم",
+      "days": "يوم"
+    },
+    "create": {
+      "title": "إنشاء خدمة جديدة",
+      "steps": {
+        "overview": "نظرة عامة",
+        "pricing": "التسعير",
+        "description": "التفاصيل",
+        "gallery": "المعرض",
+        "publish": "النشر"
+      },
+      "gigTitle": "عنوان الخدمة",
+      "gigTitlePlaceholder": "مثال: سأصمم لك شعاراً احترافياً",
+      "category": "التصنيف",
+      "subcategory": "التصنيف الفرعي",
+      "tags": "الوسوم",
+      "description": "وصف الخدمة",
+      "requirements": "متطلبات من العميل",
+      "faq": "الأسئلة الشائعة",
+      "addFaq": "إضافة سؤال",
+      "gallery": "صور الخدمة",
+      "galleryHint": "أضف حتى 6 صور لعرض أعمالك (الحد الأقصى 5 ميجابايت للصورة)",
+      "saveDraft": "حفظ كمسودة",
+      "submitReview": "إرسال للمراجعة",
+      "basicPackage": "الباقة الأساسية",
+      "standardPackage": "الباقة القياسية",
+      "premiumPackage": "الباقة المميزة",
+      "packageTitle": "عنوان الباقة",
+      "packageDescription": "وصف الباقة",
+      "price": "السعر (د.ع)",
+      "deliveryDays": "أيام التسليم",
+      "revisions": "عدد التعديلات",
+      "unlimited": "غير محدود",
+      "features": "المميزات"
+    },
+    "detail": {
+      "aboutSeller": "عن البائع",
+      "reviews": "التقييمات",
+      "relatedGigs": "خدمات مشابهة",
+      "contactSeller": "التواصل مع البائع",
+      "share": "مشاركة",
+      "save": "حفظ",
+      "comparePackages": "مقارنة الباقات"
+    },
+    "empty": "لا توجد خدمات في هذا التصنيف حالياً",
+    "myGigs": {
+      "title": "خدماتي",
+      "manage": "إدارة الخدمات",
+      "noGigs": "لم تنشر أي خدمات بعد",
+      "createFirst": "أنشئ خدمتك الأولى الآن"
+    }
+  },
+  "freelancers": {
+    "title": "المستقلون",
+    "subtitle": "ابحث عن المستقل المثالي لمشروعك",
+    "search": "ابحث بالاسم أو المهارات...",
+    "filters": {
+      "skills": "المهارات",
+      "experience": "مستوى الخبرة",
+      "rate": "سعر الساعة",
+      "country": "الدولة",
+      "availability": "التوفر"
+    },
+    "card": {
+      "hire": "توظيف",
+      "viewProfile": "عرض الملف",
+      "reviews": "تقييم",
+      "jobs": "مشروع",
+      "successRate": "معدل النجاح"
+    },
+    "empty": "لا يوجد مستقلون يطابقون بحثك"
+  },
+  "dashboard": {
+    "title": "لوحة التحكم",
+    "welcome": "مرحباً",
+    "overview": "نظرة عامة",
+    "stats": {
+      "totalEarnings": "إجمالي الأرباح",
+      "totalSpent": "إجمالي الإنفاق",
+      "activeJobs": "الوظائف النشطة",
+      "completedJobs": "الوظائف المكتملة",
+      "activeContracts": "العقود النشطة",
+      "pendingPayments": "المدفوعات المعلقة"
+    },
+    "recentActivity": "النشاط الأخير",
+    "jobs": {
+      "title": "وظائفي",
+      "posted": "المنشورة",
+      "active": "النشطة",
+      "completed": "المكتملة"
+    },
+    "proposals": {
+      "title": "عروضي",
+      "pending": "معلقة",
+      "accepted": "مقبولة",
+      "rejected": "مرفوضة"
+    },
+    "contracts": {
+      "title": "عقودي",
+      "active": "نشطة",
+      "completed": "مكتملة"
+    },
+    "payments": {
+      "title": "المدفوعات",
+      "earnings": "الأرباح",
+      "withdrawals": "السحوبات",
+      "pending": "معلقة",
+      "history": "سجل المعاملات"
+    },
+    "messages": {
+      "title": "الرسائل",
+      "noMessages": "لا توجد رسائل"
+    },
+    "notifications": {
+      "title": "الإشعارات",
+      "markAllRead": "تحديد الكل كمقروء",
+      "noNotifications": "لا توجد إشعارات"
+    },
+    "profile": {
+      "title": "الملف الشخصي",
+      "edit": "تعديل الملف",
+      "completeness": "اكتمال الملف",
+      "addSkills": "أضف مهاراتك",
+      "addBio": "أضف نبذة عنك"
+    },
+    "settings": {
+      "title": "الإعدادات",
+      "account": "إعدادات الحساب",
+      "security": "الأمان",
+      "notifications": "إعدادات الإشعارات",
+      "language": "اللغة",
+      "changePassword": "تغيير كلمة المرور"
+    },
+    "gigs": {
+      "title": "خدماتي",
+      "active": "نشطة",
+      "pending": "قيد المراجعة",
+      "draft": "مسودة",
+      "paused": "موقوفة",
+      "createNew": "إنشاء خدمة جديدة",
+      "earnings": "أرباح الخدمة",
+      "orders": "الطلبات",
+      "views": "المشاهدات"
+    }
+  },
+  "profile": {
+    "title": "الملف الشخصي",
+    "about": "نبذة عني",
+    "skills": "المهارات",
+    "portfolio": "أعمالي",
+    "reviews": "التقييمات",
+    "stats": {
+      "rating": "التقييم",
+      "jobsDone": "مشروع منجز",
+      "memberSince": "عضو منذ"
+    },
+    "contact": "تواصل"
+  },
+  "payments": {
+    "title": "المدفوعات",
+    "method": "طريقة الدفع",
+    "qiCard": "بطاقة Qi",
+    "amount": "المبلغ",
+    "currency": "العملة",
+    "status": {
+      "pending": "معلق",
+      "completed": "مكتمل",
+      "failed": "فشل",
+      "refunded": "مُسترد"
+    },
+    "escrow": {
+      "title": "الضمان المالي",
+      "description": "أموالك محفوظة بأمان حتى إتمام العمل"
+    }
+  },
+  "errors": {
+    "404": {
+      "title": "الصفحة غير موجودة",
+      "description": "عذراً، الصفحة التي تبحث عنها غير موجودة أو تم نقلها.",
+      "goHome": "العودة للرئيسية"
+    },
+    "500": {
+      "title": "خطأ في الخادم",
+      "description": "حدث خطأ غير متوقع. يعمل فريقنا على حل المشكلة.",
+      "tryAgain": "المحاولة مجدداً"
+    },
+    "unauthorized": "يجب تسجيل الدخول للوصول لهذه الصفحة",
+    "forbidden": "ليس لديك صلاحية الوصول",
+    "networkError": "خطأ في الاتصال. تحقق من اتصالك بالإنترنت"
+  },
+  "footer": {
+    "findWork": "البحث عن عمل",
+    "findFreelancers": "البحث عن مستقلين",
+    "privacy": "سياسة الخصوصية",
+    "terms": "شروط الخدمة",
+    "support": "الدعم",
+    "rights": "جميع الحقوق محفوظة",
+    "tagline": "منصة المستقلين العراقية"
+  },
+  "language": {
+    "ar": "العربية",
+    "en": "English",
+    "switch": "تغيير اللغة"
+  }
+}

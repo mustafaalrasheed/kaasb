@@ -98,11 +98,10 @@ if echo "${STRIPE_SECRET_KEY:-}" | grep -q "sk_test_"; then
 fi
 
 echo ""
-echo "--- SMTP (optional) ---"
-check "SMTP_HOST"     false "Leave empty to disable email notifications"
-check "SMTP_USER"     false
-check "SMTP_PASSWORD" false
-check "SMTP_FROM"     false
+echo "--- Email / Resend (required for email verification + password reset) ---"
+check "RESEND_API_KEY"  true  "Get at: resend.com/api-keys — free tier: 3k emails/month"
+check "EMAIL_FROM"      false "Default: Kaasb <noreply@kaasb.com>"
+check "FRONTEND_URL"    true  "e.g. https://kaasb.com — used in email links"
 
 echo ""
 echo "--- SECRET_KEY Strength ---"
