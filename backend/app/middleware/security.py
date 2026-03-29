@@ -278,7 +278,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Skip rate limiting for health checks and static files
         path = request.url.path
-        if path in ("/", "/health", "/docs", "/redoc", "/openapi.json"):
+        if path in ("/", "/health", "/docs", "/redoc", "/openapi.json") or path.startswith("/api/v1/health"):
             return await call_next(request)
         if path.startswith("/uploads/"):
             return await call_next(request)
