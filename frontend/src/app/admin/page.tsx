@@ -35,7 +35,7 @@ interface AdminUser {
 type Tab = "stats" | "users" | "jobs" | "transactions";
 
 export default function AdminPage() {
-  const { user } = useAuthStore();
+  const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("stats");
   const [stats, setStats] = useState<PlatformStats | null>(null);
@@ -45,13 +45,18 @@ export default function AdminPage() {
   const [roleFilter, setRoleFilter] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Check admin access
+  // Check admin access — wait for auth to initialize first
   useEffect(() => {
-    if (user && !user.is_superuser) {
+    if (authLoading) return;
+    if (!user) {
+      router.push("/auth/login");
+      return;
+    }
+    if (!user.is_superuser) {
       toast.error("Admin access required");
       router.push("/dashboard");
     }
-  }, [user, router]);
+  }, [user, authLoading, router]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -106,10 +111,10 @@ export default function AdminPage() {
     }
   };
 
-  if (!user?.is_superuser) {
+  if (authLoading || !user?.is_superuser) {
     return (
       <div className="p-6 text-center text-gray-500">
-        Checking admin access...
+        {authLoading ? "Loading..." : "Checking admin access..."}
       </div>
     );
   }

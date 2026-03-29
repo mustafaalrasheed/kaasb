@@ -80,7 +80,7 @@ export default function HomePage() {
               </Link>
               <Link
                 href="/jobs"
-                className="btn-secondary border-white/30 text-white hover:bg-white/10 text-center text-lg px-8 py-3"
+                className="inline-block border border-white/40 text-white hover:bg-white/10 text-center text-lg px-8 py-3 rounded-lg font-medium transition-colors duration-150"
               >
                 Browse Jobs
               </Link>
