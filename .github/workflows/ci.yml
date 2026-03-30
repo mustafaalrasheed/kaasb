@@ -254,7 +254,7 @@ jobs:
       - name: Build & push backend image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
+          context: .
           file: ./docker/backend/Dockerfile
           target: production
           push: true

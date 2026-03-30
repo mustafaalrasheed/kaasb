@@ -1,0 +1,28 @@
+# Root-level .dockerignore for backend Docker builds (context: .)
+# Excludes large directories not needed for backend image
+
+frontend/
+.git/
+.github/
+docs/
+docs_extracted.txt
+*.md
+scripts/
+docker/frontend/
+docker/monitoring/
+docker/nginx/
+docker/grafana/
+docker/prometheus/
+docker/alertmanager/
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/.env
+backend/.env.*
+backend/tests/
+backend/uploads/
+backend/dist/
+backend/build/
