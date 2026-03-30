@@ -83,7 +83,9 @@ jobs:
       - name: Type check (mypy)
         run: |
           cd backend
-          mypy app/ --ignore-missing-imports --no-error-summary
+          mypy app/ --ignore-missing-imports --no-error-summary \
+            --python-version 3.12 \
+            --disable-error-code import-untyped
 
       # ---- Migration safety check ----
       - name: Check for uncommitted migrations (alembic check)
