@@ -275,7 +275,7 @@ export function GigsCatalog({ initialCategories }: GigsCatalogProps) {
       const data = res.data;
       setGigs(data?.gigs || data?.data || []);
       setTotal(data?.total || 0);
-      setTotalPages(data?.total_pages || 1);
+      setTotalPages(data?.pages || data?.total_pages || 1);
     } catch {
       setGigs([]);
     } finally {

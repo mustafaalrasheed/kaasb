@@ -74,6 +74,14 @@ export function Navbar() {
                 >
                   {t.messages}
                 </Link>
+                {user?.is_superuser && (
+                  <Link
+                    href="/admin"
+                    className="text-red-600 hover:text-red-800 font-medium text-sm"
+                  >
+                    {locale === "ar" ? "الإدارة" : "Admin"}
+                  </Link>
+                )}
                 <NotificationBell />
                 <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
                   <div className="w-8 h-8 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center font-semibold text-sm">
@@ -149,6 +157,11 @@ export function Navbar() {
               <Link href="/dashboard/notifications" className="block py-2 text-gray-700 font-medium">
                 {locale === "ar" ? "الإشعارات" : "Notifications"}
               </Link>
+              {user?.is_superuser && (
+                <Link href="/admin" className="block py-2 text-red-600 font-medium">
+                  {locale === "ar" ? "الإدارة" : "Admin"}
+                </Link>
+              )}
               <button
                 onClick={logout}
                 className="block w-full text-start py-2 text-gray-700 font-medium"
