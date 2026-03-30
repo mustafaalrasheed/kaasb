@@ -113,7 +113,7 @@ class GigService(BaseService):
         await self.db.refresh(gig)
 
         # Eager-load relationships for response
-        return await self._load_gig(gig.id)
+        return await self._load_gig(gig.id)  # type: ignore[return-value]
 
     async def get_gig_by_slug(self, slug: str) -> Gig:
         gig = await self._load_gig_by_slug(slug)
@@ -175,7 +175,7 @@ class GigService(BaseService):
             gig.status = GigStatus.PENDING_REVIEW
 
         await self.db.commit()
-        return await self._load_gig(gig.id)
+        return await self._load_gig(gig.id)  # type: ignore[return-value]
 
     async def delete_gig(self, gig_id: uuid.UUID, user: User) -> None:
         gig = await self.get_gig_by_id_for_owner(gig_id, user)
@@ -193,7 +193,7 @@ class GigService(BaseService):
             raise HTTPException(status_code=400, detail="Only active gigs can be paused")
         gig.status = GigStatus.PAUSED
         await self.db.commit()
-        return await self._load_gig(gig.id)
+        return await self._load_gig(gig.id)  # type: ignore[return-value]
 
     async def resume_gig(self, gig_id: uuid.UUID, user: User) -> Gig:
         gig = await self.get_gig_by_id_for_owner(gig_id, user)
@@ -201,7 +201,7 @@ class GigService(BaseService):
             raise HTTPException(status_code=400, detail="Only paused gigs can be resumed")
         gig.status = GigStatus.ACTIVE
         await self.db.commit()
-        return await self._load_gig(gig.id)
+        return await self._load_gig(gig.id)  # type: ignore[return-value]
 
     # ──────────────────────────────────────────
     # Search / Listing
@@ -275,7 +275,7 @@ class GigService(BaseService):
         gig.status = GigStatus.ACTIVE
         gig.rejection_reason = None
         await self.db.commit()
-        return await self._load_gig(gig_id)
+        return await self._load_gig(gig_id)  # type: ignore[return-value]
 
     async def reject_gig(self, gig_id: uuid.UUID, reason: str) -> Gig:
         gig = await self._load_gig(gig_id)
@@ -284,7 +284,7 @@ class GigService(BaseService):
         gig.status = GigStatus.REJECTED
         gig.rejection_reason = reason
         await self.db.commit()
-        return await self._load_gig(gig_id)
+        return await self._load_gig(gig_id)  # type: ignore[return-value]
 
     async def list_pending_gigs(self) -> list[Gig]:
         result = await self.db.execute(

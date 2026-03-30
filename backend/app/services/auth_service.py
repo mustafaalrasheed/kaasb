@@ -61,10 +61,10 @@ class AuthService(BaseService):
     async def register(self, data: UserRegister) -> User:
         """Register a new user."""
         # Sanitize input before duplicate checks
-        data.email = sanitize_email(data.email)
-        data.username = sanitize_username(data.username)
-        data.first_name = sanitize_text(data.first_name)
-        data.last_name = sanitize_text(data.last_name)
+        data.email = sanitize_email(data.email)  # type: ignore[assignment]
+        data.username = sanitize_username(data.username)  # type: ignore[assignment]
+        data.first_name = sanitize_text(data.first_name)  # type: ignore[assignment]
+        data.last_name = sanitize_text(data.last_name)  # type: ignore[assignment]
 
         # Check if email already exists
         existing = await self.db.execute(

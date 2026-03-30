@@ -162,7 +162,7 @@ class QiCardClient:
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as http:
-                response = await self._circuit.call(
+                response = await self._circuit.call(  # type: ignore[union-attr]
                     http.post,
                     self.base_url,
                     json=payload,
@@ -212,6 +212,32 @@ class QiCardClient:
             "amount_iqd": amount_iqd,
             "amount_usd": amount_usd,
         }
+
+    # =========================================================================
+    # Refund Payment (not yet supported by Qi Card v0 API)
+    # =========================================================================
+
+    async def refund_payment(
+        self,
+        payment_id: str,
+        amount_iqd: int,
+        reason: str = "",
+    ) -> dict:
+        """
+        Refund a previously completed Qi Card payment.
+
+        NOTE: The Qi Card v0 API does not currently expose a refund endpoint.
+        This method raises QiCardError so the caller can fall back to manual
+        reconciliation. Implement once Qi Card exposes the endpoint.
+        """
+        logger.warning(
+            "Qi Card refund requested for payment_id=%s amount_iqd=%d — not supported by API",
+            payment_id, amount_iqd,
+        )
+        raise QiCardError(
+            "Qi Card refunds are not yet supported via the API. "
+            "Process manually through the Qi Card merchant portal.",
+        )
 
     # =========================================================================
     # Mock helpers (used when QI_CARD_API_KEY is not set)
