@@ -287,8 +287,8 @@ export function GigsCatalog({ initialCategories }: GigsCatalogProps) {
     fetchGigs();
   }, [fetchGigs]);
 
-  const debouncedSearch = useDebouncedCallback((value: string) => {
-    setSearchQuery(value);
+  const debouncedSearch = useDebouncedCallback((value: unknown) => {
+    setSearchQuery(value as string);
     setPage(1);
   }, 300);
 

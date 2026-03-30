@@ -27,8 +27,12 @@ ignore = [
     "B008",    # function call in default argument (FastAPI Depends)
     "RET504",  # unnecessary assignment before return
     "UP007",   # use X | Y for union types (not yet everywhere)
+    "UP042",   # StrEnum — requires refactoring all model enums
+    "UP045",   # Optional[X] → X | None — style-only, not a bug
     "SIM108",  # use ternary operator (sometimes less readable)
     "N802",    # lowercase function name — Pydantic validators use field name convention
+    "N806",    # variable in function should be lowercase — sessionmaker factory is PascalCase by convention
+    "LOG014",  # exc_info= outside except — false positive in FastAPI exception handlers
 ]
 
 [lint.per-file-ignores]

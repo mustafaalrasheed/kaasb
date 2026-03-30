@@ -45,7 +45,7 @@ Currency: IQD (Iraqi Dinar). 1 USD ≈ 1,310 IQD.
 
 import logging
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import ClassVar
 
 import httpx

@@ -71,8 +71,8 @@ export default function JobsClient() {
   }, [fetchJobs]);
 
   // Debounce search input — fires API call 300ms after user stops typing
-  const debouncedSearch = useDebouncedCallback((value: string) => {
-    setSearchQuery(value);
+  const debouncedSearch = useDebouncedCallback((value: unknown) => {
+    setSearchQuery(value as string);
     setPage(1);
   }, 300);
 

@@ -64,6 +64,8 @@ ignore = [
     "S106",  # hardcoded passwords allowed in test fixtures
     "B008",  # FastAPI Depends() in default args
     "N818",  # Exception class naming
+    "UP042", # StrEnum — requires refactoring all model enums
+    "UP045", # Optional[X] → X | None — style-only, not a bug
 ]
 
 [tool.ruff.lint.per-file-ignores]

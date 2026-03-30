@@ -14,8 +14,8 @@ Responsibilities:
 import logging
 import time
 import uuid
-from contextvars import ContextVar
 from collections.abc import Callable
+from contextvars import ContextVar
 
 from fastapi import Request, Response
 from prometheus_client import Counter, Gauge, Histogram

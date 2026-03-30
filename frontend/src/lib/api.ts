@@ -1,6 +1,6 @@
 import axios from "axios";
 import type { User } from "@/types/user";
-import type { Job, JobDetail } from "@/types/job";
+import type { JobDetail } from "@/types/job";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";

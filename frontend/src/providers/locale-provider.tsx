@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useTransition } from 'react';
 import { NextIntlClientProvider } from 'next-intl';
+import type { AbstractIntlMessages } from 'next-intl';
 
 interface LocaleContextType {
   locale: 'ar' | 'en';
@@ -24,12 +25,12 @@ export function useLocale() {
 interface LocaleProviderProps {
   children: React.ReactNode;
   initialLocale: 'ar' | 'en';
-  messages: Record<string, unknown>;
+  messages: AbstractIntlMessages;
 }
 
 export function LocaleProvider({ children, initialLocale, messages }: LocaleProviderProps) {
   const [locale, setLocaleState] = useState<'ar' | 'en'>(initialLocale);
-  const [currentMessages, setCurrentMessages] = useState(messages);
+  const [currentMessages, setCurrentMessages] = useState<AbstractIntlMessages>(messages);
   const [isPending, startTransition] = useTransition();
 
   const setLocale = async (newLocale: 'ar' | 'en') => {

@@ -7,7 +7,7 @@ DELETE /gdpr/delete - Permanently anonymise account + all personal data
 """
 
 import logging
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import text as sql_text
@@ -211,7 +211,8 @@ async def _collect_user_data(user: User, db: AsyncSession) -> dict:
             "bio": user.bio,
             "country": user.country,
             "city": user.city,
-            "timezone": user."phone": user.phone,
+            "timezone": user.timezone,
+            "phone": user.phone,
             "primary_role": user.primary_role,
             "status": user.status,
             "created_at": user.created_at.isoformat(),

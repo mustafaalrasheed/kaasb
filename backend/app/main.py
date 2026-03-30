@@ -330,7 +330,7 @@ def create_app() -> FastAPI:
         logger.error(
             "Unhandled exception [%s] on %s %s: %s",
             rid, request.method, request.url, exc,
-            exc_info=True,
+            exc_info=True,  # noqa: LOG014
         )
         # Surface request_id to client so they can reference it in support tickets
         return JSONResponse(
