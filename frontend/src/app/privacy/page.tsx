@@ -83,9 +83,9 @@ export default function PrivacyPolicyPage() {
             <div>
               <h3 className="font-medium text-gray-900">Transaction Data</h3>
               <p className="text-gray-700 mt-1 leading-relaxed">
-                We record payment account identifiers (Stripe customer ID, Qi Card token),
-                transaction amounts, currencies, and timestamps. We do not store raw card
-                numbers or CVV codes — these are handled directly by Stripe and Qi Card.
+                We record payment account identifiers (Qi Card token), transaction amounts,
+                currencies, and timestamps. We do not store raw card numbers or CVV codes —
+                these are handled directly by Qi Card.
               </p>
             </div>
             <div>
@@ -121,7 +121,7 @@ export default function PrivacyPolicyPage() {
           <h2 className="text-xl font-semibold text-gray-900 mb-4">3. How We Use Your Information</h2>
           <ul className="list-disc list-inside space-y-2 text-gray-700">
             <li>To operate the Platform and provide our services</li>
-            <li>To process payments and payouts through Stripe, Qi Card, and Wise</li>
+            <li>To process payments and payouts through Qi Card</li>
             <li>To verify your identity and prevent fraud</li>
             <li>To communicate service notifications (contract updates, payment receipts)</li>
             <li>To enforce our Terms of Service and content moderation policies</li>
@@ -133,7 +133,7 @@ export default function PrivacyPolicyPage() {
             <h3 className="text-lg font-semibold text-gray-900 mb-2">٣. كيف نستخدم معلوماتك</h3>
             <ul className="list-disc list-inside space-y-2 text-gray-700">
               <li>لتشغيل المنصة وتقديم خدماتنا</li>
-              <li>لمعالجة المدفوعات عبر سترايب وكي كارد وWise</li>
+              <li>لمعالجة المدفوعات والمدفوعات عبر كي كارد</li>
               <li>للتحقق من هويتك ومنع الاحتيال</li>
               <li>لإرسال إشعارات الخدمة</li>
               <li>لإنفاذ شروط الخدمة وسياسات الاعتدال</li>
@@ -151,8 +151,8 @@ export default function PrivacyPolicyPage() {
           </p>
           <ul className="list-disc list-inside space-y-2 text-gray-700">
             <li>
-              <strong>Payment processors</strong> (Stripe, Qi Card, Wise) — to process
-              transactions. Each processor has its own privacy policy.
+              <strong>Payment processor</strong> (Qi Card) — to process transactions. Qi Card
+              has its own privacy policy.
             </li>
             <li>
               <strong>Infrastructure providers</strong> (Hetzner for hosting, Sentry for error
@@ -171,7 +171,7 @@ export default function PrivacyPolicyPage() {
           <div className="mt-6 p-4 bg-gray-50 rounded-lg" dir="rtl">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">٤. مشاركة البيانات</h3>
             <p className="text-gray-700 leading-relaxed">
-              لا نبيع بياناتك الشخصية. نشارك البيانات فقط مع معالجات الدفع (سترايب، كي كارد، Wise)،
+              لا نبيع بياناتك الشخصية. نشارك البيانات فقط مع معالج الدفع (كي كارد)،
               ومزودي البنية التحتية (هيتزنر وسنتري)، والمستخدمين الآخرين (ملفك العام المرئي)،
               والجهات التنفيذية القانونية عند الحاجة القانونية.
             </p>

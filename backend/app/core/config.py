@@ -56,16 +56,6 @@ class Settings(BaseSettings):
     MIN_HOURLY_RATE: float = 5.0
     MAX_HOURLY_RATE: float = 500.0
 
-    # === Stripe ===
-    STRIPE_SECRET_KEY: str = ""
-    STRIPE_PUBLISHABLE_KEY: str = ""
-    STRIPE_WEBHOOK_SECRET: str = ""
-
-    # === Wise (TransferWise) ===
-    WISE_API_KEY: str = ""
-    WISE_PROFILE_ID: str = ""
-    WISE_ENVIRONMENT: str = "sandbox"  # sandbox | production
-
     # === Qi Card (Iraqi Payment Gateway) ===
     # QI_CARD_API_KEY → Authorization header value (raw key, no prefix)
     QI_CARD_API_KEY: str = ""
@@ -115,10 +105,6 @@ class Settings(BaseSettings):
             raise ValueError("DEBUG must be False in production")
 
         if self.ENVIRONMENT == "production":
-            if not self.STRIPE_SECRET_KEY:
-                logger.warning("STRIPE_SECRET_KEY not set — Stripe payments will not work")
-            if not self.STRIPE_WEBHOOK_SECRET:
-                logger.warning("STRIPE_WEBHOOK_SECRET not set — Stripe webhooks will not be verified")
             if not self.QI_CARD_API_KEY and not self.QI_CARD_SANDBOX:
                 raise ValueError("QI_CARD_API_KEY must be set when QI_CARD_SANDBOX is False")
             if not self.RESEND_API_KEY:

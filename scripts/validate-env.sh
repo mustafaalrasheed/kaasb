@@ -86,18 +86,6 @@ if [ "${QI_CARD_SANDBOX:-true}" = "true" ]; then
 fi
 
 echo ""
-echo "--- Stripe ---"
-check "STRIPE_SECRET_KEY"      false "Required for international card payments"
-check "STRIPE_PUBLISHABLE_KEY" false
-check "STRIPE_WEBHOOK_SECRET"  false "Required for Stripe webhook verification"
-
-# Warn if test keys in production
-if echo "${STRIPE_SECRET_KEY:-}" | grep -q "sk_test_"; then
-    echo -e "${YELLOW}WARN${NC}  STRIPE_SECRET_KEY is a test key (sk_test_*) — not suitable for production"
-    WARNINGS=$(( WARNINGS + 1 ))
-fi
-
-echo ""
 echo "--- Email / Resend (required for email verification + password reset) ---"
 check "RESEND_API_KEY"  true  "Get at: resend.com/api-keys — free tier: 3k emails/month"
 check "EMAIL_FROM"      false "Default: Kaasb <noreply@kaasb.com>"

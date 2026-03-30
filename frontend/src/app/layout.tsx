@@ -167,16 +167,21 @@ export default async function RootLayout({
           {/* Site Footer */}
           <footer className="bg-white border-t border-gray-200 mt-auto">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-6">
+                {/* Brand */}
+                <div>
                   <span className="text-lg font-bold text-brand-500">
                     {locale === "ar" ? "كاسب" : "Kaasb"}
                   </span>
-                  <span className="text-gray-400 text-sm">
-                    {locale === "ar" ? "منصة المستقلين العراقية" : "Iraq's Freelancing Platform"}
-                  </span>
+                  <p className="mt-1 text-gray-400 text-sm max-w-xs">
+                    {locale === "ar"
+                      ? "منصة المستقلين العراقية — ربط الأعمال بالمواهب"
+                      : "Iraq's Freelancing Platform — connecting businesses with talent"}
+                  </p>
                 </div>
-                <nav className="flex flex-wrap justify-center gap-6 text-sm text-gray-500" aria-label="Footer navigation">
+
+                {/* Nav links */}
+                <nav className="flex flex-wrap gap-x-8 gap-y-3 text-sm text-gray-500" aria-label="Footer navigation">
                   <Link href="/jobs" className="hover:text-gray-800 transition-colors">
                     {locale === "ar" ? "ابحث عن عمل" : "Find Work"}
                   </Link>
@@ -196,8 +201,22 @@ export default async function RootLayout({
                     {locale === "ar" ? "الدعم" : "Support"}
                   </a>
                 </nav>
+
+                {/* Social */}
+                <div className="flex gap-4 text-sm text-gray-500">
+                  <a href="https://t.me/kaasb_iq" target="_blank" rel="noopener noreferrer" className="hover:text-gray-800 transition-colors" aria-label="Telegram">
+                    Telegram
+                  </a>
+                  <a href="https://wa.me/9647800000000" target="_blank" rel="noopener noreferrer" className="hover:text-gray-800 transition-colors" aria-label="WhatsApp">
+                    WhatsApp
+                  </a>
+                  <a href="https://instagram.com/kaasb.iq" target="_blank" rel="noopener noreferrer" className="hover:text-gray-800 transition-colors" aria-label="Instagram">
+                    Instagram
+                  </a>
+                </div>
               </div>
-              <p className="mt-6 text-center text-xs text-gray-400">
+
+              <p className="mt-6 pt-6 border-t border-gray-100 text-center text-xs text-gray-400">
                 &copy; {new Date().getFullYear()} Kaasb Technology LLC.{" "}
                 {locale === "ar" ? "جميع الحقوق محفوظة." : "All rights reserved."}
               </p>

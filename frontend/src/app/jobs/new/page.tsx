@@ -17,7 +17,7 @@ const DURATIONS = [
 
 export default function PostJobPage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading: authLoading, initialize } = useAuthStore();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuthStore();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newSkill, setNewSkill] = useState("");
@@ -34,10 +34,6 @@ export default function PostJobPage() {
     duration: "",
     skills_required: [] as string[],
   });
-
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {

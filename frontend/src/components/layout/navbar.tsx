@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAuthStore } from "@/lib/auth-store";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
 import { NotificationBell } from "@/components/ui/notification-bell";
@@ -9,8 +9,13 @@ import { useLocale } from "@/providers/locale-provider";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, isAuthenticated, logout, initialize } = useAuthStore();
   const toggleMobileMenu = useCallback(() => setMobileMenuOpen((prev) => !prev), []);
+
+  // Initialize auth state once on mount — resolves isLoading for all pages
+  useEffect(() => {
+    initialize();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const { locale } = useLocale();
   const t = {
     findWork: locale === "ar" ? "ابحث عن عمل" : "Find Work",

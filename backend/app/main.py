@@ -222,7 +222,7 @@ def create_app() -> FastAPI:
             {"name": "Jobs", "description": "Job postings — search, create, manage"},
             {"name": "Proposals", "description": "Freelancer proposals on job postings"},
             {"name": "Contracts & Milestones", "description": "Active contracts and milestone workflow"},
-            {"name": "Payments", "description": "Escrow, payouts, Stripe, Qi Card, Wise"},
+            {"name": "Payments", "description": "Escrow, payouts via Qi Card"},
             {"name": "Reviews & Ratings", "description": "Post-contract reviews and ratings"},
             {"name": "Messages", "description": "Direct messaging between users"},
             {"name": "Notifications", "description": "In-app notification management"},

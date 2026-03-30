@@ -138,8 +138,7 @@ export default function TermsOfServicePage() {
           <h2 className="text-xl font-semibold text-gray-900 mb-4">5. Payments &amp; Fees</h2>
           <ul className="list-disc list-inside space-y-2 text-gray-700">
             <li>
-              Payment processing is provided through Stripe (USD), Qi Card (IQD), and
-              Wise (international payouts).
+              Payment processing is provided through Qi Card (IQD).
             </li>
             <li>
               Platform fees are displayed at the time of transaction and may be updated

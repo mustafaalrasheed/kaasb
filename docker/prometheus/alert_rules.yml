@@ -140,8 +140,8 @@ groups:
           channel:  telegram
         annotations:
           summary:     "High payment failure rate ({{ $value | humanizePercentage }})"
-          description: "More than 10% of payment transactions are failing. Check Stripe/QiCard status pages."
-          runbook:     "Check: curl https://status.stripe.com/api/v2/status.json — verify payment provider status"
+          description: "More than 10% of payment transactions are failing. Check Qi Card status."
+          runbook:     "Check: curl https://api.pay.qi.iq/health — verify Qi Card gateway status"
 
       # No successful payments in 2 hours during business hours (08:00–22:00 UTC)
       - alert: NoPaymentsProcessed

@@ -2,7 +2,7 @@
 Kaasb Platform - Payment Service
 Business logic for escrow, Qi Card charges, and platform fees.
 
-Payment Flow (Qi Card):
+Payment Flow:
 1. Client funds escrow → Qi Card payment initiated → redirect URL returned
 2. Client completes payment on Qi Card → webhook confirms → escrow marked FUNDED
 3. Freelancer works on milestone
@@ -10,8 +10,8 @@ Payment Flow (Qi Card):
 5. Freelancer withdraws via Qi Card payout
 
 Currency:
-  - Internal amounts stored in USD (float)
-  - Qi Card transactions converted to IQD at time of payment
+  - Amounts stored as USD floats internally
+  - Converted to IQD at time of Qi Card transaction
 """
 
 import logging
@@ -108,29 +108,14 @@ class PaymentService(BaseService):
             )
 
         provider = PaymentProvider(data.provider)
-
-        if provider == PaymentProvider.QI_CARD:
-            external_id = f"qc_acct_{uuid.uuid4().hex[:12]}"
-        elif provider == PaymentProvider.STRIPE:
-            external_id = f"cus_mock_{uuid.uuid4().hex[:12]}"
-        elif provider == PaymentProvider.WISE:
-            if not data.wise_email:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Wise email is required for Wise accounts",
-                )
-            external_id = f"wise_mock_{uuid.uuid4().hex[:12]}"
-        else:
-            external_id = None
+        external_id = f"qc_acct_{uuid.uuid4().hex[:12]}"
 
         account = PaymentAccount(
             user_id=user.id,
             provider=provider,
             status=PaymentAccountStatus.VERIFIED,
             external_account_id=external_id,
-            wise_email=data.wise_email if provider == PaymentProvider.WISE else None,
-            wise_currency=data.wise_currency if provider == PaymentProvider.WISE else "USD",
-            qi_card_phone=data.qi_card_phone if provider == PaymentProvider.QI_CARD else None,
+            qi_card_phone=data.qi_card_phone,
             is_default=True,
             verified_at=datetime.now(UTC),
         )

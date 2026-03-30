@@ -5,8 +5,7 @@ export interface PaymentAccount {
   provider: string;
   status: string;
   external_account_id?: string;
-  wise_email?: string;
-  wise_currency: string;
+  qi_card_phone?: string;
   is_default: boolean;
   verified_at?: string;
   created_at: string;
@@ -51,7 +50,8 @@ export interface EscrowFundResponse {
   platform_fee: number;
   freelancer_amount: number;
   status: string;
-  client_secret?: string;
+  payment_redirect_url?: string;
+  qi_card_payment_id?: string;
   message: string;
 }
 
@@ -85,7 +85,5 @@ export const TRANSACTION_STATUS_COLORS: Record<string, string> = {
 
 export const PROVIDER_LABELS: Record<string, string> = {
   qi_card: "Qi Card",
-  stripe: "Stripe",
-  wise: "Wise (TransferWise)",
   manual: "Manual",
 };

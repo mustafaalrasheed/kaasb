@@ -10,11 +10,8 @@ from pydantic import BaseModel, Field
 # === Payment Account ===
 
 class PaymentAccountSetup(BaseModel):
-    """Setup a payment account."""
-    provider: str = Field(pattern=r"^(qi_card|stripe|wise)$")
-    # Wise-specific
-    wise_email: str | None = Field(None, max_length=255)
-    wise_currency: str = Field(default="USD", max_length=3)
+    """Setup a Qi Card payment account."""
+    provider: str = Field(pattern=r"^qi_card$")
     # Qi Card-specific (optional — used for account label)
     qi_card_phone: str | None = Field(None, max_length=20, description="Iraqi phone number linked to Qi Card")
 
@@ -24,8 +21,6 @@ class PaymentAccountResponse(BaseModel):
     provider: str
     status: str
     external_account_id: str | None = None
-    wise_email: str | None = None
-    wise_currency: str = "USD"
     qi_card_phone: str | None = None
     is_default: bool = True
     verified_at: datetime | None = None
@@ -37,9 +32,8 @@ class PaymentAccountResponse(BaseModel):
 # === Fund Escrow (Client) ===
 
 class EscrowFundRequest(BaseModel):
-    """Client funds escrow for a milestone."""
+    """Client funds escrow for a milestone via Qi Card."""
     milestone_id: uuid.UUID
-    payment_method_id: str | None = None  # Stripe payment method (legacy)
     # callback_url and return_url are server-controlled constants — never user-supplied
 
 
@@ -50,11 +44,8 @@ class EscrowFundResponse(BaseModel):
     platform_fee: float
     freelancer_amount: float
     status: str
-    # Qi Card payment redirect
-    payment_redirect_url: str | None = None  # Redirect client here to complete payment
+    payment_redirect_url: str | None = None  # Redirect client here to complete Qi Card payment
     qi_card_payment_id: str | None = None
-    # Legacy Stripe
-    client_secret: str | None = None
     message: str
 
     model_config = {"from_attributes": True}
@@ -129,15 +120,6 @@ class QiCardWebhookEvent(BaseModel):
 
     # order_id is in additionalInfo — not always present in webhook
     order_id: str | None = Field(default=None, alias="orderId")
-
-
-# === Legacy Stripe Webhook (kept for compatibility) ===
-
-class StripeWebhookEvent(BaseModel):
-    """Stripe webhook payload (partial — we parse what we need)."""
-    id: str
-    type: str
-    data: dict
 
 
 # === Payout Request (Freelancer) ===

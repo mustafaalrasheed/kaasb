@@ -42,7 +42,7 @@ const FAQ_ITEMS = [
   {
     question: "What payment methods does Kaasb support?",
     answer:
-      "Kaasb supports Qi Card (Iraq's most popular payment card), Wise for international transfers, and other secure payment methods.",
+      "Kaasb uses Qi Card — Iraq's most popular payment card — for all payments and payouts.",
   },
   {
     question: "Can I work as a freelancer from Iraq?",
@@ -80,7 +80,7 @@ export default function HomePage() {
               </Link>
               <Link
                 href="/jobs"
-                className="inline-block border border-white/40 text-white hover:bg-white/10 text-center text-lg px-8 py-3 rounded-lg font-medium transition-colors duration-150"
+                className="inline-block border-2 border-white text-white bg-white/10 hover:bg-white hover:text-brand-600 text-center text-lg px-8 py-3 rounded-lg font-medium transition-colors duration-150"
               >
                 Browse Jobs
               </Link>
@@ -194,88 +194,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-gray-400 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            {/* Brand */}
-            <div className="md:col-span-2">
-              <div className="text-2xl font-bold text-white">Kaasb</div>
-              <p className="mt-2 text-sm max-w-md">
-                Iraq&apos;s leading freelancing platform connecting businesses
-                with talented professionals across the Middle East.
-              </p>
-            </div>
-
-            {/* Quick Links */}
-            <nav aria-label="Footer navigation">
-              <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-3">
-                Quick Links
-              </h3>
-              <ul className="space-y-2 text-sm">
-                <li>
-                  <Link href="/jobs" className="hover:text-white transition-colors">
-                    Browse Jobs
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/freelancers" className="hover:text-white transition-colors">
-                    Find Freelancers
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/auth/register" className="hover:text-white transition-colors">
-                    Sign Up
-                  </Link>
-                </li>
-              </ul>
-            </nav>
-
-            {/* Social */}
-            <div>
-              <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-3">
-                Connect
-              </h3>
-              <ul className="space-y-2 text-sm">
-                <li>
-                  <a
-                    href="https://t.me/kaasb_iq"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-white transition-colors"
-                  >
-                    Telegram
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://wa.me/9647800000000"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-white transition-colors"
-                  >
-                    WhatsApp
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://instagram.com/kaasb.iq"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-white transition-colors"
-                  >
-                    Instagram
-                  </a>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-8 pt-8 border-t border-gray-800 text-center text-sm">
-            <p>&copy; {new Date().getFullYear()} Kaasb. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

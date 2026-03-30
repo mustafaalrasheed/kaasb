@@ -73,7 +73,7 @@ AUTH_EVENTS = Counter(
 PAYMENT_EVENTS = Counter(
     "kaasb_payment_events_total",
     "Payment event counts",
-    ["type", "status", "provider"],  # e.g. escrow_fund/completed/stripe
+    ["type", "status", "provider"],  # e.g. escrow_fund/completed/qi_card
 )
 
 # Rate limit hits
@@ -90,11 +90,11 @@ JOB_EVENTS = Counter(
     ["job_name", "status"],   # status: success | failure
 )
 
-# External service call duration (Stripe, QiCard, Wise, SMTP)
+# External service call duration (QiCard, SMTP)
 EXTERNAL_CALL_DURATION = Histogram(
     "kaasb_external_call_duration_seconds",
     "Duration of calls to external services",
-    ["service", "operation"],   # e.g. stripe/create_payment_intent
+    ["service", "operation"],   # e.g. qi_card/create_payment
     buckets=[0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
 )
 
@@ -118,7 +118,7 @@ DB_POOL_SIZE = Gauge(
 HEALTH_CHECK_FAILURES = Counter(
     "kaasb_health_check_failures_total",
     "Health check dependency failures",
-    ["dependency"],   # database | redis | stripe | qi_card
+    ["dependency"],   # database | redis | qi_card
 )
 
 # Business activity counters (updated by service layer)

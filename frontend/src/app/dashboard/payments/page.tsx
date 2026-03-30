@@ -24,8 +24,6 @@ export default function PaymentsPage() {
 
   // Setup account form
   const [showSetup, setShowSetup] = useState(false);
-  const [setupProvider, setSetupProvider] = useState("qi_card");
-  const [wiseEmail, setWiseEmail] = useState("");
   const [qiCardPhone, setQiCardPhone] = useState("");
 
   // Payout form
@@ -56,22 +54,12 @@ export default function PaymentsPage() {
 
   const handleSetupAccount = async () => {
     try {
-      const data: { provider: string; wise_email?: string; qi_card_phone?: string } = {
-        provider: setupProvider,
-      };
-      if (setupProvider === "wise") {
-        if (!wiseEmail) {
-          toast.error("Wise email is required");
-          return;
-        }
-        data.wise_email = wiseEmail;
-      } else if (setupProvider === "qi_card" && qiCardPhone) {
-        data.qi_card_phone = qiCardPhone;
-      }
-      await paymentsApi.setupAccount(data);
-      toast.success(`${PROVIDER_LABELS[setupProvider] ?? setupProvider} account created`);
+      await paymentsApi.setupAccount({
+        provider: "qi_card",
+        ...(qiCardPhone ? { qi_card_phone: qiCardPhone } : {}),
+      });
+      toast.success("Qi Card account created");
       setShowSetup(false);
-      setWiseEmail("");
       setQiCardPhone("");
       fetchData();
     } catch (err: any) {
@@ -166,31 +154,18 @@ export default function PaymentsPage() {
       {/* Setup Account Form */}
       {showSetup && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-          <h3 className="font-semibold text-gray-900">Setup Payment Account</h3>
+          <h3 className="font-semibold text-gray-900">Add Qi Card Account</h3>
           <div className="flex gap-3 items-end">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Provider</label>
-              <select
-                value={setupProvider}
-                onChange={(e) => setSetupProvider(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
-                <option value="stripe">Stripe (Cards)</option>
-                <option value="wise">Wise (Iraq/International)</option>
-              </select>
+            <div className="flex-1">
+              <label className="block text-sm text-gray-600 mb-1">Phone Number (optional)</label>
+              <input
+                type="tel"
+                value={qiCardPhone}
+                onChange={(e) => setQiCardPhone(e.target.value)}
+                placeholder="+964 7XX XXX XXXX"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
             </div>
-            {setupProvider === "wise" && (
-              <div className="flex-1">
-                <label className="block text-sm text-gray-600 mb-1">Wise Email</label>
-                <input
-                  type="email"
-                  value={wiseEmail}
-                  onChange={(e) => setWiseEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-            )}
             <button
               onClick={handleSetupAccount}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -229,7 +204,7 @@ export default function PaymentsPage() {
                 {summary.payment_accounts.map((acc) => (
                   <option key={acc.id} value={acc.id}>
                     {PROVIDER_LABELS[acc.provider] || acc.provider}
-                    {acc.wise_email ? ` (${acc.wise_email})` : ""}
+                    {acc.qi_card_phone ? ` (${acc.qi_card_phone})` : ""}
                   </option>
                 ))}
               </select>
@@ -255,13 +230,13 @@ export default function PaymentsPage() {
                 className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-lg">{acc.provider === "stripe" ? "💳" : "🌍"}</span>
+                  <span className="text-lg">💳</span>
                   <div>
                     <span className="font-medium text-gray-900">
                       {PROVIDER_LABELS[acc.provider] || acc.provider}
                     </span>
-                    {acc.wise_email && (
-                      <span className="text-sm text-gray-500 ml-2">{acc.wise_email}</span>
+                    {acc.qi_card_phone && (
+                      <span className="text-sm text-gray-500 ml-2">{acc.qi_card_phone}</span>
                     )}
                   </div>
                 </div>

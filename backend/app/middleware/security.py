@@ -255,7 +255,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "style-src 'self' 'unsafe-inline'; "
                 "img-src 'self' data: https:; "
                 "font-src 'self'; "
-                "connect-src 'self' https://api.stripe.com; "
+                "connect-src 'self' https://api.pay.qi.iq https://api.uat.pay.qi.iq; "
                 "frame-ancestors 'none'"
             )
 

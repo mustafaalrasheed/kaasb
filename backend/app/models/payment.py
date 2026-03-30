@@ -1,6 +1,6 @@
 """
 Kaasb Platform - Payment Models
-Supports hybrid payment: Stripe for global clients, Wise for Iraqi freelancer payouts.
+All payments go through Qi Card (Iraqi payment gateway).
 Escrow holds funds during milestone work, releases on approval.
 """
 
@@ -30,8 +30,6 @@ from app.models.base import BaseModel
 
 class PaymentProvider(str, enum.Enum):
     """Supported payment providers."""
-    STRIPE = "stripe"
-    WISE = "wise"
     MANUAL = "manual"  # For admin-managed payouts
     QI_CARD = "qi_card"  # Iraqi Qi Card payment gateway
 
@@ -43,11 +41,7 @@ class PaymentAccountStatus(str, enum.Enum):
 
 
 class PaymentAccount(BaseModel):
-    """
-    User's payment account for receiving/sending money.
-    - Clients: Stripe customer ID for charging cards
-    - Freelancers: Wise recipient ID for payouts (or Stripe Connect)
-    """
+    """User's Qi Card payment account for sending/receiving money."""
 
     __tablename__ = "payment_accounts"
     __table_args__ = (
@@ -76,11 +70,7 @@ class PaymentAccount(BaseModel):
     # Provider-specific IDs
     external_account_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True
-    )  # Stripe customer_id / Wise recipient_id
-
-    # Wise-specific fields
-    wise_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    wise_currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    )
 
     # Qi Card-specific fields
     qi_card_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -188,7 +178,7 @@ class Transaction(BaseModel):
     )
     external_transaction_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, index=True
-    )  # Stripe payment_intent / Wise transfer_id
+    )  # Qi Card payment reference
 
     # === Notes ===
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

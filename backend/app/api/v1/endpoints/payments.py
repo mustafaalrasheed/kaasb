@@ -70,7 +70,7 @@ async def setup_payment_account(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Set up a Qi Card (or Stripe/Wise) payment account."""
+    """Set up a Qi Card payment account."""
     service = PaymentService(db)
     return await service.setup_payment_account(current_user, data)
 
