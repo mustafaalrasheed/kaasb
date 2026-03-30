@@ -14,13 +14,8 @@ CMD ["npm", "run", "dev"]
 # ============================================================
 # Builder — production Next.js build
 # ============================================================
-FROM node:20-slim AS builder
+FROM node:20 AS builder
 WORKDIR /app
-
-# Install system deps required by some npm native packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
 
 # Build-time env vars (baked into static assets)
 ARG NEXT_PUBLIC_API_URL
@@ -31,7 +26,7 @@ ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME}
 
 COPY package.json package-lock.json* ./
-RUN npm ci --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 COPY . .
 RUN npm run build
 

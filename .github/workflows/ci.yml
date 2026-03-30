@@ -271,15 +271,13 @@ jobs:
           file: ./docker/frontend/Dockerfile
           target: production
           push: true
+          no-cache: true
           build-args: |
             NEXT_PUBLIC_API_URL=https://kaasb.com/api/v1
             NEXT_PUBLIC_APP_NAME=Kaasb
-            NEXT_PUBLIC_ENVIRONMENT=production
           tags: |
             ${{ env.IMAGE_BASE }}/frontend:latest
             ${{ env.IMAGE_BASE }}/frontend:sha-${{ github.sha }}
-          cache-from: type=gha
-          cache-to:   type=gha,mode=max
 
       - name: Output image digest
         run: |
