@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     # Bearer token for /health/detailed endpoint — leave empty to disable endpoint
     HEALTH_BEARER_TOKEN: str = ""
 
+    # === Social Login ===
+    GOOGLE_CLIENT_ID: str = ""   # Google OAuth Client ID (from Google Cloud Console)
+    FACEBOOK_APP_ID: str = ""    # Facebook App ID (from Meta for Developers)
+    FACEBOOK_APP_SECRET: str = ""  # Facebook App Secret (for token verification)
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

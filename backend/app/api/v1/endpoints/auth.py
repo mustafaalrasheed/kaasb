@@ -26,6 +26,7 @@ from app.schemas.user import (
     ForgotPasswordRequest,
     ResendVerificationRequest,
     ResetPasswordRequest,
+    SocialLoginRequest,
     TokenRefresh,
     TokenResponse,
     UserLogin,
@@ -176,6 +177,26 @@ async def logout(
     await service.logout(current_user, data.refresh_token)
     _clear_auth_cookies(response)
     return {"message": "Logged out successfully"}
+
+
+@router.post(
+    "/social",
+    response_model=TokenResponse,
+    summary="Login or register via Google/Facebook",
+)
+async def social_login(
+    data: SocialLoginRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Authenticate using a Google ID token or Facebook access token.
+    Creates a new account automatically if the email is not registered.
+    """
+    service = AuthService(db)
+    tokens = await service.social_login(data.provider, data.token, data.role)
+    _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
+    return tokens
 
 
 @router.post("/logout-all", summary="Logout all sessions")

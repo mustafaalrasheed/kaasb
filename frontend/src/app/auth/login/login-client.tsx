@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
+import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
 
 export default function LoginClient() {
   const router = useRouter();
@@ -92,6 +93,20 @@ export default function LoginClient() {
               {isLoading ? "Logging in..." : "Log In"}
             </button>
           </form>
+
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-white px-3 text-gray-400">or continue with</span>
+              </div>
+            </div>
+            <div className="mt-4">
+              <SocialLoginButtons onSuccess={() => router.push("/dashboard")} />
+            </div>
+          </div>
 
           <p className="mt-6 text-center text-sm text-gray-600">
             Don&apos;t have an account?{" "}

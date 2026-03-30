@@ -56,6 +56,14 @@ class TokenRefresh(BaseModel):
     refresh_token: str
 
 
+class SocialLoginRequest(BaseModel):
+    """Request schema for social/OAuth login."""
+
+    provider: str = Field(..., pattern=r"^(google|facebook)$")
+    token: str = Field(..., min_length=10, description="ID token (Google) or access token (Facebook)")
+    role: str = Field(default="freelancer", pattern=r"^(client|freelancer)$", description="Role for new accounts")
+
+
 # === User Profile Schemas ===
 
 

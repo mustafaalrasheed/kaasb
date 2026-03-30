@@ -48,8 +48,8 @@ const nextConfig = {
       : `img-src 'self' data: blob: ${BACKEND_URL} https://kaasb.com https://*.kaasb.com`;
 
     const connectSrc = IS_PRODUCTION
-      ? "connect-src 'self' https://kaasb.com https://*.kaasb.com https://api.stripe.com"
-      : `connect-src 'self' ${BACKEND_URL} https://kaasb.com https://*.kaasb.com https://api.stripe.com`;
+      ? "connect-src 'self' https://kaasb.com https://*.kaasb.com https://api.stripe.com https://accounts.google.com https://oauth2.googleapis.com https://graph.facebook.com"
+      : `connect-src 'self' ${BACKEND_URL} https://kaasb.com https://*.kaasb.com https://api.stripe.com https://accounts.google.com https://oauth2.googleapis.com https://graph.facebook.com`;
 
     return [
       {
@@ -79,11 +79,12 @@ const nextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline'",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/ https://connect.facebook.net",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/",
               imgSrc,
               "font-src 'self' https://fonts.gstatic.com",
               connectSrc,
+              "frame-src https://accounts.google.com/gsi/ https://www.facebook.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
@@ -194,6 +195,8 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1",
     NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || "Kaasb",
     NEXT_PUBLIC_SITE_URL: SITE_URL,
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "",
+    NEXT_PUBLIC_FACEBOOK_APP_ID: process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || "",
   },
 
   // Proxy API requests in development to avoid CORS issues

@@ -9,6 +9,7 @@ interface AuthState {
 
   // Actions
   login: (email: string, password: string) => Promise<void>;
+  socialLogin: (provider: "google" | "facebook", token: string, role?: string) => Promise<void>;
   register: (data: {
     email: string;
     username: string;
@@ -33,6 +34,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     await authApi.login({ email, password });
 
     // Fetch user profile
+    const userResponse = await authApi.getMe();
+    set({ user: userResponse.data.data, isAuthenticated: true });
+  },
+
+  socialLogin: async (provider, token, role = "freelancer") => {
+    await authApi.socialLogin({ provider, token, role });
     const userResponse = await authApi.getMe();
     set({ user: userResponse.data.data, isAuthenticated: true });
   },

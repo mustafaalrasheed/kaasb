@@ -12,9 +12,9 @@ interface LocaleContextType {
 }
 
 const LocaleContext = createContext<LocaleContextType>({
-  locale: 'ar',
+  locale: 'en',
   setLocale: () => {},
-  isRTL: true,
+  isRTL: false,
   isPending: false,
 });
 

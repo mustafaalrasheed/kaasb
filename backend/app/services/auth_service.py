@@ -5,8 +5,11 @@ Business logic for user registration, login, and token management.
 
 import hashlib
 import logging
+import secrets as _secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+
+import httpx
 
 from fastapi import HTTPException, status
 from sqlalchemy import select, update
@@ -180,6 +183,140 @@ class AuthService(BaseService):
             access_token=access_token,
             refresh_token=refresh_token,
         )
+
+    async def social_login(self, provider: str, token: str, role: str = "freelancer") -> TokenResponse:
+        """Authenticate via Google or Facebook OAuth token."""
+        # Verify token and fetch profile from provider
+        if provider == "google":
+            email, first_name, last_name, avatar_url = await self._verify_google_token(token)
+        elif provider == "facebook":
+            email, first_name, last_name, avatar_url = await self._verify_facebook_token(token)
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported provider")
+
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Could not retrieve email from {provider}. Make sure email permission is granted.",
+            )
+
+        # Find existing user by email
+        result = await self.db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            # Create new user from OAuth profile
+            base_username = (first_name + "_" + last_name).lower()
+            base_username = "".join(c for c in base_username if c.isalnum() or c == "_")[:20] or "user"
+
+            # Ensure username is unique
+            username = base_username
+            counter = 1
+            while True:
+                exists = await self.db.execute(select(User).where(User.username == username))
+                if not exists.scalar_one_or_none():
+                    break
+                username = f"{base_username}{counter}"
+                counter += 1
+
+            user = User(
+                email=email,
+                username=username,
+                hashed_password=await hash_password_async(_secrets.token_hex(32)),
+                first_name=first_name or "User",
+                last_name=last_name or "",
+                avatar_url=avatar_url,
+                primary_role=UserRole(role),
+                status=UserStatus.ACTIVE,
+                is_email_verified=True,
+            )
+            self.db.add(user)
+            await self.db.flush()
+            await self.db.refresh(user)
+            logger.info("Social login: new user created via %s: %s", provider, user.id)
+        else:
+            if user.status == UserStatus.SUSPENDED:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is suspended")
+            # Update avatar if not set
+            if avatar_url and not user.avatar_url:
+                user.avatar_url = avatar_url
+            logger.info("Social login: existing user %s via %s", user.id, provider)
+
+        # Update last login
+        user.last_login = datetime.now(UTC)
+        user.is_online = True
+        await self.db.flush()
+
+        # Generate tokens
+        token_data = {"sub": str(user.id), "role": user.primary_role.value, "tv": user.token_version}
+        access_token = create_access_token(token_data)
+        refresh_token = create_refresh_token(token_data)
+
+        expires = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        rt = RefreshToken(
+            token_hash=self._hash_token(refresh_token),
+            user_id=user.id,
+            expires_at=expires,
+        )
+        self.db.add(rt)
+        await self.db.flush()
+
+        return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+
+    async def _verify_google_token(self, id_token: str) -> tuple[str, str, str, str | None]:
+        """Verify Google ID token and extract user info."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://oauth2.googleapis.com/tokeninfo",
+                    params={"id_token": id_token},
+                )
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token")
+                data = resp.json()
+
+            if "error" in data:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token")
+
+            # Optional: verify audience matches our client ID
+            if settings.GOOGLE_CLIENT_ID and data.get("aud") != settings.GOOGLE_CLIENT_ID:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token audience mismatch")
+
+            email = data.get("email", "")
+            first_name = data.get("given_name", "") or data.get("name", "").split()[0] if data.get("name") else ""
+            last_name = data.get("family_name", "") or (" ".join(data.get("name", "").split()[1:]) if data.get("name") else "")
+            avatar_url = data.get("picture")
+            return email, first_name, last_name, avatar_url
+        except httpx.RequestError as e:
+            logger.error("Google token verification failed: %s", e)
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify Google token")
+
+    async def _verify_facebook_token(self, access_token: str) -> tuple[str, str, str, str | None]:
+        """Verify Facebook access token and extract user info."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://graph.facebook.com/me",
+                    params={
+                        "fields": "id,email,first_name,last_name,picture.type(large)",
+                        "access_token": access_token,
+                    },
+                )
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Facebook token")
+                data = resp.json()
+
+            if "error" in data:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Facebook token")
+
+            email = data.get("email", "")
+            first_name = data.get("first_name", "")
+            last_name = data.get("last_name", "")
+            avatar_url = data.get("picture", {}).get("data", {}).get("url") if isinstance(data.get("picture"), dict) else None
+            return email, first_name, last_name, avatar_url
+        except httpx.RequestError as e:
+            logger.error("Facebook token verification failed: %s", e)
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify Facebook token")
 
     async def get_current_user(self, token: str) -> User:
         """Get the current authenticated user from JWT token."""

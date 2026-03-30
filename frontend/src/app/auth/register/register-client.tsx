@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
+import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
 
 export default function RegisterClient() {
   const router = useRouter();
@@ -90,6 +91,22 @@ export default function RegisterClient() {
               {error}
             </div>
           )}
+
+          {/* Social login */}
+          <div className="mb-6">
+            <SocialLoginButtons
+              role={formData.primary_role}
+              onSuccess={() => router.push("/dashboard")}
+            />
+            <div className="relative mt-5 mb-1">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-white px-3 text-gray-400">or sign up with email</span>
+              </div>
+            </div>
+          </div>
 
           {/* Role Selection */}
           <div className="mb-6">
