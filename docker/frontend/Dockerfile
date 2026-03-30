@@ -12,9 +12,10 @@ EXPOSE 3000
 CMD ["npm", "run", "dev"]
 
 # ============================================================
-# Builder — production Next.js build
+# Builder — production Next.js build (Debian for native compat)
 # ============================================================
-FROM base AS builder
+FROM node:20-slim AS builder
+WORKDIR /app
 
 # Build-time env vars (baked into static assets)
 ARG NEXT_PUBLIC_API_URL
@@ -25,7 +26,7 @@ ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME}
 
 COPY package.json package-lock.json* ./
-RUN npm ci --prefer-offline
+RUN npm ci
 COPY . .
 RUN npm run build
 
