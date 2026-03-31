@@ -199,9 +199,6 @@ services:
       NEXT_PUBLIC_APP_NAME: Kaasb
       NEXT_PUBLIC_SITE_URL: https://${DOMAIN}
       NODE_ENV:             production
-      # Required by middleware.ts to validate JWT tokens server-side (Edge runtime).
-      # Must match the backend SECRET_KEY exactly.
-      SECRET_KEY:           ${SECRET_KEY}
     depends_on:
       backend:
         condition: service_healthy

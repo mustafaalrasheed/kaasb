@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { jwtVerify } from "jose";
 
 // Routes that require authentication
 const PROTECTED_PATHS = ["/dashboard", "/admin"];
@@ -16,33 +15,37 @@ function isValidRedirect(path: string): boolean {
 }
 
 /**
- * Validate the JWT access token using the shared secret.
- * Falls back to "cookie exists" check if SECRET_KEY is not configured
- * (e.g. local dev without the env var set).
+ * Decode a JWT payload without verifying the signature.
+ * Used to check the `exp` claim — the backend is the authority on signature validity.
+ * We only need to know if the token is expired to avoid the redirect loop.
  */
-async function isTokenValid(token: string): Promise<boolean> {
-  const secret = process.env.SECRET_KEY;
-  if (!secret) {
-    // SECRET_KEY not set — can't validate signature, assume cookie presence is enough.
-    // This should not happen in production (SECRET_KEY must be in frontend env).
-    return token.length > 0;
-  }
+function getJwtExpiry(token: string): number | null {
   try {
-    const key = new TextEncoder().encode(secret);
-    await jwtVerify(token, key, { algorithms: ["HS256"] });
-    return true;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    // Base64url decode the payload (part 1)
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(payload);
+    const data = JSON.parse(json);
+    return typeof data.exp === "number" ? data.exp : null;
   } catch {
-    // Token is expired, tampered, or otherwise invalid
-    return false;
+    return null;
   }
 }
 
-export async function middleware(request: NextRequest) {
+function isTokenExpired(token: string): boolean {
+  const exp = getJwtExpiry(token);
+  if (exp === null) return true; // malformed = treat as expired
+  // exp is in seconds; add 5s buffer for clock skew
+  return Date.now() / 1000 > exp - 5;
+}
+
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const tokenCookie = request.cookies.get("access_token")?.value;
 
-  // Validate the token (not just its presence)
-  const authenticated = tokenCookie ? await isTokenValid(tokenCookie) : false;
+  // A token is "valid" if it exists AND is not expired
+  const authenticated = tokenCookie ? !isTokenExpired(tokenCookie) : false;
 
   // Protect dashboard and admin routes
   const isProtected = PROTECTED_PATHS.some((path) => pathname.startsWith(path));
@@ -51,7 +54,7 @@ export async function middleware(request: NextRequest) {
     if (isValidRedirect(pathname)) {
       loginUrl.searchParams.set("next", pathname);
     }
-    // Clear the stale cookie so it doesn't keep triggering this redirect
+    // Delete the stale cookie so this redirect only happens once
     const response = NextResponse.redirect(loginUrl);
     if (tokenCookie) {
       response.cookies.delete("access_token");

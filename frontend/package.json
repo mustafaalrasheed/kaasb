@@ -24,8 +24,7 @@
     "tailwind-merge": "^2.6.0",
     "date-fns": "^4.1.0",
     "sonner": "^1.7.1",
-    "next-intl": "^3.26.3",
-    "jose": "^5.9.6"
+    "next-intl": "^3.26.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
