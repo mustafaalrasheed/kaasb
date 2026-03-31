@@ -20,6 +20,16 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
+
+      // Never try to refresh or redirect for auth-check/refresh endpoints themselves —
+      // that is what causes the infinite reload loop on login/register pages.
+      const isAuthEndpoint =
+        originalRequest.url?.includes("/auth/me") ||
+        originalRequest.url?.includes("/auth/refresh");
+      if (isAuthEndpoint) {
+        return Promise.reject(error);
+      }
+
       try {
         // Refresh token is sent automatically via httpOnly cookie
         await axios.post(
@@ -30,7 +40,11 @@ api.interceptors.response.use(
         // Retry the original request (new access_token cookie is set by server)
         return api(originalRequest);
       } catch {
-        if (typeof window !== "undefined") {
+        // Only redirect if we're not already on an auth page
+        if (
+          typeof window !== "undefined" &&
+          !window.location.pathname.startsWith("/auth/")
+        ) {
           window.location.href = "/auth/login";
         }
         return Promise.reject(error);
