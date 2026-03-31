@@ -10,7 +10,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
-
 from fastapi import HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -289,7 +288,7 @@ class AuthService(BaseService):
             return email, first_name, last_name, avatar_url
         except httpx.RequestError as e:
             logger.error("Google token verification failed: %s", e)
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify Google token")
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify Google token") from e
 
     async def _verify_facebook_token(self, access_token: str) -> tuple[str, str, str, str | None]:
         """Verify Facebook access token and extract user info."""
@@ -316,7 +315,7 @@ class AuthService(BaseService):
             return email, first_name, last_name, avatar_url
         except httpx.RequestError as e:
             logger.error("Facebook token verification failed: %s", e)
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify Facebook token")
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify Facebook token") from e
 
     async def get_current_user(self, token: str) -> User:
         """Get the current authenticated user from JWT token."""
