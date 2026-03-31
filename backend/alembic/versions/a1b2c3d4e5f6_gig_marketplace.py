@@ -48,14 +48,15 @@ def upgrade() -> None:
     op.create_index("ix_gig_subcategories_slug", "gig_subcategories", ["slug"])
 
     # ── gig status enum ────────────────────────────────
+    # Use IF NOT EXISTS to handle partial previous runs
     op.execute(
-        "CREATE TYPE gigstatus AS ENUM ('draft','pending_review','active','paused','rejected','archived')"
+        "CREATE TYPE IF NOT EXISTS gigstatus AS ENUM ('draft','pending_review','active','paused','rejected','archived')"
     )
     op.execute(
-        "CREATE TYPE gigpackagetier AS ENUM ('basic','standard','premium')"
+        "CREATE TYPE IF NOT EXISTS gigpackagetier AS ENUM ('basic','standard','premium')"
     )
     op.execute(
-        "CREATE TYPE gigorderstatus AS ENUM ('pending','in_progress','delivered','revision_requested','completed','cancelled','disputed')"
+        "CREATE TYPE IF NOT EXISTS gigorderstatus AS ENUM ('pending','in_progress','delivered','revision_requested','completed','cancelled','disputed')"
     )
 
     # ── gigs ───────────────────────────────────────────
@@ -129,17 +130,20 @@ def upgrade() -> None:
     op.create_index("ix_gig_orders_freelancer_id", "gig_orders", ["freelancer_id"])
     op.create_index("ix_gig_orders_status", "gig_orders", ["status"])
 
-    # ── Seed: Iraqi market categories ──────────────────
+    # ── Seed: Iraqi market categories (skip if already seeded) ──────────
     op.execute("""
-        INSERT INTO gig_categories (id, name_en, name_ar, slug, icon, sort_order) VALUES
-        (gen_random_uuid(), 'Design & Creative',   'التصميم والإبداع',         'design',       'Palette',    1),
-        (gen_random_uuid(), 'Programming & Tech',  'البرمجة والتقنية',          'programming',  'Code2',      2),
-        (gen_random_uuid(), 'Writing & Content',   'الكتابة والمحتوى',          'writing',      'FileText',   3),
-        (gen_random_uuid(), 'Video & Animation',   'الفيديو والرسوم المتحركة',   'video',        'Video',      4),
-        (gen_random_uuid(), 'Digital Marketing',   'التسويق الرقمي',            'marketing',    'TrendingUp', 5),
-        (gen_random_uuid(), 'Business',            'الأعمال',                   'business',     'Briefcase',  6),
-        (gen_random_uuid(), 'Audio & Music',       'الصوت والموسيقى',           'audio',        'Music',      7),
-        (gen_random_uuid(), 'Education',           'التعليم',                   'education',    'GraduationCap', 8)
+        INSERT INTO gig_categories (id, name_en, name_ar, slug, icon, sort_order)
+        SELECT gen_random_uuid(), name_en, name_ar, slug, icon, sort_order FROM (VALUES
+            ('Design & Creative',   'التصميم والإبداع',         'design',       'Palette',       1),
+            ('Programming & Tech',  'البرمجة والتقنية',          'programming',  'Code2',         2),
+            ('Writing & Content',   'الكتابة والمحتوى',          'writing',      'FileText',      3),
+            ('Video & Animation',   'الفيديو والرسوم المتحركة',   'video',        'Video',         4),
+            ('Digital Marketing',   'التسويق الرقمي',            'marketing',    'TrendingUp',    5),
+            ('Business',            'الأعمال',                   'business',     'Briefcase',     6),
+            ('Audio & Music',       'الصوت والموسيقى',           'audio',        'Music',         7),
+            ('Education',           'التعليم',                   'education',    'GraduationCap', 8)
+        ) AS v(name_en, name_ar, slug, icon, sort_order)
+        WHERE NOT EXISTS (SELECT 1 FROM gig_categories WHERE gig_categories.slug = v.slug)
     """)
 
 
