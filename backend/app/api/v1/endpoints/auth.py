@@ -14,7 +14,7 @@ POST /auth/reset-password      - Reset password with token
 
 import asyncio
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
@@ -141,16 +141,42 @@ async def login(
 async def refresh_token(
     data: TokenRefresh,
     response: Response,
+    refresh_token_cookie: str | None = Cookie(default=None, alias="refresh_token"),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Exchange a valid refresh token for a new token pair.
+    Token is read from the httpOnly cookie (preferred) or the request body.
     Tokens are also set as httpOnly cookies.
     """
+    # Prefer the httpOnly cookie — the browser sends it automatically.
+    # Fall back to the request body for API clients that manage tokens manually.
+    token = refresh_token_cookie or data.refresh_token
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token required",
+        )
     auth_service = AuthService(db)
-    tokens = await auth_service.refresh_tokens(data.refresh_token)
+    tokens = await auth_service.refresh_tokens(token)
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
     return tokens
+
+
+@router.post(
+    "/clear-session",
+    status_code=status.HTTP_200_OK,
+    summary="Clear auth cookies (no authentication required)",
+    include_in_schema=False,
+)
+async def clear_session(response: Response):
+    """
+    Clear access_token and refresh_token cookies without requiring a valid token.
+    Called by the frontend when a refresh fails and we need to wipe stale cookies
+    so the middleware stops redirecting the user back to protected routes.
+    """
+    _clear_auth_cookies(response)
+    return {"ok": True}
 
 
 @router.get(

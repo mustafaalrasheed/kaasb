@@ -31,7 +31,8 @@ api.interceptors.response.use(
       }
 
       try {
-        // Refresh token is sent automatically via httpOnly cookie
+        // Refresh token is read from the httpOnly cookie automatically (path=/api/v1/auth).
+        // Body refresh_token is empty — backend prefers the cookie.
         await axios.post(
           `${API_URL}/auth/refresh`,
           { refresh_token: "" },
@@ -40,6 +41,12 @@ api.interceptors.response.use(
         // Retry the original request (new access_token cookie is set by server)
         return api(originalRequest);
       } catch {
+        // Refresh failed — clear stale httpOnly cookies server-side so the
+        // middleware stops redirecting the user back to protected routes.
+        await axios
+          .post(`${API_URL}/auth/clear-session`, {}, { withCredentials: true })
+          .catch(() => {});
+
         // Only redirect if we're not already on an auth page
         if (
           typeof window !== "undefined" &&
