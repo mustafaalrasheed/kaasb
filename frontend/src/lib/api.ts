@@ -27,6 +27,14 @@ api.interceptors.response.use(
         originalRequest.url?.includes("/auth/me") ||
         originalRequest.url?.includes("/auth/refresh");
       if (isAuthEndpoint) {
+        // If /auth/me returns 401 the access_token cookie is stale. Clear it
+        // server-side NOW so the Next.js middleware stops bouncing the user
+        // back to protected routes after DashboardLayout calls router.push("/auth/login").
+        if (originalRequest.url?.includes("/auth/me")) {
+          axios
+            .post(`${API_URL}/auth/clear-session`, {}, { withCredentials: true })
+            .catch(() => {});
+        }
         return Promise.reject(error);
       }
 
