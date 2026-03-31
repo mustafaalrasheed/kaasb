@@ -9,7 +9,6 @@ Gunicorn worker. Redis pub/sub upgrade is tracked in CLAUDE.md known limitations
 import logging
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session as async_session_factory
 from app.services.auth_service import AuthService
