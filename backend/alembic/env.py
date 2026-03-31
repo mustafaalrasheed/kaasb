@@ -3,12 +3,10 @@ Kaasb Platform - Alembic Environment Configuration
 Supports async PostgreSQL migrations with SQLAlchemy 2.0.
 """
 
-import asyncio
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
@@ -34,6 +32,29 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def include_object(object, name, type_, reflected, compare_to):
+    """
+    Filter objects included in autogenerate comparisons.
+
+    Two categories of DB objects are intentionally excluded from comparison:
+
+    1. Performance indexes (c7d4e8f2a901) — composite/partial/descending indexes
+       added via a dedicated migration but NOT declared in model __table_args__,
+       to keep model definitions readable.
+
+    2. audit_log table (e2b3c4d5e6f7) — append-only compliance ledger with no
+       SQLAlchemy model (it is written to via raw SQL triggers, not the ORM).
+
+    Rule: skip any object that exists in the database but has no counterpart in
+    the ORM model metadata (reflected=True, compare_to=None).
+    Objects defined in models but missing from the DB are still reported normally,
+    so the check continues to catch un-migrated model additions.
+    """
+    if reflected and compare_to is None:
+        return False
+    return True
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode (generates SQL without connecting)."""
     url = config.get_main_option("sqlalchemy.url")
@@ -42,6 +63,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -49,7 +71,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
@@ -65,7 +91,8 @@ def run_migrations_online() -> None:
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
-            target_metadata=target_metadata
+            target_metadata=target_metadata,
+            include_object=include_object,
         )
 
         with context.begin_transaction():
