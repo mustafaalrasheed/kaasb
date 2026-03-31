@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
+import { useEffect } from "react";
 import { cn, backendUrl } from "@/lib/utils";
 
 const sidebarLinks = [
@@ -31,10 +32,14 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { user, isAuthenticated, isLoading } = useAuthStore();
 
-  // No client-side redirect here — the Next.js middleware already guards all
-  // /dashboard/* routes by checking the access_token cookie before the page
-  // renders. A router.push("/auth/login") from layout would race with the
-  // middleware and cause an infinite redirect loop when the cookie is stale.
+  useEffect(() => {
+    // If initialize() confirmed the session is invalid, do a full-page redirect.
+    // window.location.href (not router.push) forces the middleware to re-evaluate
+    // with the now-cleared cookie, landing cleanly on /auth/login.
+    if (!isLoading && !isAuthenticated) {
+      window.location.href = "/auth/login";
+    }
+  }, [isLoading, isAuthenticated]);
 
   if (isLoading) {
     return (

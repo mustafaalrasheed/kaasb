@@ -12,7 +12,10 @@ export const api = axios.create({
   withCredentials: true, // Send httpOnly cookies with every request
 });
 
-// === Response Interceptor: Handle 401 & token refresh ===
+// === Response Interceptor: 401 handling ===
+// The Next.js middleware (middleware.ts) now validates JWTs and handles all
+// auth routing server-side. The interceptor only needs to handle the case where
+// the session expires MID-PAGE (after initial load) on a non-auth API call.
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -21,49 +24,26 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      // Never try to refresh or redirect for auth-check/refresh endpoints themselves —
-      // that is what causes the infinite reload loop on login/register pages.
+      // For auth endpoints, let the error propagate to the caller (initialize,
+      // login forms, etc.) — they handle it themselves.
       const isAuthEndpoint =
         originalRequest.url?.includes("/auth/me") ||
         originalRequest.url?.includes("/auth/refresh");
       if (isAuthEndpoint) {
-        // If /auth/me returns 401 the access_token cookie is stale. Clear it
-        // server-side NOW so the Next.js middleware stops bouncing the user
-        // back to protected routes after DashboardLayout calls router.push("/auth/login").
-        if (originalRequest.url?.includes("/auth/me")) {
-          axios
-            .post(`${API_URL}/auth/clear-session`, {}, { withCredentials: true })
-            .catch(() => {});
-        }
         return Promise.reject(error);
       }
 
-      try {
-        // Refresh token is read from the httpOnly cookie automatically (path=/api/v1/auth).
-        // Body refresh_token is empty — backend prefers the cookie.
-        await axios.post(
-          `${API_URL}/auth/refresh`,
-          { refresh_token: "" },
-          { withCredentials: true }
-        );
-        // Retry the original request (new access_token cookie is set by server)
-        return api(originalRequest);
-      } catch {
-        // Refresh failed — clear stale httpOnly cookies server-side so the
-        // middleware stops redirecting the user back to protected routes.
-        await axios
-          .post(`${API_URL}/auth/clear-session`, {}, { withCredentials: true })
-          .catch(() => {});
+      // For all other endpoints: session expired mid-page.
+      // Clear the stale cookie and do a full-page redirect to login.
+      // The middleware will then validate (fail) and redirect cleanly.
+      await axios
+        .post(`${API_URL}/auth/clear-session`, {}, { withCredentials: true })
+        .catch(() => {});
 
-        // Only redirect if we're not already on an auth page
-        if (
-          typeof window !== "undefined" &&
-          !window.location.pathname.startsWith("/auth/")
-        ) {
-          window.location.href = "/auth/login";
-        }
-        return Promise.reject(error);
+      if (typeof window !== "undefined") {
+        window.location.href = "/auth/login";
       }
+      return Promise.reject(error);
     }
 
     return Promise.reject(error);
