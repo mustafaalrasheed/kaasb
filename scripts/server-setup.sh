@@ -1,0 +1,262 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Kaasb Platform — ONE-TIME Server Initialisation
+# =============================================================================
+# Run this ONCE on a fresh Hetzner CPX22 (Ubuntu 24.04) to prepare the server
+# so that the GitHub Actions deploy workflow can take over from then on.
+#
+# Usage (run as root on the server):
+#   curl -fsSL https://raw.githubusercontent.com/mustafaalrasheed/kaasb/main/scripts/server-setup.sh | bash
+#
+# Or copy to the server and run:
+#   scp scripts/server-setup.sh root@116.203.140.27:/tmp/
+#   ssh root@116.203.140.27 bash /tmp/server-setup.sh
+# =============================================================================
+
+set -euo pipefail
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+log()   { echo -e "${GREEN}[SETUP]${NC} $*"; }
+info()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
+error() { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
+
+REPO="https://github.com/mustafaalrasheed/kaasb.git"
+APP_DIR="/opt/kaasb"
+DOMAIN="kaasb.com"
+
+# ---------------------------------------------------------------------------
+# 0. Must run as root
+# ---------------------------------------------------------------------------
+[ "$(id -u)" -eq 0 ] || error "Run this script as root (or with sudo)"
+
+log "Starting Kaasb server initialisation on $(hostname)"
+echo ""
+
+# ---------------------------------------------------------------------------
+# 1. System packages
+# ---------------------------------------------------------------------------
+log "Step 1/7: Updating system packages..."
+apt-get update -qq
+apt-get install -y -qq \
+    git curl wget ca-certificates gnupg lsb-release \
+    python3-pip ufw fail2ban
+
+# ---------------------------------------------------------------------------
+# 2. Docker (official repository)
+# ---------------------------------------------------------------------------
+if command -v docker &>/dev/null; then
+    log "Step 2/7: Docker already installed ($(docker --version))"
+else
+    log "Step 2/7: Installing Docker..."
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+        | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+
+    echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+        https://download.docker.com/linux/ubuntu \
+        $(lsb_release -cs) stable" \
+        | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    apt-get update -qq
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+    systemctl enable --now docker
+    log "Docker installed: $(docker --version)"
+fi
+
+# Verify docker compose v2
+docker compose version &>/dev/null || error "docker compose (v2 plugin) not found"
+log "Docker Compose: $(docker compose version)"
+
+# ---------------------------------------------------------------------------
+# 3. Firewall
+# ---------------------------------------------------------------------------
+log "Step 3/7: Configuring UFW firewall..."
+ufw --force reset
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp   comment "SSH"
+ufw allow 80/tcp   comment "HTTP (ACME + redirect)"
+ufw allow 443/tcp  comment "HTTPS"
+ufw --force enable
+ufw status
+log "Firewall configured."
+
+# ---------------------------------------------------------------------------
+# 4. Clone repository to /opt/kaasb
+# ---------------------------------------------------------------------------
+log "Step 4/7: Cloning repository to ${APP_DIR}..."
+if [ -d "${APP_DIR}/.git" ]; then
+    warn "${APP_DIR} already exists with git repo — pulling latest..."
+    cd "${APP_DIR}"
+    git fetch --quiet origin main
+    git reset --hard origin/main
+else
+    mkdir -p "${APP_DIR}"
+    git clone --depth 1 "${REPO}" "${APP_DIR}"
+    cd "${APP_DIR}"
+fi
+chmod +x deploy.sh scripts/*.sh
+log "Repository ready at ${APP_DIR}"
+
+# ---------------------------------------------------------------------------
+# 5. Generate .env.production
+# ---------------------------------------------------------------------------
+log "Step 5/7: Generating .env.production..."
+ENV_FILE="${APP_DIR}/.env.production"
+
+if [ -f "${ENV_FILE}" ]; then
+    warn ".env.production already exists — skipping generation."
+    warn "If you want to regenerate it, delete it and re-run this script."
+else
+    # Generate secrets
+    SECRET_KEY=$(openssl rand -hex 32)
+    DB_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 32)
+    REDIS_PASSWORD=$(openssl rand -hex 24)
+    HEALTH_BEARER_TOKEN=$(openssl rand -hex 20)
+    GRAFANA_PASSWORD=$(openssl rand -hex 16)
+
+    cat > "${ENV_FILE}" <<EOF
+# =============================================================================
+# Kaasb Platform — Production Environment
+# Generated by server-setup.sh on $(date -u '+%Y-%m-%dT%H:%M:%SZ')
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Domain & Deployment
+# ---------------------------------------------------------------------------
+DOMAIN=${DOMAIN}
+GITHUB_REPO=mustafaalrasheed/kaasb
+IMAGE_TAG=latest
+
+# ---------------------------------------------------------------------------
+# Application Identity
+# ---------------------------------------------------------------------------
+APP_NAME=Kaasb
+APP_VERSION=1.0.0
+
+# ---------------------------------------------------------------------------
+# PostgreSQL Database
+# ---------------------------------------------------------------------------
+DB_USER=kaasb_user
+DB_PASSWORD=${DB_PASSWORD}
+DB_NAME=kaasb_db
+
+# ---------------------------------------------------------------------------
+# Redis
+# ---------------------------------------------------------------------------
+REDIS_PASSWORD=${REDIS_PASSWORD}
+
+# ---------------------------------------------------------------------------
+# JWT Secret Key (64 hex chars)
+# ---------------------------------------------------------------------------
+SECRET_KEY=${SECRET_KEY}
+
+# ---------------------------------------------------------------------------
+# Gunicorn Workers (CPX22 has 3 vCPU → 7 workers)
+# ---------------------------------------------------------------------------
+WEB_CONCURRENCY=7
+
+# ---------------------------------------------------------------------------
+# Qi Card Payment Gateway — Iraqi primary payment
+# Leave sandbox=true until you have real merchant credentials
+# ---------------------------------------------------------------------------
+QI_CARD_API_KEY=
+QI_CARD_BASE_URL=https://api.pay.qi.iq/api/v0/transactions/business/token
+QI_CARD_SANDBOX_URL=https://api.uat.pay.qi.iq/api/v0/transactions/business/token
+QI_CARD_SANDBOX=true
+QI_CARD_CURRENCY=IQD
+
+# ---------------------------------------------------------------------------
+# Email — Resend (https://resend.com)
+# REQUIRED: replace with your real Resend API key
+# ---------------------------------------------------------------------------
+RESEND_API_KEY=FILL_IN_RESEND_API_KEY
+EMAIL_FROM=Kaasb <noreply@${DOMAIN}>
+EMAIL_FROM_NAME=Kaasb
+FRONTEND_URL=https://${DOMAIN}
+
+# ---------------------------------------------------------------------------
+# Monitoring
+# ---------------------------------------------------------------------------
+SENTRY_DSN=
+HEALTH_BEARER_TOKEN=${HEALTH_BEARER_TOKEN}
+
+# ---------------------------------------------------------------------------
+# Grafana
+# ---------------------------------------------------------------------------
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+
+# ---------------------------------------------------------------------------
+# File Uploads
+# ---------------------------------------------------------------------------
+UPLOAD_DIR=/app/uploads
+MAX_UPLOAD_SIZE_MB=10
+EOF
+
+    chmod 600 "${ENV_FILE}"
+    log ".env.production created at ${ENV_FILE}"
+    echo ""
+    warn "============================================================"
+    warn "  ACTION REQUIRED: Edit .env.production before deploying"
+    warn "============================================================"
+    warn "  Fill in:  RESEND_API_KEY  (get from resend.com)"
+    warn "  Optionally add SENTRY_DSN for error tracking"
+    warn "  File: ${ENV_FILE}"
+    warn "  Edit: nano ${ENV_FILE}"
+    warn "============================================================"
+    echo ""
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Set up cron jobs
+# ---------------------------------------------------------------------------
+log "Step 6/7: Setting up cron jobs..."
+
+# Daily DB backup at 02:00 UTC
+CRON_BACKUP="0 2 * * * cd ${APP_DIR} && bash scripts/backup.sh >> /var/log/kaasb-backup.log 2>&1"
+# SSL renewal check every 12 hours
+CRON_SSL="0 */12 * * * certbot renew --quiet --webroot --webroot-path /var/www/certbot && docker exec kaasb_nginx nginx -s reload 2>/dev/null || true"
+
+# Install crons (idempotent)
+(crontab -l 2>/dev/null | grep -v 'kaasb-backup\|certbot renew'; \
+ echo "${CRON_BACKUP}  # kaasb-backup"; \
+ echo "${CRON_SSL}") | crontab -
+
+log "Cron jobs configured:"
+crontab -l | grep -E 'kaasb|certbot'
+
+# ---------------------------------------------------------------------------
+# 7. Summary
+# ---------------------------------------------------------------------------
+echo ""
+log "Step 7/7: Setup complete!"
+echo ""
+echo -e "${GREEN}============================================================${NC}"
+echo -e "${GREEN}  Kaasb server initialisation COMPLETE${NC}"
+echo -e "${GREEN}============================================================${NC}"
+echo ""
+echo "Next steps:"
+echo ""
+echo "  1. Edit .env.production (if not already done):"
+echo "       nano ${APP_DIR}/.env.production"
+echo "       # Set: RESEND_API_KEY"
+echo ""
+echo "  2. Obtain SSL certificate:"
+echo "       cd ${APP_DIR}"
+echo "       ./deploy.sh --ssl"
+echo ""
+echo "  3. First deployment (pull GHCR images + start everything):"
+echo "       cd ${APP_DIR}"
+echo "       IMAGE_TAG=latest ./deploy.sh --pull"
+echo ""
+echo "  4. Or push to main branch — GitHub Actions will auto-deploy."
+echo ""
+echo "  Server: $(hostname -I | awk '{print $1}')"
+echo "  App dir: ${APP_DIR}"
+echo "  Logs: cd ${APP_DIR} && ./deploy.sh --logs"
+echo ""

@@ -120,6 +120,11 @@ jobs:
             $COMPOSE run --rm --no-deps backend alembic upgrade head
             echo "Migrations complete."
 
+            # ---- Seed gig categories (idempotent — skips if already seeded) ----
+            echo "Seeding gig categories..."
+            $COMPOSE run --rm --no-deps backend python -m scripts.seed_categories && echo "Categories OK" || \
+                echo "WARN: seed_categories failed (non-blocking — categories may already exist)"
+
             # ---- Rolling restart: backend first, then frontend ----
             echo "Restarting backend..."
             $COMPOSE up -d --no-deps backend

@@ -19,6 +19,7 @@ from app.api.v1.endpoints.proposals import router as proposals_router
 from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.reviews import router as reviews_router
 from app.api.v1.endpoints.users import router as users_router
+from app.api.v1.endpoints.ws import router as ws_router
 
 api_router = APIRouter()
 
@@ -36,3 +37,4 @@ api_router.include_router(messages_router)
 api_router.include_router(admin_router)
 api_router.include_router(gdpr_router)
 api_router.include_router(reports_router)
+api_router.include_router(ws_router)

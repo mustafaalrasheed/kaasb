@@ -1,11 +1,16 @@
 """
 Kaasb Platform - Create Admin User
 Run: python -m scripts.create_admin
+
+Environment variable overrides (for non-interactive / CI use):
+  ADMIN_EMAIL     default: admin@kaasb.com
+  ADMIN_USERNAME  default: admin
+  ADMIN_PASSWORD  required when running non-interactively (no default)
 """
 
 import asyncio
-import sys
 import os
+import sys
 
 # Add parent dir to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,9 +22,9 @@ from app.core.security import hash_password
 
 
 async def create_admin(
-    email: str = "admin@kaasb.com",
-    username: str = "admin",
-    password: str = "AdminPass123!",
+    email: str,
+    username: str,
+    password: str,
     first_name: str = "Platform",
     last_name: str = "Admin",
 ):
@@ -52,15 +57,27 @@ async def create_admin(
         db.add(admin)
         await db.commit()
         print(f"✅ Admin user created:")
-        print(f"   Email: {email}")
+        print(f"   Email:    {email}")
         print(f"   Username: {username}")
-        print(f"   Password: {password}")
         print(f"   ⚠️  Change the password after first login!")
 
 
 if __name__ == "__main__":
-    email = input("Admin email [admin@kaasb.com]: ").strip() or "admin@kaasb.com"
-    username = input("Admin username [admin]: ").strip() or "admin"
-    password = input("Admin password [AdminPass123!]: ").strip() or "AdminPass123!"
+    # Prefer env vars (safe for automated deploys); fall back to interactive input
+    env_email    = os.environ.get("ADMIN_EMAIL", "")
+    env_username = os.environ.get("ADMIN_USERNAME", "")
+    env_password = os.environ.get("ADMIN_PASSWORD", "")
+
+    email    = env_email    or input("Admin email [admin@kaasb.com]: ").strip() or "admin@kaasb.com"
+    username = env_username or input("Admin username [admin]: ").strip() or "admin"
+
+    if env_password:
+        password = env_password
+    else:
+        import getpass
+        password = getpass.getpass("Admin password: ").strip()
+        if not password:
+            print("ERROR: Password cannot be empty.", file=sys.stderr)
+            sys.exit(1)
 
     asyncio.run(create_admin(email, username, password))

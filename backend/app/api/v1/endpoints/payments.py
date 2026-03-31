@@ -163,9 +163,9 @@ async def qi_card_success(
             url=f"https://{settings.DOMAIN}/payment/result?status=success&order={CartID}",
             status_code=302,
         )
-    # Already processed or not found — still redirect to result page
+    # Payment not found or already processed — redirect with error status
     return RedirectResponse(
-        url=f"https://{settings.DOMAIN}/payment/result?status=success&order={CartID}",
+        url=f"https://{settings.DOMAIN}/payment/result?status=error&order={CartID}",
         status_code=302,
     )
 
