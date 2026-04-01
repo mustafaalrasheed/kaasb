@@ -103,7 +103,6 @@ jobs:
 
       # ---- API tests ----
       - name: Run API tests
-        continue-on-error: true
         env:
           DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/test_db
           REDIS_URL:    redis://localhost:6379/0
