@@ -48,16 +48,25 @@ def upgrade() -> None:
     op.create_index("ix_gig_subcategories_slug", "gig_subcategories", ["slug"])
 
     # ── gig status enum ────────────────────────────────
-    # Use IF NOT EXISTS to handle partial previous runs
-    op.execute(
-        "CREATE TYPE IF NOT EXISTS gigstatus AS ENUM ('draft','pending_review','active','paused','rejected','archived')"
-    )
-    op.execute(
-        "CREATE TYPE IF NOT EXISTS gigpackagetier AS ENUM ('basic','standard','premium')"
-    )
-    op.execute(
-        "CREATE TYPE IF NOT EXISTS gigorderstatus AS ENUM ('pending','in_progress','delivered','revision_requested','completed','cancelled','disputed')"
-    )
+    # PostgreSQL has no "CREATE TYPE IF NOT EXISTS" — use DO block instead
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE gigstatus AS ENUM ('draft','pending_review','active','paused','rejected','archived');
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE gigpackagetier AS ENUM ('basic','standard','premium');
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE gigorderstatus AS ENUM ('pending','in_progress','delivered','revision_requested','completed','cancelled','disputed');
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$
+    """)
 
     # ── gigs ───────────────────────────────────────────
     op.create_table(
