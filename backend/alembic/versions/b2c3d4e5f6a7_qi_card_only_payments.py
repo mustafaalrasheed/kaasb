@@ -27,11 +27,13 @@ def upgrade() -> None:
 
     # Recreate paymentprovider enum without stripe and wise.
     # PostgreSQL does not support DROP VALUE on enums, so we recreate the type.
+    # Cast to text first to handle both uppercase ('STRIPE') and lowercase ('stripe')
+    # enum values, depending on which migration history was applied.
     op.execute(
-        "DELETE FROM payment_accounts WHERE provider IN ('stripe', 'wise')"
+        "DELETE FROM payment_accounts WHERE provider::text ILIKE 'stripe' OR provider::text ILIKE 'wise'"
     )
     op.execute(
-        "DELETE FROM transactions WHERE provider IN ('stripe', 'wise')"
+        "DELETE FROM transactions WHERE provider::text ILIKE 'stripe' OR provider::text ILIKE 'wise'"
     )
 
     # Temporarily cast columns to text, swap enum, cast back
