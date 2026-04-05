@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Your Verification Code</h1>
+<p>Hi there,</p>
+<p>
+  You requested to sign in to <strong>{{ site_name }}</strong> using your phone number ending in
+  <strong>{{ masked_phone }}</strong>. Use the code below to complete your sign-in:
+</p>
+
+<div style="text-align: center; margin: 32px 0;">
+  <div style="
+    display: inline-block;
+    background: #f0f5ff;
+    border: 2px solid #338bff;
+    border-radius: 12px;
+    padding: 20px 40px;
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: 10px;
+    color: #1354e1;
+    font-family: 'Courier New', monospace;
+  ">{{ otp_code }}</div>
+</div>
+
+<p>
+  This code is valid for <strong>{{ expiry_minutes }} minutes</strong> and can only be used once.
+</p>
+<hr class="divider">
+<p class="link-note">
+  If you didn't request this code, please ignore this email.
+  Never share this code with anyone — the {{ site_name }} team will never ask for it.
+</p>
+{% endblock %}

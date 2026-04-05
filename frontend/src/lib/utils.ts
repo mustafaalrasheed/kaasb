@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useRef, useCallback, useEffect } from "react";
+import type { AxiosError } from "axios";
 
 /**
  * Merge Tailwind CSS classes without conflicts.
@@ -50,4 +51,37 @@ export function useDebouncedCallback<T extends (...args: unknown[]) => void>(
     },
     [delay],
   ) as T;
+}
+
+interface PydanticError {
+  loc?: (string | number)[];
+  msg?: string;
+}
+
+/**
+ * Extract a human-readable error message from an Axios API error.
+ * Handles both plain string details and Pydantic validation error arrays.
+ */
+export function getApiError(
+  err: unknown,
+  fallback = "An unexpected error occurred. Please try again.",
+): string {
+  const detail = (err as AxiosError<{ detail?: string | PydanticError[] }>)
+    ?.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => {
+        const field = d.loc?.[d.loc.length - 1] ?? "field";
+        const msg = (d.msg ?? "Invalid value").replace("Value error, ", "");
+        return `${field}: ${msg}`;
+      })
+      .join("\n");
+  }
+  return fallback;
+}
+
+/** Extract HTTP status code from an Axios error (returns null for non-HTTP errors). */
+export function getApiStatus(err: unknown): number | null {
+  return (err as AxiosError)?.response?.status ?? null;
 }

@@ -10,8 +10,8 @@ from datetime import datetime
 from sqlalchemy import (
     DateTime,
     Enum,
-    Float,
     ForeignKey,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -47,7 +47,7 @@ class Proposal(BaseModel):
 
     # === Bid Details ===
     cover_letter: Mapped[str] = mapped_column(Text, nullable=False)
-    bid_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    bid_amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
     estimated_duration: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )  # e.g., "2 weeks", "1 month"

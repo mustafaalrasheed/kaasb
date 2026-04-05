@@ -269,8 +269,8 @@ class Escrow(BaseModel):
     )
 
     # === Timestamps ===
-    funded_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+    funded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     released_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

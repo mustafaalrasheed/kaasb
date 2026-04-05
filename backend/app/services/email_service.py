@@ -21,8 +21,8 @@ class EmailService:
 
     def __init__(self) -> None:
         self._settings = get_settings()
-        if self._settings.RESEND_API_KEY:
-            resend.api_key = self._settings.RESEND_API_KEY
+        if self._settings.RESEND_API_KEY.strip():
+            resend.api_key = self._settings.RESEND_API_KEY.strip()
 
         template_dir = Path(__file__).parent.parent / "templates" / "emails"
         self._env = Environment(
@@ -34,7 +34,7 @@ class EmailService:
         return self._env.get_template(template).render(**ctx)
 
     async def _send(self, *, to: str, subject: str, html: str) -> bool:
-        if not self._settings.RESEND_API_KEY:
+        if not self._settings.RESEND_API_KEY.strip():
             logger.info("[EMAIL DEV] To=%s | Subject=%s", to, subject)
             return True
         try:
@@ -99,6 +99,26 @@ class EmailService:
         }
         template = f"welcome_{lang}.html"
         subject = "مرحباً بك في كاسب | Kaasb" if lang == "ar" else "Welcome to Kaasb!"
+        html = self._render(template, ctx)
+        return await self._send(to=to_email, subject=subject, html=html)
+
+    async def send_phone_otp(
+        self,
+        *,
+        to_email: str,
+        otp_code: str,
+        phone: str,
+        lang: Literal["ar", "en"] = "ar",
+    ) -> bool:
+        masked_phone = phone[-4:].zfill(4)
+        ctx = {
+            "otp_code": otp_code,
+            "masked_phone": masked_phone,
+            "site_name": "Kaasb",
+            "expiry_minutes": 10,
+        }
+        template = f"phone_otp_{lang}.html"
+        subject = f"رمز التحقق: {otp_code} | Kaasb" if lang == "ar" else f"Your OTP: {otp_code} | Kaasb"
         html = self._render(template, ctx)
         return await self._send(to=to_email, subject=subject, html=html)
 

@@ -5,6 +5,7 @@ Import all models here so Alembic can discover them.
 
 from app.models.base import BaseModel
 from app.models.contract import Contract, ContractStatus, Milestone, MilestoneStatus
+from app.models.phone_otp import PhoneOtp
 from app.models.gig import (
     Category,
     Gig,
@@ -37,6 +38,7 @@ from app.models.user import User, UserRole, UserStatus
 __all__ = [
     "BaseModel",
     "User", "UserRole", "UserStatus",
+    "PhoneOtp",
     "RefreshToken",
     "Job", "JobStatus", "JobType", "ExperienceLevel", "JobDuration",
     "Proposal", "ProposalStatus",

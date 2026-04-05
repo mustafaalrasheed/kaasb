@@ -13,10 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.job import Job, JobStatus
+from app.models.notification import NotificationType
 from app.models.proposal import Proposal, ProposalStatus
 from app.models.user import User
 from app.schemas.proposal import ProposalCreate, ProposalRespond, ProposalUpdate
 from app.services.base import BaseService
+from app.services.notification_service import notify
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,19 @@ class ProposalService(BaseService):
         await self.db.flush()
         await self.db.refresh(proposal, attribute_names=["freelancer", "job"])
         logger.info("Proposal submitted: %s by freelancer=%s on job=%s", proposal.id, freelancer.id, job_id)
+
+        # Notify the client about the new proposal
+        await notify(
+            self.db,
+            user_id=job.client_id,
+            type=NotificationType.PROPOSAL_RECEIVED,
+            title="عرض جديد على وظيفتك",
+            message=f"قدّم {freelancer.first_name} {freelancer.last_name} عرضاً على وظيفة: {job.title}",
+            link_type="job",
+            link_id=job_id,
+            actor_id=freelancer.id,
+        )
+
         return proposal
 
     # === Update Proposal (Freelancer) ===
@@ -282,6 +297,43 @@ class ProposalService(BaseService):
 
         await self.db.flush()
         await self.db.refresh(proposal, attribute_names=["freelancer", "job"])
+
+        # Notify the freelancer of the decision
+        job_title = proposal.job.title if proposal.job else ""
+        if new_status == ProposalStatus.ACCEPTED:
+            await notify(
+                self.db,
+                user_id=proposal.freelancer_id,
+                type=NotificationType.PROPOSAL_ACCEPTED,
+                title="تم قبول عرضك",
+                message=f"تهانينا! قبل العميل عرضك على وظيفة: {job_title}",
+                link_type="job",
+                link_id=proposal.job_id,
+                actor_id=client.id,
+            )
+        elif new_status == ProposalStatus.REJECTED:
+            await notify(
+                self.db,
+                user_id=proposal.freelancer_id,
+                type=NotificationType.PROPOSAL_REJECTED,
+                title="تم رفض عرضك",
+                message=f"للأسف، رفض العميل عرضك على وظيفة: {job_title}",
+                link_type="job",
+                link_id=proposal.job_id,
+                actor_id=client.id,
+            )
+        elif new_status == ProposalStatus.SHORTLISTED:
+            await notify(
+                self.db,
+                user_id=proposal.freelancer_id,
+                type=NotificationType.PROPOSAL_SHORTLISTED,
+                title="عرضك في القائمة المختصرة",
+                message=f"أضاف العميل عرضك إلى القائمة المختصرة لوظيفة: {job_title}",
+                link_type="job",
+                link_id=proposal.job_id,
+                actor_id=client.id,
+            )
+
         return proposal
 
     # === Get Single Proposal ===

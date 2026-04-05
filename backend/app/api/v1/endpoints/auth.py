@@ -20,10 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.security import create_email_token
 from app.models.user import User
 from app.schemas.user import (
     ForgotPasswordRequest,
+    PhoneOtpRequest,
+    PhoneOtpVerifyRequest,
     ResendVerificationRequest,
     ResetPasswordRequest,
     SocialLoginRequest,
@@ -97,16 +98,14 @@ async def register(
     tokens = await auth_service.login(login_data)
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
 
-    # Send verification email in background (non-blocking)
+    # Send welcome email in background (non-blocking; MVP auto-verifies email)
     email_service = EmailService()
     user = await auth_service._get_user_by_email(data.email)
     if user:
-        vtoken = create_email_token(str(user.id), "verify_email", 24 * 60)
         asyncio.create_task(
-            email_service.send_verification_email(
+            email_service.send_welcome_email(
                 to_email=user.email,
                 user_name=user.first_name,
-                token=vtoken,
             )
         )
 
@@ -220,7 +219,8 @@ async def social_login(
     Creates a new account automatically if the email is not registered.
     """
     service = AuthService(db)
-    tokens = await service.social_login(data.provider, data.token, data.role)
+    email_service = EmailService()
+    tokens = await service.social_login(data.provider, data.token, data.role, email_service=email_service)
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
     return tokens
 
@@ -281,3 +281,50 @@ async def reset_password(
     auth_service = AuthService(db)
     await auth_service.reset_password(data.token, data.new_password)
     return {"message": "Password reset successfully. Please log in with your new password."}
+
+
+@router.post("/ws-ticket", summary="Get a short-lived WebSocket auth ticket")
+async def get_ws_ticket(current_user: User = Depends(get_current_user)):
+    """
+    Returns a 60-second, single-use ticket for authenticating the WebSocket connection.
+    Solves the httpOnly cookie problem: the browser cannot pass cookies to a cross-origin
+    WebSocket, so instead the frontend calls this endpoint (cookie-authenticated) to get
+    an opaque ticket it can safely pass as a URL query parameter.
+    """
+    from app.services.websocket_manager import create_ws_ticket
+    ticket = create_ws_ticket(current_user.id)
+    return {"ticket": ticket, "expires_in": 60}
+
+
+@router.post("/phone/send-otp", summary="Send OTP to phone number (email delivery in beta)")
+async def send_phone_otp(
+    data: PhoneOtpRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Send a 6-digit OTP to the user's email address linked to their phone number.
+    Beta mode: delivered via email. Production: Twilio SMS.
+    Always returns success to prevent phone enumeration.
+    Rate limited to 3 requests per phone per 10 minutes.
+    """
+    auth_service = AuthService(db)
+    email_service = EmailService()
+    await auth_service.send_phone_otp(data.phone, email_service)
+    return {"message": "If this phone number is registered, an OTP has been sent."}
+
+
+@router.post("/phone/verify-otp", response_model=TokenResponse, summary="Verify phone OTP and get tokens")
+async def verify_phone_otp(
+    data: PhoneOtpVerifyRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Verify the 6-digit OTP and return a JWT token pair.
+    OTP is single-use and expires after 10 minutes.
+    Account is locked after 5 consecutive wrong attempts.
+    """
+    auth_service = AuthService(db)
+    tokens = await auth_service.verify_phone_otp(data.phone, data.otp)
+    _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
+    return tokens

@@ -60,7 +60,7 @@ class SocialLoginRequest(BaseModel):
     """Request schema for social/OAuth login."""
 
     provider: str = Field(..., pattern=r"^(google|facebook)$")
-    token: str = Field(..., min_length=10, description="ID token (Google) or access token (Facebook)")
+    token: str = Field(..., min_length=10, description="Access token from Google or Facebook OAuth flow")
     role: str = Field(default="freelancer", pattern=r"^(client|freelancer)$", description="Role for new accounts")
 
 
@@ -183,6 +183,25 @@ class VerifyEmailRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+
+class PhoneOtpRequest(BaseModel):
+    """Request a 6-digit OTP for phone-based login."""
+
+    phone: str = Field(
+        ...,
+        min_length=7,
+        max_length=20,
+        pattern=r"^\+?[0-9]{7,19}$",
+        description="Phone number in international format, e.g. +9647701234567",
+    )
+
+
+class PhoneOtpVerifyRequest(BaseModel):
+    """Verify a phone OTP and receive JWT tokens."""
+
+    phone: str = Field(..., min_length=7, max_length=20, pattern=r"^\+?[0-9]{7,19}$")
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^[0-9]{6}$")
 
 
 # === Paginated Responses ===

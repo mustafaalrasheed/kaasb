@@ -45,7 +45,9 @@ from app.schemas.payment import (
     PayoutRequest,
     PayoutResponse,
 )
+from app.models.notification import NotificationType
 from app.services.base import BaseService
+from app.services.notification_service import notify
 from app.services.qi_card_client import QiCardClient, QiCardError, usd_to_iqd
 
 logger = logging.getLogger(__name__)
@@ -417,6 +419,18 @@ class PaymentService(BaseService):
 
         logger.info("Escrow released: milestone=%s amount=%s", milestone_id, escrow.freelancer_amount)
 
+        # Notify freelancer of payment
+        await notify(
+            self.db,
+            user_id=escrow.freelancer_id,
+            type=NotificationType.PAYMENT_RECEIVED,
+            title="تم استلام دفعة",
+            message=f"تم تحرير مبلغ ${escrow.freelancer_amount:.2f} إلى رصيدك",
+            link_type="contract",
+            link_id=escrow.contract_id,
+            actor_id=escrow.client_id,
+        )
+
         return EscrowReleaseResponse(
             escrow_id=escrow.id,
             milestone_id=milestone_id,
@@ -578,7 +592,19 @@ class PaymentService(BaseService):
             freelancer.id, data.amount, f"{amount_iqd:,}", account.provider.value,
         )
 
+        # Notify freelancer of payout status
         payout_status = payout_tx.status.value
+        if payout_status == "completed":
+            await notify(
+                self.db,
+                user_id=freelancer.id,
+                type=NotificationType.PAYOUT_COMPLETED,
+                title="تم سحب الأموال بنجاح",
+                message=f"تم تحويل {amount_iqd:,} د.ع (${data.amount:.2f}) إلى حسابك",
+                link_type=None,
+                link_id=None,
+            )
+
         return PayoutResponse(
             transaction_id=payout_tx.id,
             amount=data.amount,

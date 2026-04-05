@@ -2,9 +2,16 @@
 Kaasb Platform - WebSocket Connection Manager
 Manages active WebSocket connections for real-time messaging.
 In production, this would use Redis pub/sub for multi-worker support.
+
+WS Ticket flow (solves httpOnly cookie problem):
+  1. Frontend calls POST /auth/ws-ticket (authenticated via cookie) → gets 60s ticket
+  2. Frontend opens WebSocket with ?ticket=<ticket>
+  3. ws.py redeems ticket (single-use) and registers the connection
 """
 
+import secrets
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from fastapi import WebSocket
 
@@ -59,3 +66,37 @@ class ConnectionManager:
 
 # Singleton instance
 manager = ConnectionManager()
+
+# === WS Ticket Store (in-memory, per-worker) ===
+# ticket_str → (user_id, expires_at)
+_ws_tickets: dict[str, tuple[uuid.UUID, datetime]] = {}
+
+
+def create_ws_ticket(user_id: uuid.UUID) -> str:
+    """Create a 60-second single-use WebSocket auth ticket.
+    Solves the httpOnly cookie problem: the frontend calls POST /auth/ws-ticket
+    (authenticated via cookie) and receives a short-lived opaque token it can
+    pass as a WebSocket query parameter.
+    """
+    # Purge expired tickets to prevent unbounded growth
+    now = datetime.now(UTC)
+    expired_keys = [k for k, (_, exp) in _ws_tickets.items() if exp < now]
+    for k in expired_keys:
+        del _ws_tickets[k]
+
+    ticket = secrets.token_urlsafe(32)
+    _ws_tickets[ticket] = (user_id, now + timedelta(seconds=60))
+    return ticket
+
+
+def redeem_ws_ticket(ticket: str) -> uuid.UUID | None:
+    """Consume a ticket (single-use) and return the associated user_id.
+    Returns None if the ticket is unknown or expired.
+    """
+    entry = _ws_tickets.pop(ticket, None)
+    if not entry:
+        return None
+    user_id, expires_at = entry
+    if datetime.now(UTC) > expires_at:
+        return None
+    return user_id

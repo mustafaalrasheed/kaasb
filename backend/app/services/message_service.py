@@ -3,6 +3,7 @@ Kaasb Platform - Message Service
 Business logic for conversations and messaging.
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -14,9 +15,11 @@ from sqlalchemy.orm import selectinload
 
 from app.models.job import Job
 from app.models.message import Conversation, Message
+from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.schemas.message import ConversationCreate, MessageCreate
 from app.services.base import BaseService
+from app.services.websocket_manager import manager
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +133,42 @@ class MessageService(BaseService):
 
         await self.db.flush()
         await self.db.refresh(message, attribute_names=["sender"])
+
+        # Determine recipient
+        recipient_id = (
+            conversation.participant_two_id
+            if sender.id == conversation.participant_one_id
+            else conversation.participant_one_id
+        )
+
+        # Create in-app notification for the recipient
+        notification = Notification(
+            user_id=recipient_id,
+            type=NotificationType.NEW_MESSAGE,
+            title=f"رسالة من {sender.first_name}" if True else f"Message from {sender.first_name}",
+            message=content[:200],
+            link_type="message",
+            link_id=conversation.id,
+            actor_id=sender.id,
+        )
+        self.db.add(notification)
+        await self.db.flush()
+
+        # Push real-time event to recipient via WebSocket (non-blocking)
+        ws_payload = {
+            "type": "message",
+            "data": {
+                "conversation_id": str(conversation.id),
+                "id": str(message.id),
+                "content": content,
+                "sender_id": str(sender.id),
+                "sender_name": sender.first_name,
+                "sender_avatar": sender.avatar_url,
+                "created_at": message.created_at.isoformat(),
+            },
+        }
+        asyncio.create_task(manager.send_to_user(recipient_id, ws_payload))
+
         return message
 
     async def get_conversations(

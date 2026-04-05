@@ -1,30 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { notificationsApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
+import { useWebSocket } from "@/lib/use-websocket";
+import type { WsNotificationData } from "@/lib/use-websocket";
 
 export function NotificationBell() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const fetchCount = useCallback(async () => {
+    try {
+      const res = await notificationsApi.getUnreadCount();
+      setUnreadCount(res.data.count ?? 0);
+    } catch {
+      // Silent — don't disrupt UI on polling failure
+    }
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    const fetch = async () => {
-      try {
-        const res = await notificationsApi.getUnreadCount();
-        setUnreadCount(res.data.count ?? 0);
-      } catch {
-        // Silent — don't disrupt UI on polling failure
-      }
-    };
-
-    fetch();
-    const interval = setInterval(fetch, 30_000);
+    fetchCount();
+    const interval = setInterval(fetchCount, 30_000);
     return () => clearInterval(interval);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchCount]);
+
+  // Increment badge instantly on WebSocket push (no round-trip needed)
+  const handleNotification = useCallback((_data: WsNotificationData) => {
+    setUnreadCount((prev) => prev + 1);
+  }, []);
+
+  useWebSocket({ onNotification: handleNotification, enabled: !!user });
 
   if (!isAuthenticated) return null;
 
@@ -32,7 +40,7 @@ export function NotificationBell() {
     <Link
       href="/dashboard/notifications"
       className="relative inline-flex items-center text-gray-600 hover:text-gray-900"
-      aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
+      aria-label={`الإشعارات${unreadCount > 0 ? `، ${unreadCount} غير مقروء` : ""}`}
     >
       <svg
         className="w-5 h-5"

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { GoogleOAuthProvider, useGoogleLogin } from "@react-oauth/google";
 import { useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
+import { getApiError } from "@/lib/utils";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 const FACEBOOK_APP_ID = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || "";
@@ -33,8 +34,8 @@ function GoogleLoginButton({
         // We pass the access_token; backend will call tokeninfo or userinfo
         await socialLogin("google", response.access_token, role);
         onSuccess();
-      } catch (err: any) {
-        toast.error(err?.response?.data?.detail || "Google login failed");
+      } catch (err: unknown) {
+        toast.error(getApiError(err, "Google login failed"));
       } finally {
         setLoading(false);
       }
@@ -135,8 +136,8 @@ function FacebookLoginButton({
           try {
             await socialLogin("facebook", response.authResponse.accessToken, role);
             onSuccess();
-          } catch (err: any) {
-            toast.error(err?.response?.data?.detail || "Facebook login failed");
+          } catch (err: unknown) {
+            toast.error(getApiError(err, "Facebook login failed"));
           }
         } else {
           toast.error("Facebook login was cancelled");

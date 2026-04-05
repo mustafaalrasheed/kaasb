@@ -20,6 +20,7 @@ from app.models.contract import (
     MilestoneStatus,
 )
 from app.models.job import Job, JobStatus
+from app.models.notification import NotificationType
 from app.models.proposal import Proposal
 from app.models.user import User
 from app.schemas.contract import (
@@ -29,6 +30,7 @@ from app.schemas.contract import (
     MilestoneUpdate,
 )
 from app.services.base import BaseService
+from app.services.notification_service import notify
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +117,19 @@ class ContractService(BaseService):
             logger.exception("Database error creating contract: %s", e)
             raise HTTPException(status_code=500, detail="Internal server error") from e
         logger.info("Contract created: %s for job=%s", contract.id, job.id)
+
+        # Notify freelancer that a contract has been created
+        await notify(
+            self.db,
+            user_id=proposal.freelancer_id,
+            type=NotificationType.CONTRACT_CREATED,
+            title="تم إنشاء عقد جديد",
+            message=f"تم إنشاء عقد عمل لوظيفة: {job.title}",
+            link_type="contract",
+            link_id=contract.id,
+            actor_id=job.client_id,
+        )
+
         return contract
 
     # === Add Milestones (Client) ===

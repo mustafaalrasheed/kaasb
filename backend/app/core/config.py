@@ -88,6 +88,12 @@ class Settings(BaseSettings):
     FACEBOOK_APP_ID: str = ""    # Facebook App ID (from Meta for Developers)
     FACEBOOK_APP_SECRET: str = ""  # Facebook App Secret (for token verification)
 
+    # === Twilio (SMS OTP — production) ===
+    # Leave empty to use email-based OTP delivery (beta mode)
+    TWILIO_ACCOUNT_SID: str = ""   # From https://console.twilio.com
+    TWILIO_AUTH_TOKEN: str = ""    # From https://console.twilio.com
+    TWILIO_PHONE_NUMBER: str = ""  # Twilio phone number, e.g. +1XXXXXXXXXX
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

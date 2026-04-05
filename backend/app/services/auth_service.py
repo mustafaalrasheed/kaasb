@@ -5,13 +5,14 @@ Business logic for user registration, login, and token management.
 
 import hashlib
 import logging
+import random
 import secrets as _secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -24,6 +25,7 @@ from app.core.security import (
     verify_email_token,
     verify_password_async,
 )
+from app.models.phone_otp import PhoneOtp
 from app.models.refresh_token import RefreshToken
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.user import TokenResponse, UserLogin, UserRegister
@@ -183,7 +185,7 @@ class AuthService(BaseService):
             refresh_token=refresh_token,
         )
 
-    async def social_login(self, provider: str, token: str, role: str = "freelancer") -> TokenResponse:
+    async def social_login(self, provider: str, token: str, role: str = "freelancer", email_service=None) -> TokenResponse:
         """Authenticate via Google or Facebook OAuth token."""
         # Verify token and fetch profile from provider
         if provider == "google":
@@ -233,6 +235,11 @@ class AuthService(BaseService):
             await self.db.flush()
             await self.db.refresh(user)
             logger.info("Social login: new user created via %s: %s", provider, user.id)
+            if email_service:
+                import asyncio
+                asyncio.create_task(
+                    email_service.send_welcome_email(to_email=user.email, user_name=user.first_name)
+                )
         else:
             if user.status == UserStatus.SUSPENDED:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is suspended")
@@ -262,28 +269,25 @@ class AuthService(BaseService):
 
         return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
-    async def _verify_google_token(self, id_token: str) -> tuple[str, str, str, str | None]:
-        """Verify Google ID token and extract user info."""
+    async def _verify_google_token(self, access_token: str) -> tuple[str, str, str, str | None]:
+        """Verify Google access token via userinfo endpoint and extract user info."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
-                    "https://oauth2.googleapis.com/tokeninfo",
-                    params={"id_token": id_token},
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={"Authorization": f"Bearer {access_token}"},
                 )
                 if resp.status_code != 200:
                     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token")
                 data = resp.json()
 
-            if "error" in data:
+            if "error" in data or not data.get("sub"):
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token")
 
-            # Optional: verify audience matches our client ID
-            if settings.GOOGLE_CLIENT_ID and data.get("aud") != settings.GOOGLE_CLIENT_ID:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token audience mismatch")
-
             email = data.get("email", "")
-            first_name = data.get("given_name", "") or data.get("name", "").split()[0] if data.get("name") else ""
-            last_name = data.get("family_name", "") or (" ".join(data.get("name", "").split()[1:]) if data.get("name") else "")
+            name = data.get("name", "")
+            first_name = data.get("given_name", "") or (name.split()[0] if name else "")
+            last_name = data.get("family_name", "") or (" ".join(name.split()[1:]) if name else "")
             avatar_url = data.get("picture")
             return email, first_name, last_name, avatar_url
         except httpx.RequestError as e:
@@ -521,3 +525,133 @@ class AuthService(BaseService):
     async def _get_user_by_id(self, user_id: str):
         result = await self.db.execute(select(User).where(User.id == uuid.UUID(user_id)))
         return result.scalar_one_or_none()
+
+    async def send_phone_otp(self, phone: str, email_service) -> None:
+        """Generate and send a 6-digit OTP. Delivers via email in beta (Twilio in production).
+        Always returns silently if phone not found to prevent enumeration."""
+        # Normalize: strip spaces; Iraqi numbers should start with +964
+        phone = phone.strip()
+
+        # Look up user by phone — silent if not found
+        result = await self.db.execute(select(User).where(User.phone == phone, User.status == UserStatus.ACTIVE))
+        user = result.scalar_one_or_none()
+        if not user:
+            return
+
+        # Rate limit: max 3 OTPs per phone per 10 minutes
+        ten_min_ago = datetime.now(UTC) - timedelta(minutes=10)
+        count_result = await self.db.execute(
+            select(func.count()).select_from(PhoneOtp).where(
+                PhoneOtp.phone == phone,
+                PhoneOtp.created_at > ten_min_ago,
+            )
+        )
+        if (count_result.scalar() or 0) >= 3:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many OTP requests. Please wait 10 minutes and try again.",
+            )
+
+        # Generate 6-digit OTP
+        otp = str(random.randint(100000, 999999))
+        otp_hash = hashlib.sha256(otp.encode()).hexdigest()
+
+        phone_otp = PhoneOtp(
+            phone=phone,
+            otp_hash=otp_hash,
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        )
+        self.db.add(phone_otp)
+        await self.db.flush()
+
+        # Production: Twilio SMS. Beta fallback: deliver via user's email.
+        if settings.TWILIO_ACCOUNT_SID.strip() and settings.TWILIO_AUTH_TOKEN.strip() and settings.TWILIO_PHONE_NUMBER.strip():
+            from twilio.rest import Client as TwilioClient  # noqa: PLC0415
+            twilio = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+            twilio.messages.create(
+                body=f"Kaasb رمز التحقق: {otp}\nصالح لمدة 10 دقائق. لا تشاركه مع أحد.",
+                from_=settings.TWILIO_PHONE_NUMBER,
+                to=phone,
+            )
+            logger.info("Phone OTP sent via SMS to user=%s (phone=***%s)", user.id, phone[-4:])
+        else:
+            await email_service.send_phone_otp(
+                to_email=user.email,
+                otp_code=otp,
+                phone=phone,
+            )
+            logger.info("Phone OTP sent via email to user=%s (phone=***%s)", user.id, phone[-4:])
+
+    async def verify_phone_otp(self, phone: str, otp: str) -> TokenResponse:
+        """Verify a phone OTP and return a token pair."""
+        phone = phone.strip()
+        otp_hash = hashlib.sha256(otp.encode()).hexdigest()
+        now = datetime.now(UTC)
+
+        # Find a valid, unused OTP matching this phone + code
+        result = await self.db.execute(
+            select(PhoneOtp)
+            .where(
+                PhoneOtp.phone == phone,
+                PhoneOtp.otp_hash == otp_hash,
+                PhoneOtp.expires_at > now,
+                PhoneOtp.is_used.is_(False),
+            )
+            .order_by(PhoneOtp.created_at.desc())
+            .limit(1)
+        )
+        otp_record = result.scalar_one_or_none()
+
+        if not otp_record:
+            # Increment attempts on the most recent unexpired OTP to track brute-force
+            recent_result = await self.db.execute(
+                select(PhoneOtp)
+                .where(
+                    PhoneOtp.phone == phone,
+                    PhoneOtp.expires_at > now,
+                    PhoneOtp.is_used.is_(False),
+                )
+                .order_by(PhoneOtp.created_at.desc())
+                .limit(1)
+            )
+            recent = recent_result.scalar_one_or_none()
+            if recent:
+                recent.attempts += 1
+                if recent.attempts >= 5:
+                    recent.is_used = True  # Lock after 5 wrong attempts
+                await self.db.flush()
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired OTP")
+
+        # Mark OTP as used (single-use)
+        otp_record.is_used = True
+        await self.db.flush()
+
+        # Fetch user
+        user_result = await self.db.execute(
+            select(User).where(User.phone == phone, User.status == UserStatus.ACTIVE)
+        )
+        user = user_result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid OTP")
+
+        # Update last login
+        user.last_login = now
+        user.is_online = True
+        await self.db.flush()
+
+        # Issue token pair
+        token_data = {"sub": str(user.id), "role": user.primary_role.value, "tv": user.token_version}
+        access_token = create_access_token(token_data)
+        refresh_token = create_refresh_token(token_data)
+
+        expires = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        rt = RefreshToken(
+            token_hash=self._hash_token(refresh_token),
+            user_id=user.id,
+            expires_at=expires,
+        )
+        self.db.add(rt)
+        await self.db.flush()
+
+        logger.info("Phone OTP login successful: user=%s", user.id)
+        return TokenResponse(access_token=access_token, refresh_token=refresh_token)

@@ -32,6 +32,7 @@ Pillow==11.0.0
 httpx==0.28.1
 resend==2.7.0
 jinja2==3.1.4
+twilio==9.4.5          # SMS OTP delivery (production); optional — email used when not configured
 
 # === Payment Providers ===
 # wise-api handled via httpx REST calls

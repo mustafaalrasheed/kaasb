@@ -3,6 +3,7 @@ Kaasb Platform - Notification Service
 Create and manage in-app notifications.
 """
 
+import asyncio
 import uuid
 
 from sqlalchemy import func, select, update
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.base import BaseService
+from app.services.websocket_manager import manager
 
 # Note: Notification queries intentionally do NOT load the user relationship —
 # the endpoint already knows the user from auth context, avoiding wasteful JOINs.
@@ -44,6 +46,22 @@ class NotificationService(BaseService):
         )
         self.db.add(notification)
         await self.db.flush()
+
+        # Push real-time event to the user via WebSocket (non-blocking)
+        ws_payload = {
+            "type": "notification",
+            "data": {
+                "id": str(notification.id),
+                "title": title,
+                "message": message,
+                "type": type.value,
+                "link_type": link_type,
+                "link_id": str(link_id) if link_id else None,
+                "created_at": notification.created_at.isoformat(),
+            },
+        }
+        asyncio.create_task(manager.send_to_user(user_id, ws_payload))
+
         return notification
 
     async def get_notifications(

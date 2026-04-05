@@ -125,7 +125,7 @@ export default async function RootLayout({
 }) {
   const cookieStore = await cookies();
   const localeCookie = cookieStore.get("locale")?.value;
-  const locale = (localeCookie === "ar" ? "ar" : "en") as "ar" | "en";
+  const locale = (localeCookie === "en" ? "en" : "ar") as "ar" | "en";
   const dir = locale === "ar" ? "rtl" : "ltr";
   const htmlLang = locale === "ar" ? "ar" : "en";
 

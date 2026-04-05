@@ -86,6 +86,15 @@ export const authApi = {
 
   socialLogin: (data: { provider: "google" | "facebook"; token: string; role?: string }) =>
     api.post("/auth/social", data),
+
+  sendPhoneOtp: (phone: string) =>
+    api.post("/auth/phone/send-otp", { phone }),
+
+  verifyPhoneOtp: (phone: string, otp: string) =>
+    api.post("/auth/phone/verify-otp", { phone, otp }),
+
+  getWsTicket: () =>
+    api.post<{ ticket: string; expires_in: number }>("/auth/ws-ticket"),
 };
 
 // === Users API ===

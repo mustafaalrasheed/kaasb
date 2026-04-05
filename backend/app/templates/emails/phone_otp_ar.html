@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>رمز التحقق الخاص بك</h1>
+<p>مرحباً،</p>
+<p>
+  طلبت تسجيل الدخول إلى <strong>{{ site_name }}</strong> باستخدام رقم هاتفك المنتهي بـ <strong>{{ masked_phone }}</strong>.
+  استخدم الرمز أدناه لإكمال تسجيل الدخول:
+</p>
+
+<div style="text-align: center; margin: 32px 0;">
+  <div style="
+    display: inline-block;
+    background: #f0f5ff;
+    border: 2px solid #338bff;
+    border-radius: 12px;
+    padding: 20px 40px;
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: 10px;
+    color: #1354e1;
+    font-family: 'Courier New', monospace;
+  ">{{ otp_code }}</div>
+</div>
+
+<p>
+  هذا الرمز صالح لمدة <strong>{{ expiry_minutes }} دقائق</strong> فقط ولاستخدام واحد.
+</p>
+<hr class="divider">
+<p class="link-note">
+  إذا لم تطلب هذا الرمز، يرجى تجاهل هذا البريد الإلكتروني.
+  لا تشارك هذا الرمز مع أي شخص — فريق {{ site_name }} لن يطلب منك الرمز أبداً.
+</p>
+{% endblock %}
