@@ -4,19 +4,17 @@ import { useState } from "react";
 import { usersApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
+import { getApiError } from "@/lib/utils";
 
 export default function SettingsPage() {
   const { logout } = useAuthStore();
 
-  // Password change state
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
     new_password: "",
     confirm_password: "",
   });
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-
-  // Deactivation state
   const [showDeactivate, setShowDeactivate] = useState(false);
   const [confirmText, setConfirmText] = useState("");
 
@@ -24,7 +22,7 @@ export default function SettingsPage() {
     e.preventDefault();
 
     if (passwordForm.new_password !== passwordForm.confirm_password) {
-      toast.error("New passwords do not match");
+      toast.error("كلمتا المرور غير متطابقتين");
       return;
     }
 
@@ -34,19 +32,10 @@ export default function SettingsPage() {
         current_password: passwordForm.current_password,
         new_password: passwordForm.new_password,
       });
-      toast.success("Password changed successfully!");
-      setPasswordForm({
-        current_password: "",
-        new_password: "",
-        confirm_password: "",
-      });
-    } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      if (Array.isArray(detail)) {
-        toast.error(detail.map((d: any) => d.msg).join(", "));
-      } else {
-        toast.error(detail || "Failed to change password");
-      }
+      toast.success("تم تغيير كلمة المرور بنجاح");
+      setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
+    } catch (err: unknown) {
+      toast.error(getApiError(err, "تعذّر تغيير كلمة المرور"));
     } finally {
       setIsChangingPassword(false);
     }
@@ -54,82 +43,62 @@ export default function SettingsPage() {
 
   const handleDeactivate = async () => {
     if (confirmText !== "DEACTIVATE") return;
-
     try {
       await usersApi.deactivateAccount();
-      toast.success("Account deactivated");
+      toast.success("تم إلغاء تفعيل الحساب");
       logout();
     } catch {
-      toast.error("Failed to deactivate account");
+      toast.error("تعذّر إلغاء تفعيل الحساب");
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="mt-1 text-gray-600">
-          Manage your account settings and security.
-        </p>
+        <h1 className="text-2xl font-bold text-gray-900">الإعدادات</h1>
+        <p className="mt-1 text-gray-600">إدارة إعدادات حسابك والأمان.</p>
       </div>
 
       {/* Change Password */}
       <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Change Password
-        </h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">تغيير كلمة المرور</h2>
         <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Current Password
+              كلمة المرور الحالية
             </label>
             <input
               type="password"
               value={passwordForm.current_password}
-              onChange={(e) =>
-                setPasswordForm({
-                  ...passwordForm,
-                  current_password: e.target.value,
-                })
-              }
+              onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })}
               className="input-field"
               required
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              New Password
+              كلمة المرور الجديدة
             </label>
             <input
               type="password"
               value={passwordForm.new_password}
-              onChange={(e) =>
-                setPasswordForm({
-                  ...passwordForm,
-                  new_password: e.target.value,
-                })
-              }
+              onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
               className="input-field"
               minLength={8}
               required
             />
             <p className="mt-1 text-xs text-gray-500">
-              Min 8 characters with uppercase, digit, and special character
+              8 أحرف على الأقل مع حرف كبير ورقم وحرف خاص
             </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Confirm New Password
+              تأكيد كلمة المرور الجديدة
             </label>
             <input
               type="password"
               value={passwordForm.confirm_password}
-              onChange={(e) =>
-                setPasswordForm({
-                  ...passwordForm,
-                  confirm_password: e.target.value,
-                })
-              }
+              onChange={(e) => setPasswordForm({ ...passwordForm, confirm_password: e.target.value })}
               className="input-field"
               minLength={8}
               required
@@ -140,19 +109,17 @@ export default function SettingsPage() {
             disabled={isChangingPassword}
             className="btn-primary py-2 px-6 text-sm"
           >
-            {isChangingPassword ? "Changing..." : "Change Password"}
+            {isChangingPassword ? "جاري التغيير..." : "تغيير كلمة المرور"}
           </button>
         </form>
       </div>
 
       {/* Danger Zone */}
       <div className="card p-6 border border-danger-500/20">
-        <h2 className="text-lg font-semibold text-danger-700 mb-2">
-          Danger Zone
-        </h2>
+        <h2 className="text-lg font-semibold text-danger-700 mb-2">منطقة الخطر</h2>
         <p className="text-sm text-gray-600 mb-4">
-          Deactivating your account will hide your profile and cancel any active
-          contracts. This action can be reversed by contacting support.
+          سيؤدي إلغاء تفعيل حسابك إلى إخفاء ملفك الشخصي وإلغاء أي عقود نشطة.
+          يمكن التراجع عن هذا الإجراء بالتواصل مع الدعم.
         </p>
 
         {!showDeactivate ? (
@@ -160,18 +127,19 @@ export default function SettingsPage() {
             onClick={() => setShowDeactivate(true)}
             className="btn-danger py-2 px-5 text-sm"
           >
-            Deactivate Account
+            إلغاء تفعيل الحساب
           </button>
         ) : (
           <div className="p-4 bg-danger-50 rounded-lg space-y-3">
             <p className="text-sm font-medium text-danger-700">
-              Type <strong>DEACTIVATE</strong> to confirm:
+              اكتب <strong>DEACTIVATE</strong> للتأكيد:
             </p>
             <input
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               className="input-field max-w-xs"
-              placeholder="Type DEACTIVATE"
+              placeholder="DEACTIVATE"
+              dir="ltr"
             />
             <div className="flex gap-3">
               <button
@@ -179,16 +147,13 @@ export default function SettingsPage() {
                 disabled={confirmText !== "DEACTIVATE"}
                 className="btn-danger py-2 px-5 text-sm"
               >
-                Confirm Deactivation
+                تأكيد الإلغاء
               </button>
               <button
-                onClick={() => {
-                  setShowDeactivate(false);
-                  setConfirmText("");
-                }}
+                onClick={() => { setShowDeactivate(false); setConfirmText(""); }}
                 className="btn-secondary py-2 px-5 text-sm"
               >
-                Cancel
+                إلغاء
               </button>
             </div>
           </div>

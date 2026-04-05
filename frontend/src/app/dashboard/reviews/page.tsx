@@ -7,6 +7,13 @@ import { toast } from "sonner";
 import type { ReviewDetail, ReviewStats } from "@/types/review";
 import { RATING_LABELS } from "@/types/review";
 
+const CATEGORY_LABELS: Record<string, string> = {
+  Communication: "التواصل",
+  Quality: "الجودة",
+  Professionalism: "الاحترافية",
+  Timeliness: "الالتزام بالمواعيد",
+};
+
 export default function ReviewsPage() {
   const { user } = useAuthStore();
   const [reviews, setReviews] = useState<ReviewDetail[]>([]);
@@ -27,7 +34,7 @@ export default function ReviewsPage() {
       setTotal(reviewsRes.data.total);
       setStats(statsRes.data);
     } catch {
-      toast.error("Failed to load reviews");
+      toast.error("تعذّر تحميل التقييمات");
     } finally {
       setLoading(false);
     }
@@ -61,9 +68,11 @@ export default function ReviewsPage() {
     );
   }
 
+  const totalPages = Math.ceil(total / 10);
+
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">My Reviews</h1>
+    <div className="p-6 max-w-4xl mx-auto space-y-6" dir="rtl">
+      <h1 className="text-2xl font-bold text-gray-900">تقييماتي</h1>
 
       {/* Stats Overview */}
       {stats && (
@@ -76,7 +85,7 @@ export default function ReviewsPage() {
               </div>
               <StarDisplay rating={Math.round(stats.average_rating)} />
               <p className="text-sm text-gray-500 mt-1">
-                {stats.total_reviews} review{stats.total_reviews !== 1 ? "s" : ""}
+                {stats.total_reviews} تقييم
               </p>
             </div>
 
@@ -89,7 +98,7 @@ export default function ReviewsPage() {
                   : 0;
                 return (
                   <div key={star} className="flex items-center gap-2 text-sm">
-                    <span className="w-8 text-right text-gray-600">{star}★</span>
+                    <span className="w-8 text-gray-600">{star}★</span>
                     <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-yellow-400 rounded-full"
@@ -107,16 +116,16 @@ export default function ReviewsPage() {
           {(stats.avg_communication || stats.avg_quality || stats.avg_professionalism || stats.avg_timeliness) && (
             <div className="mt-6 pt-6 border-t border-gray-100 grid grid-cols-2 md:grid-cols-4 gap-4">
               {stats.avg_communication && (
-                <CategoryRating label="Communication" value={stats.avg_communication} />
+                <CategoryRating label="التواصل" value={stats.avg_communication} />
               )}
               {stats.avg_quality && (
-                <CategoryRating label="Quality" value={stats.avg_quality} />
+                <CategoryRating label="الجودة" value={stats.avg_quality} />
               )}
               {stats.avg_professionalism && (
-                <CategoryRating label="Professionalism" value={stats.avg_professionalism} />
+                <CategoryRating label="الاحترافية" value={stats.avg_professionalism} />
               )}
               {stats.avg_timeliness && (
-                <CategoryRating label="Timeliness" value={stats.avg_timeliness} />
+                <CategoryRating label="الالتزام بالمواعيد" value={stats.avg_timeliness} />
               )}
             </div>
           )}
@@ -127,7 +136,7 @@ export default function ReviewsPage() {
       <div className="space-y-4">
         {reviews.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
-            No reviews yet. Complete contracts to receive reviews.
+            لا توجد تقييمات بعد. أكمل عقوداً للحصول على تقييمات.
           </div>
         ) : (
           reviews.map((review) => (
@@ -150,7 +159,7 @@ export default function ReviewsPage() {
                     </div>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-left">
                   <StarDisplay rating={review.rating} />
                   <div className="text-xs text-gray-400 mt-1">
                     {RATING_LABELS[review.rating]}
@@ -163,7 +172,7 @@ export default function ReviewsPage() {
                 </p>
               )}
               <div className="mt-3 text-xs text-gray-400">
-                {new Date(review.created_at).toLocaleDateString("en-US", {
+                {new Date(review.created_at).toLocaleDateString("ar-IQ", {
                   month: "long",
                   day: "numeric",
                   year: "numeric",
@@ -182,17 +191,17 @@ export default function ReviewsPage() {
             disabled={page === 1}
             className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
           >
-            Previous
+            السابق
           </button>
           <span className="text-sm text-gray-600">
-            Page {page} of {Math.ceil(total / 10)}
+            {page} / {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => p + 1)}
-            disabled={page >= Math.ceil(total / 10)}
+            disabled={page >= totalPages}
             className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
           >
-            Next
+            التالي
           </button>
         </div>
       )}

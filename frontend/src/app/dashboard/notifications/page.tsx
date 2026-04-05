@@ -26,7 +26,7 @@ export default function NotificationsPage() {
       setUnreadCount(res.data.unread_count);
       setTotal(res.data.total);
     } catch {
-      toast.error("Failed to load notifications");
+      toast.error("تعذّر تحميل الإشعارات");
     } finally {
       setLoading(false);
     }
@@ -39,10 +39,10 @@ export default function NotificationsPage() {
   const handleMarkAllRead = async () => {
     try {
       await notificationsApi.markAllRead();
-      toast.success("All notifications marked as read");
+      toast.success("تم تحديد جميع الإشعارات كمقروءة");
       fetchNotifications();
     } catch {
-      toast.error("Failed to mark all as read");
+      toast.error("تعذّر تحديث الإشعارات");
     }
   };
 
@@ -66,14 +66,16 @@ export default function NotificationsPage() {
     return links[n.link_type] || null;
   };
 
+  const totalPages = Math.ceil(total / 20);
+
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-4">
+    <div className="p-6 max-w-3xl mx-auto space-y-4" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
+          <h1 className="text-2xl font-bold text-gray-900">الإشعارات</h1>
           {unreadCount > 0 && (
             <p className="text-sm text-gray-500 mt-1">
-              {unreadCount} unread
+              {unreadCount} غير مقروء
             </p>
           )}
         </div>
@@ -86,15 +88,15 @@ export default function NotificationsPage() {
             }}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
           >
-            <option value="all">All</option>
-            <option value="unread">Unread only</option>
+            <option value="all">الكل</option>
+            <option value="unread">غير المقروءة</option>
           </select>
           {unreadCount > 0 && (
             <button
               onClick={handleMarkAllRead}
               className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
             >
-              Mark all read
+              تحديد الكل كمقروء
             </button>
           )}
         </div>
@@ -108,7 +110,7 @@ export default function NotificationsPage() {
         </div>
       ) : notifications.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
-          {filter === "unread" ? "No unread notifications" : "No notifications yet"}
+          {filter === "unread" ? "لا توجد إشعارات غير مقروءة" : "لا توجد إشعارات بعد"}
         </div>
       ) : (
         <div className="space-y-2">
@@ -127,20 +129,20 @@ export default function NotificationsPage() {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <span className="text-xl">
+                  <span className="text-xl shrink-0">
                     {NOTIFICATION_ICONS[n.type] || "🔔"}
                   </span>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
                       <span
-                        className={`text-sm font-medium ${
+                        className={`text-sm font-medium truncate ${
                           n.is_read ? "text-gray-700" : "text-gray-900"
                         }`}
                       >
                         {n.title}
                       </span>
-                      <span className="text-xs text-gray-400">
-                        {new Date(n.created_at).toLocaleDateString("en-US", {
+                      <span className="text-xs text-gray-400 shrink-0">
+                        {new Date(n.created_at).toLocaleDateString("ar-IQ", {
                           month: "short",
                           day: "numeric",
                           hour: "2-digit",
@@ -151,7 +153,7 @@ export default function NotificationsPage() {
                     <p className="text-sm text-gray-500 mt-0.5">{n.message}</p>
                   </div>
                   {!n.is_read && (
-                    <span className="w-2 h-2 bg-blue-500 rounded-full mt-2" />
+                    <span className="w-2 h-2 bg-blue-500 rounded-full mt-2 shrink-0" />
                   )}
                 </div>
               </Wrapper>
@@ -167,17 +169,17 @@ export default function NotificationsPage() {
             disabled={page === 1}
             className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
           >
-            Previous
+            السابق
           </button>
           <span className="text-sm text-gray-600">
-            Page {page} of {Math.ceil(total / 20)}
+            {page} / {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => p + 1)}
-            disabled={page >= Math.ceil(total / 20)}
+            disabled={page >= totalPages}
             className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
           >
-            Next
+            التالي
           </button>
         </div>
       )}

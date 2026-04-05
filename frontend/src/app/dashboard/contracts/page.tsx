@@ -12,11 +12,11 @@ import {
 } from "@/types/contract";
 
 const STATUS_TABS = [
-  { value: "", label: "All" },
-  { value: "active", label: "Active" },
-  { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-  { value: "disputed", label: "Disputed" },
+  { value: "", label: "الكل" },
+  { value: "active", label: "نشط" },
+  { value: "completed", label: "مكتمل" },
+  { value: "cancelled", label: "ملغى" },
+  { value: "disputed", label: "متنازع عليه" },
 ];
 
 export default function ContractsPage() {
@@ -39,7 +39,7 @@ export default function ContractsPage() {
       setTotal(res.data.total);
       setTotalPages(res.data.total_pages);
     } catch {
-      toast.error("Failed to load contracts");
+      toast.error("تعذّر تحميل العقود");
     } finally {
       setLoading(false);
     }
@@ -49,32 +49,25 @@ export default function ContractsPage() {
     fetchContracts();
   }, [fetchContracts]);
 
-  const handleTabChange = (value: string) => {
-    setStatusFilter(value);
-    setPage(1);
-  };
-
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Contracts</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {total} contract{total !== 1 ? "s" : ""}
-          </p>
-        </div>
+    <div className="space-y-6" dir="rtl">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">عقودي</h1>
+        <p className="mt-1 text-gray-600">
+          {total > 0 ? `${total} عقد` : "لا توجد عقود بعد"}
+        </p>
       </div>
 
       {/* Status tabs */}
-      <div className="flex gap-2 mb-6 flex-wrap">
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
         {STATUS_TABS.map((tab) => (
           <button
             key={tab.value}
-            onClick={() => handleTabChange(tab.value)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            onClick={() => { setStatusFilter(tab.value); setPage(1); }}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               statusFilter === tab.value
-                ? "bg-brand-500 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                ? "border-brand-500 text-brand-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
             {tab.label}
@@ -84,12 +77,12 @@ export default function ContractsPage() {
 
       {/* Contracts list */}
       {loading ? (
-        <div className="text-center py-12 text-gray-500">Loading...</div>
+        <div className="text-center py-12 text-gray-500">جاري التحميل...</div>
       ) : contracts.length === 0 ? (
         <div className="card p-12 text-center">
-          <p className="text-gray-500 text-lg">No contracts found</p>
-          <p className="text-gray-400 text-sm mt-2">
-            Contracts are created automatically when a proposal is accepted.
+          <p className="text-lg font-medium text-gray-900">لا توجد عقود</p>
+          <p className="text-sm text-gray-500 mt-2">
+            تُنشأ العقود تلقائياً عند قبول عرض ما.
           </p>
         </div>
       ) : (
@@ -106,23 +99,21 @@ export default function ContractsPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-8">
+        <div className="flex items-center justify-center gap-2">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="px-4 py-2 rounded-lg border text-sm disabled:opacity-40"
+            className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
           >
-            Previous
+            السابق
           </button>
-          <span className="px-4 py-2 text-sm text-gray-600">
-            Page {page} of {totalPages}
-          </span>
+          <span className="text-sm text-gray-600 px-4">{page} / {totalPages}</span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
-            className="px-4 py-2 rounded-lg border text-sm disabled:opacity-40"
+            className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
           >
-            Next
+            التالي
           </button>
         </div>
       )}
@@ -139,7 +130,7 @@ function ContractCard({
 }) {
   const otherParty =
     userRole === "client" ? contract.freelancer : contract.client;
-  const otherLabel = userRole === "client" ? "Freelancer" : "Client";
+  const otherLabel = userRole === "client" ? "المستقل" : "العميل";
   const progress =
     contract.milestone_count > 0
       ? Math.round(
@@ -152,7 +143,7 @@ function ContractCard({
       <div className="card p-5 hover:shadow-md transition-shadow cursor-pointer">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
               <h3 className="font-semibold text-gray-900 truncate">
                 {contract.title}
               </h3>
@@ -182,19 +173,18 @@ function ContractCard({
                 />
               </div>
               <span className="text-xs text-gray-500">
-                {contract.completed_milestones}/{contract.milestone_count}{" "}
-                milestones
+                {contract.completed_milestones}/{contract.milestone_count} مراحل
               </span>
             </div>
           </div>
 
           {/* Amount */}
-          <div className="text-right shrink-0">
+          <div className="text-left shrink-0">
             <p className="text-lg font-bold text-gray-900">
               ${contract.total_amount.toLocaleString()}
             </p>
             <p className="text-xs text-gray-500">
-              ${contract.amount_paid.toLocaleString()} paid
+              ${contract.amount_paid.toLocaleString()} مدفوع
             </p>
           </div>
         </div>

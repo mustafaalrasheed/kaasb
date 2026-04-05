@@ -4,15 +4,24 @@ import { useState, useEffect, useCallback } from "react";
 import { paymentsApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
-import type {
-  PaymentSummary,
-  TransactionDetail,
-} from "@/types/payment";
+import { getApiError } from "@/lib/utils";
+import type { PaymentSummary, TransactionDetail } from "@/types/payment";
 import {
   TRANSACTION_TYPE_LABELS,
   TRANSACTION_STATUS_COLORS,
   PROVIDER_LABELS,
 } from "@/types/payment";
+
+const ACCOUNT_STATUS_LABELS: Record<string, string> = {
+  verified: "موثَّق",
+  pending: "قيد المراجعة",
+  rejected: "مرفوض",
+};
+
+const TX_SIGN: Record<string, string> = {
+  escrow_fund: "-",
+  platform_fee: "-",
+};
 
 export default function PaymentsPage() {
   const { user } = useAuthStore();
@@ -22,11 +31,9 @@ export default function PaymentsPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
-  // Setup account form
   const [showSetup, setShowSetup] = useState(false);
   const [qiCardPhone, setQiCardPhone] = useState("");
 
-  // Payout form
   const [showPayout, setShowPayout] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutAccountId, setPayoutAccountId] = useState("");
@@ -42,7 +49,7 @@ export default function PaymentsPage() {
       setTransactions(txRes.data.transactions);
       setTotalTx(txRes.data.total);
     } catch {
-      toast.error("Failed to load payment data");
+      toast.error("تعذّر تحميل بيانات المدفوعات");
     } finally {
       setLoading(false);
     }
@@ -58,26 +65,26 @@ export default function PaymentsPage() {
         provider: "qi_card",
         ...(qiCardPhone ? { qi_card_phone: qiCardPhone } : {}),
       });
-      toast.success("Qi Card account created");
+      toast.success("تم إنشاء حساب Qi Card");
       setShowSetup(false);
       setQiCardPhone("");
       fetchData();
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to setup account");
+    } catch (err: unknown) {
+      toast.error(getApiError(err, "تعذّر إنشاء الحساب"));
     }
   };
 
   const handlePayout = async () => {
+    const amount = parseFloat(payoutAmount);
+    if (isNaN(amount) || amount < 10) {
+      toast.error("الحد الأدنى للسحب هو $10");
+      return;
+    }
+    if (!payoutAccountId) {
+      toast.error("اختر حساب الدفع");
+      return;
+    }
     try {
-      const amount = parseFloat(payoutAmount);
-      if (isNaN(amount) || amount < 10) {
-        toast.error("Minimum payout is $10");
-        return;
-      }
-      if (!payoutAccountId) {
-        toast.error("Select a payment account");
-        return;
-      }
       const res = await paymentsApi.requestPayout({
         amount,
         payment_account_id: payoutAccountId,
@@ -86,8 +93,8 @@ export default function PaymentsPage() {
       setShowPayout(false);
       setPayoutAmount("");
       fetchData();
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Payout failed");
+    } catch (err: unknown) {
+      toast.error(getApiError(err, "تعذّر طلب السحب"));
     }
   };
 
@@ -107,24 +114,25 @@ export default function PaymentsPage() {
   }
 
   const isFreelancer = user?.primary_role === "freelancer";
+  const totalPages = Math.ceil(totalTx / 10);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-6 max-w-5xl mx-auto space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Payments</h1>
+        <h1 className="text-2xl font-bold text-gray-900">المدفوعات</h1>
         <div className="flex gap-2">
           <button
             onClick={() => setShowSetup(!showSetup)}
             className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
-            + Add Account
+            + إضافة حساب
           </button>
           {isFreelancer && (
             <button
               onClick={() => setShowPayout(!showPayout)}
               className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
             >
-              Request Payout
+              طلب سحب
             </button>
           )}
         </div>
@@ -135,17 +143,17 @@ export default function PaymentsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {isFreelancer ? (
             <>
-              <SummaryCard label="Total Earned" value={summary.total_earned} color="green" />
-              <SummaryCard label="Pending Escrow" value={summary.pending_escrow} color="blue" />
-              <SummaryCard label="Platform Fees" value={summary.total_platform_fees} color="yellow" />
-              <SummaryCard label="Transactions" value={summary.transaction_count} isCurrency={false} color="gray" />
+              <SummaryCard label="إجمالي الأرباح" value={summary.total_earned} color="green" />
+              <SummaryCard label="محتجز في الضمان" value={summary.pending_escrow} color="blue" />
+              <SummaryCard label="عمولة المنصة" value={summary.total_platform_fees} color="yellow" />
+              <SummaryCard label="المعاملات" value={summary.transaction_count} isCurrency={false} color="gray" />
             </>
           ) : (
             <>
-              <SummaryCard label="Total Spent" value={summary.total_spent} color="red" />
-              <SummaryCard label="In Escrow" value={summary.pending_escrow} color="blue" />
-              <SummaryCard label="Platform Fees" value={summary.total_platform_fees} color="yellow" />
-              <SummaryCard label="Transactions" value={summary.transaction_count} isCurrency={false} color="gray" />
+              <SummaryCard label="إجمالي الإنفاق" value={summary.total_spent} color="red" />
+              <SummaryCard label="في الضمان" value={summary.pending_escrow} color="blue" />
+              <SummaryCard label="عمولة المنصة" value={summary.total_platform_fees} color="yellow" />
+              <SummaryCard label="المعاملات" value={summary.transaction_count} isCurrency={false} color="gray" />
             </>
           )}
         </div>
@@ -154,15 +162,16 @@ export default function PaymentsPage() {
       {/* Setup Account Form */}
       {showSetup && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-          <h3 className="font-semibold text-gray-900">Add Qi Card Account</h3>
+          <h3 className="font-semibold text-gray-900">إضافة حساب Qi Card</h3>
           <div className="flex gap-3 items-end">
             <div className="flex-1">
-              <label className="block text-sm text-gray-600 mb-1">Phone Number (optional)</label>
+              <label className="block text-sm text-gray-600 mb-1">رقم الهاتف (اختياري)</label>
               <input
                 type="tel"
                 value={qiCardPhone}
                 onChange={(e) => setQiCardPhone(e.target.value)}
                 placeholder="+964 7XX XXX XXXX"
+                dir="ltr"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
             </div>
@@ -170,7 +179,7 @@ export default function PaymentsPage() {
               onClick={handleSetupAccount}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
-              Create Account
+              إنشاء الحساب
             </button>
           </div>
         </div>
@@ -179,10 +188,10 @@ export default function PaymentsPage() {
       {/* Payout Form */}
       {showPayout && summary && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-          <h3 className="font-semibold text-gray-900">Request Payout</h3>
-          <div className="flex gap-3 items-end">
+          <h3 className="font-semibold text-gray-900">طلب سحب</h3>
+          <div className="flex gap-3 items-end flex-wrap">
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Amount ($)</label>
+              <label className="block text-sm text-gray-600 mb-1">المبلغ ($)</label>
               <input
                 type="number"
                 value={payoutAmount}
@@ -190,17 +199,18 @@ export default function PaymentsPage() {
                 placeholder="100.00"
                 min="10"
                 step="0.01"
+                dir="ltr"
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-32"
               />
             </div>
-            <div className="flex-1">
-              <label className="block text-sm text-gray-600 mb-1">To Account</label>
+            <div className="flex-1 min-w-[160px]">
+              <label className="block text-sm text-gray-600 mb-1">إلى الحساب</label>
               <select
                 value={payoutAccountId}
                 onChange={(e) => setPayoutAccountId(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               >
-                <option value="">Select account...</option>
+                <option value="">اختر الحساب...</option>
                 {summary.payment_accounts.map((acc) => (
                   <option key={acc.id} value={acc.id}>
                     {PROVIDER_LABELS[acc.provider] || acc.provider}
@@ -213,7 +223,7 @@ export default function PaymentsPage() {
               onClick={handlePayout}
               className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
             >
-              Send Payout
+              تأكيد السحب
             </button>
           </div>
         </div>
@@ -222,7 +232,7 @@ export default function PaymentsPage() {
       {/* Payment Accounts */}
       {summary && summary.payment_accounts.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <h3 className="font-semibold text-gray-900 mb-3">Payment Accounts</h3>
+          <h3 className="font-semibold text-gray-900 mb-3">حسابات الدفع</h3>
           <div className="space-y-2">
             {summary.payment_accounts.map((acc) => (
               <div
@@ -236,7 +246,7 @@ export default function PaymentsPage() {
                       {PROVIDER_LABELS[acc.provider] || acc.provider}
                     </span>
                     {acc.qi_card_phone && (
-                      <span className="text-sm text-gray-500 ml-2">{acc.qi_card_phone}</span>
+                      <span className="text-sm text-gray-500 mr-2">{acc.qi_card_phone}</span>
                     )}
                   </div>
                 </div>
@@ -247,7 +257,7 @@ export default function PaymentsPage() {
                       : "bg-yellow-50 text-yellow-700"
                   }`}
                 >
-                  {acc.status}
+                  {ACCOUNT_STATUS_LABELS[acc.status] || acc.status}
                 </span>
               </div>
             ))}
@@ -259,13 +269,11 @@ export default function PaymentsPage() {
       <div className="bg-white border border-gray-200 rounded-lg">
         <div className="p-4 border-b border-gray-100">
           <h3 className="font-semibold text-gray-900">
-            Transaction History ({totalTx})
+            سجل المعاملات ({totalTx})
           </h3>
         </div>
         {transactions.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            No transactions yet
-          </div>
+          <div className="p-8 text-center text-gray-500">لا توجد معاملات بعد</div>
         ) : (
           <div className="divide-y divide-gray-100">
             {transactions.map((tx) => (
@@ -274,11 +282,9 @@ export default function PaymentsPage() {
                   <div className="font-medium text-gray-900">
                     {TRANSACTION_TYPE_LABELS[tx.transaction_type] || tx.transaction_type}
                   </div>
-                  <div className="text-sm text-gray-500">
-                    {tx.description || "—"}
-                  </div>
+                  <div className="text-sm text-gray-500">{tx.description || "—"}</div>
                   <div className="text-xs text-gray-400 mt-1">
-                    {new Date(tx.created_at).toLocaleDateString("en-US", {
+                    {new Date(tx.created_at).toLocaleDateString("ar-IQ", {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
@@ -287,12 +293,9 @@ export default function PaymentsPage() {
                     })}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-left">
                   <div className="font-semibold text-gray-900">
-                    {tx.transaction_type === "escrow_fund" ||
-                    tx.transaction_type === "platform_fee"
-                      ? "-"
-                      : "+"}
+                    {TX_SIGN[tx.transaction_type] ?? "+"}
                     ${tx.amount.toFixed(2)}
                   </div>
                   <span
@@ -308,7 +311,6 @@ export default function PaymentsPage() {
           </div>
         )}
 
-        {/* Pagination */}
         {totalTx > 10 && (
           <div className="p-4 border-t border-gray-100 flex items-center justify-center gap-2">
             <button
@@ -316,17 +318,15 @@ export default function PaymentsPage() {
               disabled={page === 1}
               className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
             >
-              Previous
+              السابق
             </button>
-            <span className="text-sm text-gray-600">
-              Page {page} of {Math.ceil(totalTx / 10)}
-            </span>
+            <span className="text-sm text-gray-600">{page} / {totalPages}</span>
             <button
               onClick={() => setPage((p) => p + 1)}
-              disabled={page >= Math.ceil(totalTx / 10)}
+              disabled={page >= totalPages}
               className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
             >
-              Next
+              التالي
             </button>
           </div>
         )}
@@ -334,8 +334,6 @@ export default function PaymentsPage() {
     </div>
   );
 }
-
-// === Summary Card Component ===
 
 function SummaryCard({
   label,

@@ -4,22 +4,25 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { proposalsApi } from "@/lib/api";
 import { toast } from "sonner";
+import { getApiError } from "@/lib/utils";
 import type { ProposalSummary } from "@/types/proposal";
 import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUS_COLORS } from "@/types/proposal";
 
 const STATUS_TABS = [
-  { value: "", label: "All" },
-  { value: "pending", label: "Pending" },
-  { value: "shortlisted", label: "Shortlisted" },
-  { value: "accepted", label: "Accepted" },
-  { value: "rejected", label: "Rejected" },
-  { value: "withdrawn", label: "Withdrawn" },
+  { value: "", label: "الكل" },
+  { value: "pending", label: "معلق" },
+  { value: "shortlisted", label: "قائمة مختصرة" },
+  { value: "accepted", label: "مقبول" },
+  { value: "rejected", label: "مرفوض" },
+  { value: "withdrawn", label: "مسحوب" },
 ];
 
 function formatBudget(job: ProposalSummary["job"]): string {
-  if (job.job_type === "fixed" && job.fixed_price) return `$${job.fixed_price.toLocaleString()}`;
-  if (job.budget_min && job.budget_max) return `$${job.budget_min} - $${job.budget_max}/hr`;
-  if (job.budget_min) return `From $${job.budget_min}/hr`;
+  if (job.job_type === "fixed" && job.fixed_price)
+    return `${job.fixed_price.toLocaleString("ar-IQ")} د.ع`;
+  if (job.budget_min && job.budget_max)
+    return `${job.budget_min.toLocaleString("ar-IQ")} - ${job.budget_max.toLocaleString("ar-IQ")} د.ع/س`;
+  if (job.budget_min) return `من ${job.budget_min.toLocaleString("ar-IQ")} د.ع/س`;
   return "—";
 }
 
@@ -34,9 +37,9 @@ export default function MyProposalsPage() {
   const fetchProposals = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params: Record<string, unknown> = { page, page_size: 15 };
+      const params: Record<string, string | number> = { page, page_size: 15 };
       if (statusFilter) params.status = statusFilter;
-      const response = await proposalsApi.getMyProposals(params as any);
+      const response = await proposalsApi.getMyProposals(params);
       setProposals(response.data.proposals);
       setTotal(response.data.total);
       setTotalPages(response.data.total_pages);
@@ -52,22 +55,22 @@ export default function MyProposalsPage() {
   }, [fetchProposals]);
 
   const handleWithdraw = async (proposalId: string) => {
-    if (!confirm("Withdraw this proposal? You won't be able to resubmit.")) return;
+    if (!confirm("هل تريد سحب هذا العرض؟ لن تتمكن من إعادة تقديمه.")) return;
     try {
       await proposalsApi.withdraw(proposalId);
-      toast.success("Proposal withdrawn");
+      toast.success("تم سحب العرض");
       fetchProposals();
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to withdraw");
+    } catch (err: unknown) {
+      toast.error(getApiError(err, "تعذّر سحب العرض"));
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">My Proposals</h1>
+        <h1 className="text-2xl font-bold text-gray-900">عروضي</h1>
         <p className="mt-1 text-gray-600">
-          {total > 0 ? `${total} proposals submitted` : "Track your submitted proposals"}
+          {total > 0 ? `${total} عرض مقدَّم` : "تتبع عروضك المقدمة"}
         </p>
       </div>
 
@@ -90,15 +93,15 @@ export default function MyProposalsPage() {
 
       {/* Proposals list */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500">Loading...</div>
+        <div className="text-center py-12 text-gray-500">جاري التحميل...</div>
       ) : proposals.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-lg font-medium text-gray-900">No proposals found</p>
+          <p className="text-lg font-medium text-gray-900">لا توجد عروض</p>
           <p className="mt-2 text-gray-600">
-            {statusFilter ? "No proposals with this status." : "You haven't submitted any proposals yet."}
+            {statusFilter ? "لا توجد عروض بهذه الحالة." : "لم تقدم أي عروض بعد."}
           </p>
           <Link href="/jobs" className="inline-block mt-4 btn-primary py-2 px-5 text-sm">
-            Browse Jobs
+            تصفح الوظائف
           </Link>
         </div>
       ) : (
@@ -120,11 +123,11 @@ export default function MyProposalsPage() {
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                     <span>{proposal.job.category}</span>
-                    <span>Job budget: {formatBudget(proposal.job)}</span>
-                    <span>Your bid: <span className="font-medium text-gray-900">${proposal.bid_amount.toLocaleString()}</span></span>
-                    {proposal.estimated_duration && <span>Est: {proposal.estimated_duration}</span>}
+                    <span>ميزانية الوظيفة: {formatBudget(proposal.job)}</span>
+                    <span>عرضك: <span className="font-medium text-gray-900">{proposal.bid_amount.toLocaleString("ar-IQ")} د.ع</span></span>
+                    {proposal.estimated_duration && <span>المدة المقدَّرة: {proposal.estimated_duration}</span>}
                     <span>
-                      Submitted {new Date(proposal.submitted_at).toLocaleDateString("en-US", {
+                      قُدِّم {new Date(proposal.submitted_at).toLocaleDateString("ar-IQ", {
                         month: "short", day: "numeric",
                       })}
                     </span>
@@ -133,14 +136,14 @@ export default function MyProposalsPage() {
 
                 <div className="flex gap-2 shrink-0">
                   <Link href={`/jobs/${proposal.job.id}`} className="btn-secondary py-1.5 px-3 text-xs">
-                    View Job
+                    عرض الوظيفة
                   </Link>
                   {(proposal.status === "pending" || proposal.status === "shortlisted") && (
                     <button
                       onClick={() => handleWithdraw(proposal.id)}
                       className="text-xs text-danger-500 hover:text-danger-700 px-2"
                     >
-                      Withdraw
+                      سحب
                     </button>
                   )}
                 </div>
@@ -158,15 +161,15 @@ export default function MyProposalsPage() {
             disabled={page === 1}
             className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
           >
-            Previous
+            السابق
           </button>
-          <span className="text-sm text-gray-600 px-4">Page {page} of {totalPages}</span>
+          <span className="text-sm text-gray-600 px-4">{page} / {totalPages}</span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
             className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
           >
-            Next
+            التالي
           </button>
         </div>
       )}

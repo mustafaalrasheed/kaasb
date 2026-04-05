@@ -7,21 +7,22 @@ import { useEffect } from "react";
 import { cn, backendUrl } from "@/lib/utils";
 
 const sidebarLinks = [
-  { href: "/dashboard", label: "Overview", icon: "📊", roles: ["client", "freelancer"] },
-  { href: "/dashboard/contracts", label: "Contracts", icon: "📝", roles: ["client", "freelancer"] },
-  { href: "/dashboard/payments", label: "Payments", icon: "💰", roles: ["client", "freelancer"] },
-  { href: "/dashboard/messages", label: "Messages", icon: "💬", roles: ["client", "freelancer"] },
-  { href: "/dashboard/notifications", label: "Notifications", icon: "🔔", roles: ["client", "freelancer"] },
-  { href: "/dashboard/reviews", label: "Reviews", icon: "⭐", roles: ["client", "freelancer"] },
-  { href: "/dashboard/my-jobs", label: "My Jobs", icon: "📋", roles: ["client"] },
-  { href: "/jobs/new", label: "Post a Job", icon: "✏️", roles: ["client"] },
-  { href: "/dashboard/gigs", label: "My Gigs", icon: "🛍️", roles: ["freelancer"] },
-  { href: "/dashboard/gigs/new", label: "Create Gig", icon: "✨", roles: ["freelancer"] },
-  { href: "/dashboard/my-proposals", label: "My Proposals", icon: "📨", roles: ["freelancer"] },
-  { href: "/jobs", label: "Find Work", icon: "🔍", roles: ["freelancer"] },
-  { href: "/dashboard/profile/edit", label: "Edit Profile", icon: "👤", roles: ["client", "freelancer"] },
-  { href: "/dashboard/settings", label: "Settings", icon: "⚙️", roles: ["client", "freelancer"] },
-  { href: "/admin", label: "Admin Panel", icon: "🛡️", roles: ["admin"] },
+  { href: "/dashboard", labelAr: "نظرة عامة", labelEn: "Overview", icon: "📊", roles: ["client", "freelancer"] },
+  { href: "/dashboard/contracts", labelAr: "العقود", labelEn: "Contracts", icon: "📝", roles: ["client", "freelancer"] },
+  { href: "/dashboard/payments", labelAr: "المدفوعات", labelEn: "Payments", icon: "💰", roles: ["client", "freelancer"] },
+  { href: "/dashboard/messages", labelAr: "الرسائل", labelEn: "Messages", icon: "💬", roles: ["client", "freelancer"] },
+  { href: "/dashboard/notifications", labelAr: "الإشعارات", labelEn: "Notifications", icon: "🔔", roles: ["client", "freelancer"] },
+  { href: "/dashboard/reviews", labelAr: "التقييمات", labelEn: "Reviews", icon: "⭐", roles: ["client", "freelancer"] },
+  { href: "/dashboard/my-jobs", labelAr: "وظائفي", labelEn: "My Jobs", icon: "📋", roles: ["client"] },
+  { href: "/jobs/new", labelAr: "نشر وظيفة", labelEn: "Post a Job", icon: "✏️", roles: ["client"] },
+  { href: "/dashboard/gigs", labelAr: "خدماتي", labelEn: "My Gigs", icon: "🛍️", roles: ["freelancer"] },
+  { href: "/dashboard/gigs/new", labelAr: "إنشاء خدمة", labelEn: "Create Gig", icon: "✨", roles: ["freelancer"] },
+  { href: "/dashboard/gigs/orders", labelAr: "طلبات الخدمات", labelEn: "Gig Orders", icon: "📦", roles: ["client", "freelancer"] },
+  { href: "/dashboard/my-proposals", labelAr: "عروضي", labelEn: "My Proposals", icon: "📨", roles: ["freelancer"] },
+  { href: "/jobs", labelAr: "ابحث عن عمل", labelEn: "Find Work", icon: "🔍", roles: ["freelancer"] },
+  { href: "/dashboard/profile/edit", labelAr: "تعديل الملف", labelEn: "Edit Profile", icon: "👤", roles: ["client", "freelancer"] },
+  { href: "/dashboard/settings", labelAr: "الإعدادات", labelEn: "Settings", icon: "⚙️", roles: ["client", "freelancer"] },
+  { href: "/admin", labelAr: "لوحة الإدارة", labelEn: "Admin Panel", icon: "🛡️", roles: ["admin"] },
 ];
 
 export default function DashboardLayout({
@@ -33,9 +34,6 @@ export default function DashboardLayout({
   const { user, isAuthenticated, isLoading } = useAuthStore();
 
   useEffect(() => {
-    // If initialize() confirmed the session is invalid, do a full-page redirect.
-    // window.location.href (not router.push) forces the middleware to re-evaluate
-    // with the now-cleared cookie, landing cleanly on /auth/login.
     if (!isLoading && !isAuthenticated) {
       window.location.href = "/auth/login";
     }
@@ -44,7 +42,7 @@ export default function DashboardLayout({
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-gray-500">جاري التحميل...</p>
       </div>
     );
   }
@@ -54,6 +52,13 @@ export default function DashboardLayout({
   const filteredLinks = sidebarLinks.filter(
     (link) => link.roles.includes(user.primary_role) || user.is_superuser
   );
+
+  const roleLabel =
+    user.primary_role === "client"
+      ? "عميل"
+      : user.primary_role === "freelancer"
+      ? "مستقل"
+      : "مدير";
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -81,9 +86,7 @@ export default function DashboardLayout({
                 <p className="font-medium text-gray-900 truncate">
                   {user.display_name || `${user.first_name} ${user.last_name}`}
                 </p>
-                <p className="text-xs text-gray-500 capitalize">
-                  {user.primary_role}
-                </p>
+                <p className="text-xs text-gray-500">{roleLabel}</p>
               </div>
             </div>
 
@@ -107,7 +110,7 @@ export default function DashboardLayout({
                     )}
                   >
                     <span className="text-base">{link.icon}</span>
-                    {link.label}
+                    {link.labelAr}
                   </Link>
                 );
               })}

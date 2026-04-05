@@ -30,7 +30,7 @@ export default function ContractDetailPage() {
       const res = await contractsApi.getById(id as string);
       setContract(res.data);
     } catch {
-      toast.error("Failed to load contract");
+      toast.error("تعذّر تحميل العقد");
       router.push("/dashboard/contracts");
     } finally {
       setLoading(false);
@@ -43,16 +43,12 @@ export default function ContractDetailPage() {
 
   if (loading) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        Loading contract...
-      </div>
+      <div className="text-center py-12 text-gray-500">جاري التحميل...</div>
     );
   }
 
   if (!contract) return null;
 
-  const otherParty =
-    userRole === "client" ? contract.freelancer : contract.client;
   const progress =
     contract.milestones.length > 0
       ? Math.round(
@@ -63,45 +59,49 @@ export default function ContractDetailPage() {
       : 0;
 
   return (
-    <div>
+    <div className="space-y-6" dir="rtl">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <Link
             href="/dashboard/contracts"
-            className="text-sm text-brand-600 hover:underline mb-2 inline-block"
+            className="text-sm text-brand-600 hover:text-brand-700 mb-2 inline-block"
           >
-            ← Back to Contracts
+            → العودة إلى العقود
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">{contract.title}</h1>
-          <div className="flex items-center gap-3 mt-2">
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
             <span
-              className={`text-xs px-2 py-0.5 rounded-full border ${
+              className={`text-xs px-2.5 py-0.5 rounded-full border ${
                 CONTRACT_STATUS_COLORS[contract.status] || "bg-gray-100"
               }`}
             >
               {CONTRACT_STATUS_LABELS[contract.status] || contract.status}
             </span>
             <span className="text-sm text-gray-500">
-              Started{" "}
-              {new Date(contract.started_at).toLocaleDateString()}
+              بدأ{" "}
+              {new Date(contract.started_at).toLocaleDateString("ar-IQ", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })}
             </span>
           </div>
         </div>
-        <div className="text-right">
+        <div className="text-left shrink-0">
           <p className="text-2xl font-bold text-gray-900">
             ${contract.total_amount.toLocaleString()}
           </p>
           <p className="text-sm text-gray-500">
-            ${contract.amount_paid.toLocaleString()} paid
+            ${contract.amount_paid.toLocaleString()} مدفوع
           </p>
         </div>
       </div>
 
       {/* Progress bar */}
-      <div className="card p-4 mb-6">
+      <div className="card p-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">Progress</span>
+          <span className="text-sm font-medium text-gray-700">التقدم</span>
           <span className="text-sm text-gray-500">{progress}%</span>
         </div>
         <div className="bg-gray-100 rounded-full h-3">
@@ -113,11 +113,11 @@ export default function ContractDetailPage() {
       </div>
 
       {/* Parties info */}
-      <div className="grid md:grid-cols-2 gap-4 mb-6">
+      <div className="grid md:grid-cols-2 gap-4">
         <div className="card p-4">
-          <p className="text-xs text-gray-500 mb-1">Client</p>
+          <p className="text-xs text-gray-500 mb-2">العميل</p>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-xs font-bold text-brand-600">
+            <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-sm font-bold text-brand-600 shrink-0">
               {contract.client.first_name[0]}
               {contract.client.last_name[0]}
             </div>
@@ -126,16 +126,14 @@ export default function ContractDetailPage() {
                 {contract.client.display_name ||
                   `${contract.client.first_name} ${contract.client.last_name}`}
               </p>
-              <p className="text-xs text-gray-500">
-                @{contract.client.username}
-              </p>
+              <p className="text-xs text-gray-500">@{contract.client.username}</p>
             </div>
           </div>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-gray-500 mb-1">Freelancer</p>
+          <p className="text-xs text-gray-500 mb-2">المستقل</p>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-xs font-bold text-green-600">
+            <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center text-sm font-bold text-green-600 shrink-0">
               {contract.freelancer.first_name[0]}
               {contract.freelancer.last_name[0]}
             </div>
@@ -144,51 +142,51 @@ export default function ContractDetailPage() {
                 {contract.freelancer.display_name ||
                   `${contract.freelancer.first_name} ${contract.freelancer.last_name}`}
               </p>
-              <p className="text-xs text-gray-500">
-                @{contract.freelancer.username}
-              </p>
+              <p className="text-xs text-gray-500">@{contract.freelancer.username}</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Milestones section */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">
-          Milestones ({contract.milestones.length})
-        </h2>
-        {userRole === "client" && contract.status === "active" && (
-          <button
-            onClick={() => setShowAddMilestone(true)}
-            className="btn-primary text-sm"
-          >
-            + Add Milestone
-          </button>
-        )}
-      </div>
-
-      {contract.milestones.length === 0 ? (
-        <div className="card p-8 text-center">
-          <p className="text-gray-500">No milestones yet</p>
-          {userRole === "client" && (
-            <p className="text-sm text-gray-400 mt-1">
-              Add milestones to break the project into deliverable phases
-            </p>
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">
+            المراحل ({contract.milestones.length})
+          </h2>
+          {userRole === "client" && contract.status === "active" && (
+            <button
+              onClick={() => setShowAddMilestone(true)}
+              className="btn-primary text-sm py-2 px-4"
+            >
+              + إضافة مرحلة
+            </button>
           )}
         </div>
-      ) : (
-        <div className="space-y-3">
-          {contract.milestones.map((milestone) => (
-            <MilestoneCard
-              key={milestone.id}
-              milestone={milestone}
-              userRole={userRole}
-              contractStatus={contract.status}
-              onUpdate={fetchContract}
-            />
-          ))}
-        </div>
-      )}
+
+        {contract.milestones.length === 0 ? (
+          <div className="card p-8 text-center">
+            <p className="text-gray-500">لا توجد مراحل بعد</p>
+            {userRole === "client" && (
+              <p className="text-sm text-gray-400 mt-1">
+                أضف مراحل لتقسيم المشروع إلى مراحل قابلة للتسليم
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {contract.milestones.map((milestone) => (
+              <MilestoneCard
+                key={milestone.id}
+                milestone={milestone}
+                userRole={userRole}
+                contractStatus={contract.status}
+                onUpdate={fetchContract}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Add Milestone Modal */}
       {showAddMilestone && (
@@ -227,22 +225,25 @@ function MilestoneCard({
     try {
       if (action === "start") {
         await contractsApi.startMilestone(milestone.id);
-        toast.success("Milestone started");
+        toast.success("تم بدء المرحلة");
       } else if (action === "submit") {
         await contractsApi.submitMilestone(milestone.id, data || {});
-        toast.success("Milestone submitted for review");
+        toast.success("تم تقديم المرحلة للمراجعة");
         setShowSubmit(false);
       } else if (action === "review") {
-        await contractsApi.reviewMilestone(milestone.id, { action: (data?.action as string) ?? "approve", feedback: data?.feedback as string | undefined });
+        await contractsApi.reviewMilestone(milestone.id, {
+          action: (data?.action as string) ?? "approve",
+          feedback: data?.feedback as string | undefined,
+        });
         toast.success(
           data?.action === "approve"
-            ? "Milestone approved & paid"
-            : "Revision requested"
+            ? "تمت الموافقة على المرحلة والدفع"
+            : "تم طلب المراجعة"
         );
         setShowReview(false);
       } else if (action === "delete") {
         await contractsApi.deleteMilestone(milestone.id);
-        toast.success("Milestone deleted");
+        toast.success("تم حذف المرحلة");
       }
       onUpdate();
     } catch (err: unknown) {
@@ -250,8 +251,8 @@ function MilestoneCard({
         err && typeof err === "object" && "response" in err
           ? (err as { response?: { data?: { detail?: string } } }).response
               ?.data?.detail
-          : "Action failed";
-      toast.error(msg || "Action failed");
+          : undefined;
+      toast.error(msg || "تعذّر تنفيذ الإجراء");
     } finally {
       setActionLoading(false);
     }
@@ -263,7 +264,7 @@ function MilestoneCard({
     <div className="card p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-xs text-gray-400 font-mono">
               #{milestone.order + 1}
             </span>
@@ -278,33 +279,36 @@ function MilestoneCard({
           </div>
 
           {milestone.description && (
-            <p className="text-sm text-gray-500 mb-2">
-              {milestone.description}
-            </p>
+            <p className="text-sm text-gray-500 mb-2">{milestone.description}</p>
           )}
 
           {milestone.due_date && (
             <p className="text-xs text-gray-400">
-              Due: {new Date(milestone.due_date).toLocaleDateString()}
+              الموعد النهائي:{" "}
+              {new Date(milestone.due_date).toLocaleDateString("ar-IQ", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })}
             </p>
           )}
 
           {milestone.submission_note && (
             <div className="mt-2 p-2 bg-purple-50 rounded text-sm text-purple-700">
-              <span className="font-medium">Submission: </span>
+              <span className="font-medium">ملاحظة التسليم: </span>
               {milestone.submission_note}
             </div>
           )}
 
           {milestone.feedback && (
             <div className="mt-2 p-2 bg-orange-50 rounded text-sm text-orange-700">
-              <span className="font-medium">Feedback: </span>
+              <span className="font-medium">الملاحظات: </span>
               {milestone.feedback}
             </div>
           )}
         </div>
 
-        <div className="text-right shrink-0">
+        <div className="text-left shrink-0">
           <p className="font-bold text-gray-900">
             ${milestone.amount.toLocaleString()}
           </p>
@@ -312,17 +316,17 @@ function MilestoneCard({
           {/* Actions */}
           {isActive && !actionLoading && (
             <div className="mt-2 flex flex-col gap-1">
-              {/* Freelancer actions */}
-              {userRole === "freelancer" &&
-                milestone.status === "pending" && (
-                  <button
-                    onClick={() => handleAction("start")}
-                    className="text-xs px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                  >
-                    Start
-                  </button>
-                )}
+              {/* Freelancer: start */}
+              {userRole === "freelancer" && milestone.status === "pending" && (
+                <button
+                  onClick={() => handleAction("start")}
+                  className="text-xs px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  بدء
+                </button>
+              )}
 
+              {/* Freelancer: submit */}
               {userRole === "freelancer" &&
                 (milestone.status === "in_progress" ||
                   milestone.status === "revision_requested") && (
@@ -330,40 +334,41 @@ function MilestoneCard({
                     onClick={() => setShowSubmit(true)}
                     className="text-xs px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600"
                   >
-                    Submit
+                    تسليم
                   </button>
                 )}
 
-              {/* Client actions */}
-              {userRole === "client" &&
-                milestone.status === "submitted" && (
-                  <button
-                    onClick={() => setShowReview(true)}
-                    className="text-xs px-3 py-1 bg-brand-500 text-white rounded hover:bg-brand-600"
-                  >
-                    Review
-                  </button>
-                )}
+              {/* Client: review submitted milestone */}
+              {userRole === "client" && milestone.status === "submitted" && (
+                <button
+                  onClick={() => setShowReview(true)}
+                  className="text-xs px-3 py-1 bg-brand-500 text-white rounded hover:bg-brand-600"
+                >
+                  مراجعة
+                </button>
+              )}
 
-              {userRole === "client" &&
-                milestone.status === "pending" && (
-                  <button
-                    onClick={() => {
-                      if (
-                        confirm("Delete this milestone?")
-                      )
-                        handleAction("delete");
-                    }}
-                    className="text-xs px-3 py-1 text-red-600 border border-red-200 rounded hover:bg-red-50"
-                  >
-                    Delete
-                  </button>
-                )}
+              {/* Client: delete pending milestone */}
+              {userRole === "client" && milestone.status === "pending" && (
+                <button
+                  onClick={() => {
+                    if (confirm("هل تريد حذف هذه المرحلة؟"))
+                      handleAction("delete");
+                  }}
+                  className="text-xs px-3 py-1 text-red-600 border border-red-200 rounded hover:bg-red-50"
+                >
+                  حذف
+                </button>
+              )}
             </div>
           )}
 
+          {actionLoading && (
+            <p className="text-xs text-gray-400 mt-2">جاري...</p>
+          )}
+
           {milestone.status === "paid" && (
-            <span className="text-xs text-green-600 font-medium">✓ Paid</span>
+            <span className="text-xs text-green-600 font-medium">✓ مدفوع</span>
           )}
         </div>
       </div>
@@ -422,7 +427,7 @@ function AddMilestoneModal({
           },
         ],
       });
-      toast.success("Milestone added");
+      toast.success("تمت إضافة المرحلة");
       onAdded();
       onClose();
     } catch (err: unknown) {
@@ -430,8 +435,8 @@ function AddMilestoneModal({
         err && typeof err === "object" && "response" in err
           ? (err as { response?: { data?: { detail?: string } } }).response
               ?.data?.detail
-          : "Failed to add milestone";
-      toast.error(msg || "Failed to add milestone");
+          : undefined;
+      toast.error(msg || "تعذّر إضافة المرحلة");
     } finally {
       setSubmitting(false);
     }
@@ -439,55 +444,59 @@ function AddMilestoneModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 w-full max-w-md">
-        <h3 className="text-lg font-semibold mb-4">Add Milestone</h3>
+      <div className="bg-white rounded-xl p-6 w-full max-w-md" dir="rtl">
+        <h3 className="text-lg font-semibold mb-4">إضافة مرحلة</h3>
 
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-gray-700">Title *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              العنوان *
+            </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="input mt-1"
-              placeholder="e.g. Backend API Development"
+              className="input-field"
+              placeholder="مثال: تطوير واجهة برمجة التطبيقات"
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">
-              Description
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              الوصف
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="input mt-1"
+              className="input-field"
               rows={3}
-              placeholder="What this milestone covers..."
+              placeholder="ما تشمله هذه المرحلة..."
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-gray-700">
-                Amount ($) *
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                المبلغ ($) *
               </label>
               <input
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="input mt-1"
+                className="input-field"
                 min={1}
                 step={0.01}
+                dir="ltr"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700">
-                Due Date
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                الموعد النهائي
               </label>
               <input
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="input mt-1"
+                className="input-field"
+                dir="ltr"
               />
             </div>
           </div>
@@ -495,14 +504,14 @@ function AddMilestoneModal({
 
         <div className="flex gap-3 mt-6">
           <button onClick={onClose} className="btn-secondary flex-1">
-            Cancel
+            إلغاء
           </button>
           <button
             onClick={handleSubmit}
             disabled={!title.trim() || !amount || submitting}
             className="btn-primary flex-1 disabled:opacity-50"
           >
-            {submitting ? "Adding..." : "Add Milestone"}
+            {submitting ? "جاري الإضافة..." : "إضافة المرحلة"}
           </button>
         </div>
       </div>
@@ -523,24 +532,27 @@ function SubmitModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 w-full max-w-md">
-        <h3 className="text-lg font-semibold mb-4">Submit Milestone</h3>
+      <div className="bg-white rounded-xl p-6 w-full max-w-md" dir="rtl">
+        <h3 className="text-lg font-semibold mb-4">تسليم المرحلة</h3>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          ملاحظة التسليم (اختياري)
+        </label>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          className="input"
+          className="input-field"
           rows={4}
-          placeholder="Describe what you've completed (optional)..."
+          placeholder="صف ما أنجزته..."
         />
         <div className="flex gap-3 mt-4">
           <button onClick={onClose} className="btn-secondary flex-1">
-            Cancel
+            إلغاء
           </button>
           <button
             onClick={() => onSubmit(note)}
             className="btn-primary flex-1"
           >
-            Submit for Review
+            تقديم للمراجعة
           </button>
         </div>
       </div>
@@ -561,30 +573,33 @@ function ReviewModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 w-full max-w-md">
-        <h3 className="text-lg font-semibold mb-4">Review Milestone</h3>
+      <div className="bg-white rounded-xl p-6 w-full max-w-md" dir="rtl">
+        <h3 className="text-lg font-semibold mb-4">مراجعة المرحلة</h3>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          ملاحظات (اختياري)
+        </label>
         <textarea
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
-          className="input"
+          className="input-field"
           rows={3}
-          placeholder="Feedback (optional)..."
+          placeholder="أضف ملاحظاتك..."
         />
         <div className="flex gap-3 mt-4">
           <button onClick={onClose} className="btn-secondary flex-1">
-            Cancel
+            إلغاء
           </button>
           <button
             onClick={() => onReview("request_revision", feedback)}
             className="flex-1 px-4 py-2 border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 text-sm font-medium"
           >
-            Request Revision
+            طلب مراجعة
           </button>
           <button
             onClick={() => onReview("approve", feedback)}
             className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
           >
-            Approve & Pay
+            موافقة ودفع
           </button>
         </div>
       </div>

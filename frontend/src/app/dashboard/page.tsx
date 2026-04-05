@@ -16,29 +16,29 @@ export default function DashboardPage() {
       {/* Welcome header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
-          Welcome back, {user?.first_name}!
+          أهلاً بعودتك، {user?.first_name}!
         </h1>
         <p className="mt-1 text-gray-600">
-          Here&apos;s a summary of your Kaasb account.
+          إليك ملخص حسابك على كاسب.
         </p>
       </div>
 
       {/* Profile completion prompt */}
       {!profileComplete && (
-        <div className="card p-5 border-l-4 border-l-warning-500 bg-warning-50/50">
+        <div className="card p-5 border-r-4 border-r-warning-500 bg-warning-50/50">
           <h3 className="font-semibold text-gray-900">
-            Complete your profile
+            أكمل ملفك الشخصي
           </h3>
           <p className="mt-1 text-sm text-gray-600">
             {isFreelancer
-              ? "Add your bio, skills, and hourly rate to start receiving job proposals."
-              : "Add your bio and location to help freelancers understand your needs."}
+              ? "أضف نبذتك ومهاراتك وسعر الساعة لبدء استقبال العروض."
+              : "أضف نبذتك وموقعك لمساعدة المستقلين على فهم احتياجاتك."}
           </p>
           <Link
             href="/dashboard/profile/edit"
             className="inline-block mt-3 btn-primary py-2 px-4 text-sm"
           >
-            Complete Profile
+            إكمال الملف الشخصي
           </Link>
         </div>
       )}
@@ -48,24 +48,22 @@ export default function DashboardPage() {
         {isFreelancer ? (
           <>
             <StatCard
-              label="Total Earnings"
-              value={`$${(user?.total_earnings ?? 0).toLocaleString()}`}
+              label="إجمالي الأرباح"
+              value={`${(user?.total_earnings ?? 0).toLocaleString("ar-IQ")} د.ع`}
               icon="💰"
             />
             <StatCard
-              label="Jobs Completed"
+              label="الوظائف المنجزة"
               value={user?.jobs_completed ?? 0}
               icon="✅"
             />
             <StatCard
-              label="Avg Rating"
-              value={
-                user?.avg_rating ? `${user.avg_rating.toFixed(1)} / 5.0` : "N/A"
-              }
+              label="متوسط التقييم"
+              value={user?.avg_rating ? `${user.avg_rating.toFixed(1)} / 5` : "—"}
               icon="⭐"
             />
             <StatCard
-              label="Total Reviews"
+              label="عدد التقييمات"
               value={user?.total_reviews ?? 0}
               icon="💬"
             />
@@ -73,22 +71,22 @@ export default function DashboardPage() {
         ) : (
           <>
             <StatCard
-              label="Total Spent"
-              value={`$${(user?.total_spent ?? 0).toLocaleString()}`}
+              label="إجمالي الإنفاق"
+              value={`${(user?.total_spent ?? 0).toLocaleString("ar-IQ")} د.ع`}
               icon="💳"
             />
             <StatCard
-              label="Active Jobs"
+              label="الوظائف النشطة"
               value={0}
               icon="📋"
             />
             <StatCard
-              label="Freelancers Hired"
+              label="المستقلون الموظَّفون"
               value={user?.jobs_completed ?? 0}
               icon="🤝"
             />
             <StatCard
-              label="Pending Reviews"
+              label="التقييمات المعلقة"
               value={0}
               icon="⏳"
             />
@@ -99,31 +97,31 @@ export default function DashboardPage() {
       {/* Quick actions */}
       <div className="card p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Quick Actions
+          إجراءات سريعة
         </h2>
         <div className="flex flex-wrap gap-3">
           {isFreelancer ? (
             <>
               <Link href="/jobs" className="btn-primary py-2 px-5 text-sm">
-                Browse Jobs
+                استعراض الوظائف
               </Link>
               <Link
                 href="/dashboard/profile/edit"
                 className="btn-secondary py-2 px-5 text-sm"
               >
-                Edit Profile
+                تعديل الملف الشخصي
               </Link>
             </>
           ) : (
             <>
               <Link href="/jobs/new" className="btn-primary py-2 px-5 text-sm">
-                Post a Job
+                نشر وظيفة
               </Link>
               <Link
-                href="/users/freelancers"
+                href="/freelancers"
                 className="btn-secondary py-2 px-5 text-sm"
               >
-                Find Freelancers
+                البحث عن مستقلين
               </Link>
             </>
           )}

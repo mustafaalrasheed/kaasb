@@ -3,20 +3,36 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuthStore } from "@/lib/auth-store";
 import { usersApi } from "@/lib/api";
-import { backendUrl } from "@/lib/utils";
+import { backendUrl, getApiError } from "@/lib/utils";
 import { toast } from "sonner";
 
 const EXPERIENCE_LEVELS = [
-  { value: "entry", label: "Entry Level" },
-  { value: "intermediate", label: "Intermediate" },
-  { value: "expert", label: "Expert" },
+  { value: "entry", label: "مبتدئ" },
+  { value: "intermediate", label: "متوسط" },
+  { value: "expert", label: "خبير" },
 ];
 
 const COUNTRIES = [
-  "Iraq", "United States", "United Kingdom", "Canada", "Germany",
-  "France", "India", "Pakistan", "Egypt", "Saudi Arabia",
-  "UAE", "Jordan", "Turkey", "Australia", "Netherlands",
-  "Sweden", "Brazil", "Japan", "South Korea", "Other",
+  { value: "Iraq", label: "العراق" },
+  { value: "United States", label: "الولايات المتحدة" },
+  { value: "United Kingdom", label: "المملكة المتحدة" },
+  { value: "Canada", label: "كندا" },
+  { value: "Germany", label: "ألمانيا" },
+  { value: "France", label: "فرنسا" },
+  { value: "India", label: "الهند" },
+  { value: "Pakistan", label: "باكستان" },
+  { value: "Egypt", label: "مصر" },
+  { value: "Saudi Arabia", label: "المملكة العربية السعودية" },
+  { value: "UAE", label: "الإمارات" },
+  { value: "Jordan", label: "الأردن" },
+  { value: "Turkey", label: "تركيا" },
+  { value: "Australia", label: "أستراليا" },
+  { value: "Netherlands", label: "هولندا" },
+  { value: "Sweden", label: "السويد" },
+  { value: "Brazil", label: "البرازيل" },
+  { value: "Japan", label: "اليابان" },
+  { value: "South Korea", label: "كوريا الجنوبية" },
+  { value: "Other", label: "أخرى" },
 ];
 
 export default function EditProfilePage() {
@@ -41,7 +57,6 @@ export default function EditProfilePage() {
     skills: [] as string[],
   });
 
-  // Load current user data into form
   useEffect(() => {
     if (user) {
       setForm({
@@ -62,12 +77,8 @@ export default function EditProfilePage() {
 
   const isFreelancer = user?.primary_role === "freelancer";
 
-  // === Handlers ===
-
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -81,10 +92,7 @@ export default function EditProfilePage() {
   };
 
   const handleRemoveSkill = (skillToRemove: string) => {
-    setForm({
-      ...form,
-      skills: form.skills.filter((s) => s !== skillToRemove),
-    });
+    setForm({ ...form, skills: form.skills.filter((s) => s !== skillToRemove) });
   };
 
   const handleSkillKeyDown = (e: React.KeyboardEvent) => {
@@ -94,37 +102,28 @@ export default function EditProfilePage() {
     }
   };
 
-  const handleAvatarClick = () => {
-    fileInputRef.current?.click();
-  };
+  const handleAvatarClick = () => fileInputRef.current?.click();
 
-  const handleAvatarChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Client-side validation
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      toast.error("Image must be smaller than 10MB");
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("يجب أن تكون الصورة أصغر من 10 ميجابايت");
       return;
     }
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      toast.error("Only JPEG, PNG, and WebP images are allowed");
+      toast.error("يُسمح فقط بصور JPEG و PNG و WebP");
       return;
     }
-
     setIsUploadingAvatar(true);
     try {
       await usersApi.uploadAvatar(file);
       await fetchUser();
-      toast.success("Avatar updated!");
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to upload avatar");
+      toast.success("تم تحديث الصورة الشخصية");
+    } catch (err: unknown) {
+      toast.error(getApiError(err, "تعذّر رفع الصورة"));
     } finally {
       setIsUploadingAvatar(false);
-      // Reset file input
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -133,20 +132,17 @@ export default function EditProfilePage() {
     try {
       await usersApi.removeAvatar();
       await fetchUser();
-      toast.success("Avatar removed");
+      toast.success("تم حذف الصورة الشخصية");
     } catch {
-      toast.error("Failed to remove avatar");
+      toast.error("تعذّر حذف الصورة");
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-
     try {
-      // Build update payload with only changed/non-empty fields
       const payload: Record<string, unknown> = {};
-
       if (form.display_name) payload.display_name = form.display_name;
       if (form.bio) payload.bio = form.bio;
       if (form.country) payload.country = form.country;
@@ -163,17 +159,16 @@ export default function EditProfilePage() {
       }
 
       if (Object.keys(payload).length === 0) {
-        toast.error("No changes to save");
+        toast.error("لا توجد تغييرات للحفظ");
         setIsSubmitting(false);
         return;
       }
 
       await usersApi.updateProfile(payload);
       await fetchUser();
-      toast.success("Profile updated successfully!");
-    } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      toast.error(typeof detail === "string" ? detail : "Failed to update profile");
+      toast.success("تم تحديث الملف الشخصي بنجاح");
+    } catch (err: unknown) {
+      toast.error(getApiError(err, "تعذّر تحديث الملف الشخصي"));
     } finally {
       setIsSubmitting(false);
     }
@@ -182,19 +177,17 @@ export default function EditProfilePage() {
   if (!user) return null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Edit Profile</h1>
+        <h1 className="text-2xl font-bold text-gray-900">تعديل الملف الشخصي</h1>
         <p className="mt-1 text-gray-600">
-          Update your profile information visible to others on Kaasb.
+          تحديث معلوماتك الظاهرة للآخرين على كاسب.
         </p>
       </div>
 
       {/* Avatar Section */}
       <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Profile Photo
-        </h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">الصورة الشخصية</h2>
         <div className="flex items-center gap-6">
           <button
             onClick={handleAvatarClick}
@@ -202,20 +195,15 @@ export default function EditProfilePage() {
             className="relative w-24 h-24 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity group"
           >
             {user.avatar_url ? (
-              <img
-                src={backendUrl(user.avatar_url)}
-                alt="Avatar"
-                className="w-full h-full object-cover"
-              />
+              <img src={backendUrl(user.avatar_url)} alt="صورة شخصية" className="w-full h-full object-cover" />
             ) : (
               <span className="text-3xl font-bold text-brand-500">
-                {user.first_name[0]}
-                {user.last_name[0]}
+                {user.first_name[0]}{user.last_name[0]}
               </span>
             )}
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
               <span className="text-white text-xs font-medium">
-                {isUploadingAvatar ? "Uploading..." : "Change"}
+                {isUploadingAvatar ? "جاري الرفع..." : "تغيير"}
               </span>
             </div>
           </button>
@@ -234,19 +222,17 @@ export default function EditProfilePage() {
               disabled={isUploadingAvatar}
               className="btn-secondary py-2 px-4 text-sm"
             >
-              {isUploadingAvatar ? "Uploading..." : "Upload Photo"}
+              {isUploadingAvatar ? "جاري الرفع..." : "رفع صورة"}
             </button>
             {user.avatar_url && (
               <button
                 onClick={handleRemoveAvatar}
-                className="ml-3 text-sm text-danger-500 hover:text-danger-700"
+                className="mr-3 text-sm text-danger-500 hover:text-danger-700"
               >
-                Remove
+                حذف
               </button>
             )}
-            <p className="mt-2 text-xs text-gray-500">
-              JPEG, PNG, or WebP. Max 10MB.
-            </p>
+            <p className="mt-2 text-xs text-gray-500">JPEG أو PNG أو WebP. الحد الأقصى 10 ميجابايت.</p>
           </div>
         </div>
       </div>
@@ -255,14 +241,10 @@ export default function EditProfilePage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Info */}
         <div className="card p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Basic Information
-          </h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">المعلومات الأساسية</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Display Name
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">الاسم المعروض</label>
               <input
                 name="display_name"
                 value={form.display_name}
@@ -272,73 +254,57 @@ export default function EditProfilePage() {
                 maxLength={100}
               />
               <p className="mt-1 text-xs text-gray-500">
-                How your name appears to others (leave blank to use your full name)
+                كيف يظهر اسمك للآخرين (اتركه فارغاً لاستخدام اسمك الكامل)
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phone Number
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف</label>
               <input
                 name="phone"
                 value={form.phone}
                 onChange={handleChange}
                 className="input-field"
-                placeholder="+964 XXX XXX XXXX"
+                placeholder="+964 7XX XXX XXXX"
                 maxLength={20}
+                dir="ltr"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Country
-              </label>
-              <select
-                name="country"
-                value={form.country}
-                onChange={handleChange}
-                className="input-field"
-              >
-                <option value="">Select country</option>
+              <label className="block text-sm font-medium text-gray-700 mb-1">الدولة</label>
+              <select name="country" value={form.country} onChange={handleChange} className="input-field">
+                <option value="">اختر الدولة</option>
                 {COUNTRIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
+                  <option key={c.value} value={c.value}>{c.label}</option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                City
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">المدينة</label>
               <input
                 name="city"
                 value={form.city}
                 onChange={handleChange}
                 className="input-field"
-                placeholder="Your city"
+                placeholder="مدينتك"
                 maxLength={100}
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Bio
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">نبذة شخصية</label>
               <textarea
                 name="bio"
                 value={form.bio}
                 onChange={handleChange}
                 className="input-field min-h-[120px] resize-y"
-                placeholder="Tell clients about yourself, your experience, and what you're passionate about..."
+                placeholder="اكتب نبذة عنك، عن خبرتك، وما تتقنه..."
                 maxLength={2000}
                 rows={5}
               />
-              <p className="mt-1 text-xs text-gray-500 text-right">
-                {form.bio.length}/2000
-              </p>
+              <p className="mt-1 text-xs text-gray-500 text-left">{form.bio.length}/2000</p>
             </div>
           </div>
         </div>
@@ -346,86 +312,69 @@ export default function EditProfilePage() {
         {/* Freelancer-specific section */}
         {isFreelancer && (
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Professional Details
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">التفاصيل المهنية</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Professional Title
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">اللقب المهني</label>
                 <input
                   name="title"
                   value={form.title}
                   onChange={handleChange}
                   className="input-field"
-                  placeholder="e.g., Senior Python Developer"
+                  placeholder="مثال: مطور Python متقدم"
                   maxLength={200}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Hourly Rate (USD)
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">سعر الساعة (د.ع)</label>
                 <input
                   name="hourly_rate"
                   type="number"
                   value={form.hourly_rate}
                   onChange={handleChange}
                   className="input-field"
-                  placeholder="25"
+                  placeholder="25000"
                   min={5}
                   max={500}
                   step={0.5}
+                  dir="ltr"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Experience Level
-                </label>
-                <select
-                  name="experience_level"
-                  value={form.experience_level}
-                  onChange={handleChange}
-                  className="input-field"
-                >
-                  <option value="">Select level</option>
+                <label className="block text-sm font-medium text-gray-700 mb-1">مستوى الخبرة</label>
+                <select name="experience_level" value={form.experience_level} onChange={handleChange} className="input-field">
+                  <option value="">اختر المستوى</option>
                   {EXPERIENCE_LEVELS.map((level) => (
-                    <option key={level.value} value={level.value}>
-                      {level.label}
-                    </option>
+                    <option key={level.value} value={level.value}>{level.label}</option>
                   ))}
                 </select>
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Portfolio URL
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">رابط معرض الأعمال</label>
                 <input
                   name="portfolio_url"
                   value={form.portfolio_url}
                   onChange={handleChange}
                   className="input-field"
-                  placeholder="https://your-portfolio.com"
+                  placeholder="https://portfolio-url.com"
                   maxLength={500}
+                  dir="ltr"
                 />
               </div>
 
               {/* Skills Editor */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Skills
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">المهارات</label>
                 <div className="flex gap-2 mb-3">
                   <input
                     value={newSkill}
                     onChange={(e) => setNewSkill(e.target.value)}
                     onKeyDown={handleSkillKeyDown}
                     className="input-field flex-1"
-                    placeholder="Type a skill and press Enter"
+                    placeholder="اكتب مهارة ثم اضغط Enter"
                     maxLength={50}
                   />
                   <button
@@ -434,11 +383,10 @@ export default function EditProfilePage() {
                     disabled={!newSkill.trim() || form.skills.length >= 20}
                     className="btn-secondary py-2 px-4 text-sm whitespace-nowrap"
                   >
-                    Add
+                    إضافة
                   </button>
                 </div>
 
-                {/* Skills tags */}
                 {form.skills.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {form.skills.map((skill) => (
@@ -450,7 +398,7 @@ export default function EditProfilePage() {
                         <button
                           type="button"
                           onClick={() => handleRemoveSkill(skill)}
-                          className="text-brand-400 hover:text-brand-600 ml-0.5"
+                          className="text-brand-400 hover:text-brand-600"
                         >
                           ×
                         </button>
@@ -458,22 +406,16 @@ export default function EditProfilePage() {
                     ))}
                   </div>
                 )}
-                <p className="mt-2 text-xs text-gray-500">
-                  {form.skills.length}/20 skills added
-                </p>
+                <p className="mt-2 text-xs text-gray-500">{form.skills.length}/20 مهارة</p>
               </div>
             </div>
           </div>
         )}
 
         {/* Submit */}
-        <div className="flex justify-end gap-3">
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="btn-primary py-2.5 px-8"
-          >
-            {isSubmitting ? "Saving..." : "Save Changes"}
+        <div className="flex justify-start gap-3">
+          <button type="submit" disabled={isSubmitting} className="btn-primary py-2.5 px-8">
+            {isSubmitting ? "جاري الحفظ..." : "حفظ التغييرات"}
           </button>
         </div>
       </form>

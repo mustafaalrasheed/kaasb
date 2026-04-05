@@ -4,25 +4,25 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { jobsApi, proposalsApi } from "@/lib/api";
-import { backendUrl } from "@/lib/utils";
+import { backendUrl, getApiError } from "@/lib/utils";
 import { toast } from "sonner";
 import type { ProposalSummary } from "@/types/proposal";
 import type { JobDetail } from "@/types/job";
 import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUS_COLORS } from "@/types/proposal";
 
 const STATUS_TABS = [
-  { value: "", label: "All" },
-  { value: "pending", label: "Pending" },
-  { value: "shortlisted", label: "Shortlisted" },
-  { value: "accepted", label: "Accepted" },
-  { value: "rejected", label: "Rejected" },
+  { value: "", label: "الكل" },
+  { value: "pending", label: "معلق" },
+  { value: "shortlisted", label: "قائمة مختصرة" },
+  { value: "accepted", label: "مقبول" },
+  { value: "rejected", label: "مرفوض" },
 ];
 
 const SORT_OPTIONS = [
-  { value: "newest", label: "Newest First" },
-  { value: "oldest", label: "Oldest First" },
-  { value: "bid_low", label: "Bid: Low to High" },
-  { value: "bid_high", label: "Bid: High to Low" },
+  { value: "newest", label: "الأحدث" },
+  { value: "oldest", label: "الأقدم" },
+  { value: "bid_low", label: "العرض: الأقل" },
+  { value: "bid_high", label: "العرض: الأعلى" },
 ];
 
 export default function JobProposalsPage() {
@@ -38,7 +38,6 @@ export default function JobProposalsPage() {
   const [sortBy, setSortBy] = useState("newest");
   const [page, setPage] = useState(1);
 
-  // Response modal
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [responseAction, setResponseAction] = useState("");
   const [clientNote, setClientNote] = useState("");
@@ -58,9 +57,9 @@ export default function JobProposalsPage() {
   const fetchProposals = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params: Record<string, unknown> = { page, page_size: 15, sort_by: sortBy };
-      if (statusFilter) params.status = statusFilter;
-      const response = await proposalsApi.getJobProposals(jobId, params as any);
+      const fetchParams: Record<string, string | number> = { page, page_size: 15, sort_by: sortBy };
+      if (statusFilter) fetchParams.status = statusFilter;
+      const response = await proposalsApi.getJobProposals(jobId, fetchParams);
       setProposals(response.data.proposals);
       setTotal(response.data.total);
       setTotalPages(response.data.total_pages);
@@ -78,39 +77,41 @@ export default function JobProposalsPage() {
   const handleRespond = async () => {
     if (!respondingTo || !responseAction) return;
     try {
-      const data: any = { status: responseAction };
+      const data: { status: string; client_note?: string } = { status: responseAction };
       if (clientNote.trim()) data.client_note = clientNote.trim();
       await proposalsApi.respond(respondingTo, data);
 
-      const label = responseAction === "shortlisted" ? "Shortlisted" : responseAction === "accepted" ? "Accepted" : "Rejected";
-      toast.success(`Proposal ${label.toLowerCase()}`);
+      const label =
+        responseAction === "shortlisted" ? "القائمة المختصرة"
+        : responseAction === "accepted" ? "قُبل"
+        : "رُفض";
+      toast.success(`تم: ${label}`);
       setRespondingTo(null);
       setResponseAction("");
       setClientNote("");
       fetchProposals();
 
-      // Refresh job if accepted
       if (responseAction === "accepted") {
         const jobRes = await jobsApi.getById(jobId);
         setJob(jobRes.data.data);
       }
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to respond");
+    } catch (err: unknown) {
+      toast.error(getApiError(err, "تعذّر الرد على العرض"));
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       {/* Header */}
       <div>
         <Link href={`/jobs/${jobId}`} className="text-sm text-brand-500 hover:text-brand-600 mb-2 inline-block">
-          ← Back to job
+          → العودة للوظيفة
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">
-          Proposals {job ? `for "${job.title}"` : ""}
+          العروض {job ? `على "${job.title}"` : ""}
         </h1>
         <p className="mt-1 text-gray-600">
-          {total > 0 ? `${total} proposals received` : "No proposals yet"}
+          {total > 0 ? `${total} عرض مستلَم` : "لا توجد عروض بعد"}
         </p>
       </div>
 
@@ -144,11 +145,11 @@ export default function JobProposalsPage() {
 
       {/* Proposals */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500">Loading...</div>
+        <div className="text-center py-12 text-gray-500">جاري التحميل...</div>
       ) : proposals.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-lg font-medium text-gray-900">No proposals yet</p>
-          <p className="mt-2 text-gray-600">Proposals from freelancers will appear here.</p>
+          <p className="text-lg font-medium text-gray-900">لا توجد عروض بعد</p>
+          <p className="mt-2 text-gray-600">ستظهر عروض المستقلين هنا.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -174,15 +175,15 @@ export default function JobProposalsPage() {
             disabled={page === 1}
             className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
           >
-            Previous
+            السابق
           </button>
-          <span className="text-sm text-gray-600 px-4">Page {page} of {totalPages}</span>
+          <span className="text-sm text-gray-600 px-4">{page} / {totalPages}</span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
             className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
           >
-            Next
+            التالي
           </button>
         </div>
       )}
@@ -190,38 +191,38 @@ export default function JobProposalsPage() {
       {/* Response Modal */}
       {respondingTo && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4" dir="rtl">
             <h3 className="text-lg font-semibold text-gray-900">
-              {responseAction === "shortlisted" && "Shortlist this proposal?"}
-              {responseAction === "accepted" && "Accept this proposal?"}
-              {responseAction === "rejected" && "Reject this proposal?"}
+              {responseAction === "shortlisted" && "إضافة إلى القائمة المختصرة؟"}
+              {responseAction === "accepted" && "قبول هذا العرض؟"}
+              {responseAction === "rejected" && "رفض هذا العرض؟"}
             </h3>
 
             {responseAction === "accepted" && (
               <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
-                Accepting will assign this freelancer to the job and auto-reject all other pending proposals.
+                سيتم تعيين هذا المستقل على الوظيفة ورفض جميع العروض المعلقة الأخرى تلقائياً.
               </p>
             )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Note to freelancer (optional)
+                ملاحظة للمستقل (اختياري)
               </label>
               <textarea
                 value={clientNote}
                 onChange={(e) => setClientNote(e.target.value)}
                 className="input-field min-h-[80px] resize-y"
-                placeholder="Add a message..."
+                placeholder="أضف رسالة..."
                 maxLength={2000}
               />
             </div>
 
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2 justify-start">
               <button
                 onClick={() => { setRespondingTo(null); setResponseAction(""); }}
                 className="btn-secondary py-2 px-4"
               >
-                Cancel
+                إلغاء
               </button>
               <button
                 onClick={handleRespond}
@@ -231,7 +232,7 @@ export default function JobProposalsPage() {
                     : "bg-brand-500 hover:bg-brand-600"
                 }`}
               >
-                Confirm
+                تأكيد
               </button>
             </div>
           </div>
@@ -253,7 +254,6 @@ function ProposalCard({
 
   return (
     <div className="card p-5">
-      {/* Freelancer header */}
       <div className="flex items-start justify-between gap-4">
         <Link href={`/profile/${f.username}`} className="flex items-center gap-3 group">
           <div className="w-11 h-11 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
@@ -269,7 +269,7 @@ function ProposalCard({
             <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors">
               {f.display_name || `${f.first_name} ${f.last_name}`}
             </p>
-            <p className="text-sm text-gray-500">{f.title || "Freelancer"}</p>
+            <p className="text-sm text-gray-500">{f.title || "مستقل"}</p>
           </div>
         </Link>
 
@@ -278,16 +278,13 @@ function ProposalCard({
         </span>
       </div>
 
-      {/* Freelancer stats */}
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
-        {f.hourly_rate && <span>${f.hourly_rate}/hr</span>}
+        {f.hourly_rate && <span>{f.hourly_rate.toLocaleString("ar-IQ")} د.ع/س</span>}
         {f.avg_rating > 0 && <span>⭐ {f.avg_rating.toFixed(1)} ({f.total_reviews})</span>}
-        <span>{f.jobs_completed} jobs done</span>
+        <span>{f.jobs_completed} مشروع منجز</span>
         {f.country && <span>📍 {f.country}</span>}
-        {f.experience_level && <span className="capitalize">{f.experience_level}</span>}
       </div>
 
-      {/* Skills */}
       {f.skills && f.skills.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {f.skills.slice(0, 5).map((s) => (
@@ -299,24 +296,24 @@ function ProposalCard({
         </div>
       )}
 
-      {/* Bid details */}
       <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-x-6 gap-y-2">
         <div>
-          <span className="text-sm text-gray-400">Bid:</span>{" "}
-          <span className="text-lg font-semibold text-gray-900">${proposal.bid_amount.toLocaleString()}</span>
+          <span className="text-sm text-gray-400">العرض:</span>{" "}
+          <span className="text-lg font-semibold text-gray-900">
+            {proposal.bid_amount.toLocaleString("ar-IQ")} د.ع
+          </span>
         </div>
         {proposal.estimated_duration && (
           <div>
-            <span className="text-sm text-gray-400">Duration:</span>{" "}
+            <span className="text-sm text-gray-400">المدة:</span>{" "}
             <span className="text-sm font-medium text-gray-700">{proposal.estimated_duration}</span>
           </div>
         )}
         <div className="text-sm text-gray-400">
-          Submitted {new Date(proposal.submitted_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          قُدِّم {new Date(proposal.submitted_at).toLocaleDateString("ar-IQ", { month: "short", day: "numeric" })}
         </div>
       </div>
 
-      {/* Actions */}
       {canRespond && (
         <div className="mt-4 flex gap-2">
           {proposal.status === "pending" && (
@@ -324,20 +321,20 @@ function ProposalCard({
               onClick={() => onRespond(proposal.id, "shortlisted")}
               className="btn-secondary py-1.5 px-4 text-sm"
             >
-              Shortlist
+              قائمة مختصرة
             </button>
           )}
           <button
             onClick={() => onRespond(proposal.id, "accepted")}
             className="btn-primary py-1.5 px-4 text-sm"
           >
-            Accept
+            قبول
           </button>
           <button
             onClick={() => onRespond(proposal.id, "rejected")}
             className="text-sm text-red-500 hover:text-red-700 px-3"
           >
-            Reject
+            رفض
           </button>
         </div>
       )}

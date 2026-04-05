@@ -74,11 +74,11 @@ export interface ContractListResponse {
 // === Status display helpers ===
 
 export const CONTRACT_STATUS_LABELS: Record<string, string> = {
-  active: "Active",
-  completed: "Completed",
-  cancelled: "Cancelled",
-  disputed: "Disputed",
-  paused: "Paused",
+  active: "نشط",
+  completed: "مكتمل",
+  cancelled: "ملغى",
+  disputed: "متنازع عليه",
+  paused: "موقوف",
 };
 
 export const CONTRACT_STATUS_COLORS: Record<string, string> = {
@@ -90,12 +90,12 @@ export const CONTRACT_STATUS_COLORS: Record<string, string> = {
 };
 
 export const MILESTONE_STATUS_LABELS: Record<string, string> = {
-  pending: "Pending",
-  in_progress: "In Progress",
-  submitted: "Submitted",
-  revision_requested: "Revision Requested",
-  approved: "Approved",
-  paid: "Paid",
+  pending: "معلق",
+  in_progress: "جارٍ",
+  submitted: "مُقدَّم",
+  revision_requested: "طلب مراجعة",
+  approved: "موافق عليه",
+  paid: "مدفوع",
 };
 
 export const MILESTONE_STATUS_COLORS: Record<string, string> = {
