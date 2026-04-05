@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Used to ensure login takes constant time even when user is not found
-DUMMY_HASH = "$2b$12$dummyhashtopreventtimingattackxxxxxxxxxxxxxxxxxxx"
+DUMMY_HASH = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz4TiGTi7MImMBGEhfASnCsaVc6Ywm"
 
 
 def _mask_email(email: str) -> str:
