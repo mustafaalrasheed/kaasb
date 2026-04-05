@@ -59,7 +59,8 @@ class PaymentAccount(BaseModel):
     )
 
     provider: Mapped[PaymentProvider] = mapped_column(
-        Enum(PaymentProvider), nullable=False
+        Enum(PaymentProvider, values_callable=lambda x: [e.value for e in x]),
+        nullable=False
     )
     status: Mapped[PaymentAccountStatus] = mapped_column(
         Enum(PaymentAccountStatus),
@@ -174,7 +175,8 @@ class Transaction(BaseModel):
 
     # === Provider details ===
     provider: Mapped[PaymentProvider | None] = mapped_column(
-        Enum(PaymentProvider), nullable=True
+        Enum(PaymentProvider, values_callable=lambda x: [e.value for e in x]),
+        nullable=True
     )
     external_transaction_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, index=True

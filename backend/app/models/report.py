@@ -57,7 +57,8 @@ class Report(BaseModel):
 
     # What was reported
     report_type: Mapped[ReportType] = mapped_column(
-        Enum(ReportType), nullable=False, index=True
+        Enum(ReportType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False, index=True
     )
     # UUID of the reported resource (job_id, user_id, message_id, review_id)
     target_id: Mapped[uuid.UUID] = mapped_column(
@@ -65,14 +66,17 @@ class Report(BaseModel):
     )
 
     # Why it was reported
-    reason: Mapped[ReportReason] = mapped_column(Enum(ReportReason), nullable=False)
+    reason: Mapped[ReportReason] = mapped_column(
+        Enum(ReportReason, values_callable=lambda x: [e.value for e in x]),
+        nullable=False
+    )
     description: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # optional free-text detail
 
     # Admin workflow
     status: Mapped[ReportStatus] = mapped_column(
-        Enum(ReportStatus),
+        Enum(ReportStatus, values_callable=lambda x: [e.value for e in x]),
         default=ReportStatus.PENDING,
         nullable=False,
         index=True,

@@ -114,7 +114,8 @@ class Gig(BaseModel):
 
     # === Status ===
     status: Mapped[GigStatus] = mapped_column(
-        Enum(GigStatus), default=GigStatus.PENDING_REVIEW, nullable=False, index=True
+        Enum(GigStatus, values_callable=lambda x: [e.value for e in x]),
+        default=GigStatus.PENDING_REVIEW, nullable=False, index=True
     )
     rejection_reason: Mapped[str | None] = mapped_column(Text)
 
@@ -154,7 +155,9 @@ class GigPackage(BaseModel):
     gig_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("gigs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    tier: Mapped[GigPackageTier] = mapped_column(Enum(GigPackageTier), nullable=False)
+    tier: Mapped[GigPackageTier] = mapped_column(
+        Enum(GigPackageTier, values_callable=lambda x: [e.value for e in x]), nullable=False
+    )
 
     name: Mapped[str] = mapped_column(String(80), nullable=False)           # e.g. "Basic Package"
     description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -189,7 +192,8 @@ class GigOrder(BaseModel):
 
     # === Order details ===
     status: Mapped[GigOrderStatus] = mapped_column(
-        Enum(GigOrderStatus), default=GigOrderStatus.PENDING, nullable=False, index=True
+        Enum(GigOrderStatus, values_callable=lambda x: [e.value for e in x]),
+        default=GigOrderStatus.PENDING, nullable=False, index=True
     )
     requirements: Mapped[str | None] = mapped_column(Text)   # client's brief to freelancer
     price_paid: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
