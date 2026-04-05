@@ -16,14 +16,12 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  /* Smooth scrolling */
   html {
     scroll-behavior: smooth;
   }
 }
 
 @layer components {
-  /* Reusable button styles */
   .btn-primary {
     @apply bg-brand-500 text-white px-6 py-2.5 rounded-lg font-medium
            hover:bg-brand-600 active:bg-brand-700
@@ -44,7 +42,6 @@
            transition-colors duration-150;
   }
 
-  /* Form inputs */
   .input-field {
     @apply w-full px-4 py-2.5 rounded-lg border border-gray-300
            bg-white text-gray-900 placeholder-gray-400
@@ -52,49 +49,97 @@
            transition-all duration-150;
   }
 
-  /* Card component */
   .card {
     @apply bg-white rounded-xl border border-gray-200 shadow-sm;
   }
 }
 
-/* === RTL / Arabic Support === */
+/* =====================================================================
+   RTL / Arabic Support
+   ===================================================================== */
 
-/* Arabic font applied at html level via class */
+/* Arabic font: activated via html class or lang attribute */
 html.font-arabic body,
 html[lang="ar"] body {
   font-family: "Tajawal", system-ui, sans-serif;
+  /* Arabic characters need slightly more line-height */
+  line-height: 1.7;
 }
 
-/* RTL-aware layout helpers */
-[dir="rtl"] .rtl-flip {
-  transform: scaleX(-1);
-}
-
-/* Ensure icons that indicate direction flip in RTL */
+/* ---- Directional icon flip ---- */
+[dir="rtl"] .rtl-flip,
 [dir="rtl"] .icon-directional {
   transform: scaleX(-1);
 }
 
-/* Fix text alignment for RTL */
-[dir="rtl"] .text-start {
+/* ---- Logical text alignment ---- */
+/* Use these classes for text that should follow document direction */
+[dir="rtl"] .text-start { text-align: right; }
+[dir="ltr"] .text-start { text-align: left; }
+[dir="rtl"] .text-end   { text-align: left; }
+[dir="ltr"] .text-end   { text-align: right; }
+
+/* ---- Logical borders (when using border-s / border-e) ---- */
+[dir="rtl"] .border-s { border-right-width: 1px; border-left-width: 0; }
+[dir="rtl"] .border-e { border-left-width: 1px;  border-right-width: 0; }
+[dir="ltr"] .border-s { border-left-width: 1px;  border-right-width: 0; }
+[dir="ltr"] .border-e { border-right-width: 1px; border-left-width: 0; }
+
+/* ---- Smooth direction transition ---- */
+html { transition: direction 0.1s ease; }
+
+/* ---- RTL-aware form inputs ---- */
+[dir="rtl"] .input-field {
   text-align: right;
 }
-[dir="ltr"] .text-start {
-  text-align: left;
+
+/* ---- RTL-aware select dropdowns ---- */
+[dir="rtl"] select {
+  direction: rtl;
+  text-align: right;
 }
 
-/* Fix border sides for RTL */
-[dir="rtl"] .border-s {
-  border-right-width: 1px;
-  border-left-width: 0;
-}
-[dir="rtl"] .border-e {
-  border-left-width: 1px;
-  border-right-width: 0;
+/* ---- Fixes for Tailwind physical margin/padding in RTL ---- */
+/* Critical components only — use Tailwind logical classes (ms-/me-/ps-/pe-) for new code */
+
+/* Navbar: ensure full-width fixed bar works in both directions */
+[dir="rtl"] nav.fixed {
+  left: 0;
+  right: 0;
 }
 
-/* Smooth locale switch transition */
-html {
-  transition: direction 0.1s;
+/* Toast notifications: position based on dir */
+[dir="rtl"] [data-sonner-toaster] {
+  --offset: 16px;
+}
+
+/* ---- Number formatting ---- */
+/* Arabic numerals display correctly; keep Latin digits for IQD amounts */
+[dir="rtl"] .latin-digits {
+  font-feature-settings: "tnum";
+  unicode-bidi: embed;
+  direction: ltr;
+  display: inline-block;
+}
+
+/* ---- Table cells alignment in RTL ---- */
+[dir="rtl"] th,
+[dir="rtl"] td {
+  text-align: right;
+}
+
+/* ---- Placeholder text direction ---- */
+[dir="rtl"] input::placeholder,
+[dir="rtl"] textarea::placeholder {
+  text-align: right;
+}
+
+/* ---- Progress bar fill direction ---- */
+[dir="rtl"] .progress-bar {
+  transform-origin: right;
+}
+
+/* ---- Scrollbar: keep LTR for scrollbars (visual consistency) ---- */
+[dir="rtl"] * {
+  scrollbar-width: thin;
 }

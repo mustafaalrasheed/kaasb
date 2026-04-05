@@ -366,6 +366,7 @@ export default function JobDetailClient() {
             <Link href={`/profile/${job.client.username}`} className="flex items-center gap-3 group">
               <div className="w-12 h-12 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
                 {job.client.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={backendUrl(job.client.avatar_url)} alt={clientName} className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-lg font-bold text-brand-500">

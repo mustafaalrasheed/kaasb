@@ -349,6 +349,7 @@ export default function GigDetailPage() {
             <Link href={`/profile/${gig.freelancer.username}`}>
               <div className="w-10 h-10 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
                 {gig.freelancer.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={backendUrl(gig.freelancer.avatar_url)} alt={freelancerName} className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-sm font-bold text-brand-500">
@@ -486,6 +487,7 @@ export default function GigDetailPage() {
               <Link href={`/profile/${gig.freelancer.username}`} className="flex items-center gap-3 group mb-4">
                 <div className="w-12 h-12 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
                   {gig.freelancer.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={backendUrl(gig.freelancer.avatar_url)} alt={freelancerName} className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-lg font-bold text-brand-500">

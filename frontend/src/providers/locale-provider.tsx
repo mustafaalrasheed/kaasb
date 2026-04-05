@@ -12,9 +12,9 @@ interface LocaleContextType {
 }
 
 const LocaleContext = createContext<LocaleContextType>({
-  locale: 'en',
+  locale: 'ar',
   setLocale: () => {},
-  isRTL: false,
+  isRTL: true,
   isPending: false,
 });
 
@@ -33,9 +33,9 @@ export function LocaleProvider({ children, initialLocale, messages }: LocaleProv
   const [currentMessages, setCurrentMessages] = useState<AbstractIntlMessages>(messages);
   const [isPending, startTransition] = useTransition();
 
-  const setLocale = async (newLocale: 'ar' | 'en') => {
+  const setLocale = (newLocale: 'ar' | 'en') => {
     startTransition(async () => {
-      // Save to cookie
+      // Persist in cookie (1 year)
       document.cookie = `locale=${newLocale};path=/;max-age=31536000;samesite=lax`;
 
       // Load new messages
@@ -43,16 +43,23 @@ export function LocaleProvider({ children, initialLocale, messages }: LocaleProv
 
       setLocaleState(newLocale);
       setCurrentMessages(newMessages);
-
-      // Update HTML dir and lang attributes
-      document.documentElement.dir = newLocale === 'ar' ? 'rtl' : 'ltr';
-      document.documentElement.lang = newLocale;
     });
   };
 
+  // Sync HTML attributes and font class whenever locale changes
   useEffect(() => {
-    document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
-    document.documentElement.lang = locale;
+    const html = document.documentElement;
+    const isArabic = locale === 'ar';
+
+    html.dir = isArabic ? 'rtl' : 'ltr';
+    html.lang = isArabic ? 'ar' : 'en';
+
+    // Toggle Arabic font class
+    if (isArabic) {
+      html.classList.add('font-arabic');
+    } else {
+      html.classList.remove('font-arabic');
+    }
   }, [locale]);
 
   return (

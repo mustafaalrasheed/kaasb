@@ -25,13 +25,7 @@ function GoogleLoginButton({
     onSuccess: async (response) => {
       setLoading(true);
       try {
-        // useGoogleLogin returns an access token — exchange for ID token via userinfo
-        const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-          headers: { Authorization: `Bearer ${response.access_token}` },
-        });
-        const userInfo = await userInfoRes.json();
-
-        // We pass the access_token; backend will call tokeninfo or userinfo
+        // We pass the access_token; backend will call Google userinfo endpoint
         await socialLogin("google", response.access_token, role);
         onSuccess();
       } catch (err: unknown) {

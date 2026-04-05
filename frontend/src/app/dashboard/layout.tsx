@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
+import { useLocale } from "@/providers/locale-provider";
 import { useEffect } from "react";
 import { cn, backendUrl } from "@/lib/utils";
 
@@ -32,6 +33,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const { user, isAuthenticated, isLoading } = useAuthStore();
+  const { locale } = useLocale();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -42,7 +44,7 @@ export default function DashboardLayout({
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <p className="text-gray-500">جاري التحميل...</p>
+        <p className="text-gray-500">{locale === "ar" ? "جاري التحميل..." : "Loading..."}</p>
       </div>
     );
   }
@@ -55,14 +57,14 @@ export default function DashboardLayout({
 
   const roleLabel =
     user.primary_role === "client"
-      ? "عميل"
+      ? (locale === "ar" ? "عميل" : "Client")
       : user.primary_role === "freelancer"
-      ? "مستقل"
-      : "مدير";
+      ? (locale === "ar" ? "مستقل" : "Freelancer")
+      : (locale === "ar" ? "مدير" : "Admin");
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col md:flex-row gap-8">
+      <div className={cn("flex flex-col gap-8", locale === "ar" ? "md:flex-row-reverse" : "md:flex-row")}>
         {/* Sidebar */}
         <aside className="w-full md:w-64 shrink-0">
           <div className="card p-4 sticky top-24">
@@ -70,6 +72,7 @@ export default function DashboardLayout({
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
               <div className="w-10 h-10 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
                 {user.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={backendUrl(user.avatar_url)}
                     alt={`${user.first_name} ${user.last_name}`}
@@ -110,7 +113,7 @@ export default function DashboardLayout({
                     )}
                   >
                     <span className="text-base">{link.icon}</span>
-                    {link.labelAr}
+                    {locale === "ar" ? link.labelAr : link.labelEn}
                   </Link>
                 );
               })}

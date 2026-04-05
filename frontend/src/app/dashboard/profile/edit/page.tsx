@@ -195,6 +195,7 @@ export default function EditProfilePage() {
             className="relative w-24 h-24 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity group"
           >
             {user.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={backendUrl(user.avatar_url)} alt="صورة شخصية" className="w-full h-full object-cover" />
             ) : (
               <span className="text-3xl font-bold text-brand-500">

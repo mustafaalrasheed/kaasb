@@ -258,6 +258,7 @@ function ProposalCard({
         <Link href={`/profile/${f.username}`} className="flex items-center gap-3 group">
           <div className="w-11 h-11 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
             {f.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={backendUrl(f.avatar_url)} alt={`${f.first_name} ${f.last_name}`} className="w-full h-full object-cover" />
             ) : (
               <span className="text-sm font-bold text-brand-500">
