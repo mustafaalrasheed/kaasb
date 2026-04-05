@@ -5,14 +5,15 @@ import { useRouter } from "next/navigation";
 import { jobsApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { toast } from "sonner";
+import { getApiError } from "@/lib/utils";
 import { JOB_CATEGORIES } from "@/types/job";
 
 const DURATIONS = [
-  { value: "less_than_1_week", label: "Less than 1 week" },
-  { value: "1_to_4_weeks", label: "1 to 4 weeks" },
-  { value: "1_to_3_months", label: "1 to 3 months" },
-  { value: "3_to_6_months", label: "3 to 6 months" },
-  { value: "more_than_6_months", label: "More than 6 months" },
+  { value: "less_than_1_week", label: "أقل من أسبوع" },
+  { value: "1_to_4_weeks", label: "من 1 إلى 4 أسابيع" },
+  { value: "1_to_3_months", label: "من 1 إلى 3 أشهر" },
+  { value: "3_to_6_months", label: "من 3 إلى 6 أشهر" },
+  { value: "more_than_6_months", label: "أكثر من 6 أشهر" },
 ];
 
 export default function PostJobPage() {
@@ -40,7 +41,7 @@ export default function PostJobPage() {
       router.push("/auth/login");
     }
     if (!authLoading && user && user.primary_role !== "client") {
-      toast.error("Only clients can post jobs");
+      toast.error("فقط العملاء يمكنهم نشر الوظائف");
       router.push("/dashboard");
     }
   }, [authLoading, isAuthenticated, user, router]);
@@ -60,10 +61,7 @@ export default function PostJobPage() {
   };
 
   const handleRemoveSkill = (skill: string) => {
-    setForm({
-      ...form,
-      skills_required: form.skills_required.filter((s) => s !== skill),
-    });
+    setForm({ ...form, skills_required: form.skills_required.filter((s) => s !== skill) });
   };
 
   const handleSkillKeyDown = (e: React.KeyboardEvent) => {
@@ -96,16 +94,11 @@ export default function PostJobPage() {
       if (form.duration) payload.duration = form.duration;
       if (form.skills_required.length > 0) payload.skills_required = form.skills_required;
 
-      const response = await jobsApi.create(payload as any);
-      toast.success("Job posted successfully!");
+      const response = await jobsApi.create(payload);
+      toast.success("تم نشر الوظيفة بنجاح!");
       router.push(`/jobs/${response.data.id}`);
-    } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      if (Array.isArray(detail)) {
-        toast.error(detail.map((d: any) => d.msg).join(", "));
-      } else {
-        toast.error(detail || "Failed to post job");
-      }
+    } catch (err: unknown) {
+      toast.error(getApiError(err, "تعذّر نشر الوظيفة"));
     } finally {
       setIsSubmitting(false);
     }
@@ -114,7 +107,7 @@ export default function PostJobPage() {
   if (authLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-gray-500">جاري التحميل...</p>
       </div>
     );
   }
@@ -122,41 +115,41 @@ export default function PostJobPage() {
   if (!user || user.primary_role !== "client") return null;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8" dir="rtl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Post a New Job</h1>
+        <h1 className="text-2xl font-bold text-gray-900">نشر وظيفة جديدة</h1>
         <p className="mt-1 text-gray-600">
-          Describe your project and find the perfect freelancer.
+          صف مشروعك وابحث عن المستقل المثالي.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Title & Category */}
         <div className="card p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Job Details</h2>
+          <h2 className="text-lg font-semibold text-gray-900">تفاصيل الوظيفة</h2>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Job Title *
+              عنوان الوظيفة *
             </label>
             <input
               name="title"
               value={form.title}
               onChange={handleChange}
               className="input-field"
-              placeholder="e.g., Build a responsive e-commerce website"
+              placeholder="مثال: بناء موقع تجارة إلكترونية متجاوب"
               minLength={10}
               maxLength={200}
               required
             />
             <p className="mt-1 text-xs text-gray-500">
-              Be specific — titles like "Build a React dashboard" get more proposals.
+              كن محدداً — عناوين من قبيل "بناء لوحة تحكم بـ React" تجلب عروضاً أكثر.
             </p>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Category *
+              التصنيف *
             </label>
             <select
               name="category"
@@ -165,7 +158,7 @@ export default function PostJobPage() {
               className="input-field"
               required
             >
-              <option value="">Select a category</option>
+              <option value="">اختر التصنيف</option>
               {JOB_CATEGORIES.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
@@ -174,20 +167,20 @@ export default function PostJobPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Description *
+              الوصف *
             </label>
             <textarea
               name="description"
               value={form.description}
               onChange={handleChange}
               className="input-field min-h-[200px] resize-y"
-              placeholder="Describe the project scope, deliverables, and any specific requirements..."
+              placeholder="صف نطاق المشروع والمخرجات والمتطلبات الخاصة..."
               minLength={50}
               maxLength={10000}
               rows={8}
               required
             />
-            <p className="mt-1 text-xs text-gray-500 text-right">
+            <p className="mt-1 text-xs text-gray-500 text-left">
               {form.description.length}/10,000
             </p>
           </div>
@@ -195,12 +188,11 @@ export default function PostJobPage() {
 
         {/* Budget */}
         <div className="card p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Budget</h2>
+          <h2 className="text-lg font-semibold text-gray-900">الميزانية</h2>
 
-          {/* Job type toggle */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Pricing Type *
+              نوع التسعير *
             </label>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -212,9 +204,9 @@ export default function PostJobPage() {
                     : "border-gray-200 hover:border-gray-300"
                 }`}
               >
-                <div className="font-medium">Fixed Price</div>
+                <div className="font-medium">سعر ثابت</div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Pay a set amount for the whole project
+                  ادفع مبلغاً محدداً للمشروع كاملاً
                 </div>
               </button>
               <button
@@ -226,9 +218,9 @@ export default function PostJobPage() {
                     : "border-gray-200 hover:border-gray-300"
                 }`}
               >
-                <div className="font-medium">Hourly Rate</div>
+                <div className="font-medium">بالساعة</div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Pay by the hour as work progresses
+                  ادفع بالساعة مع تقدم العمل
                 </div>
               </button>
             </div>
@@ -237,7 +229,7 @@ export default function PostJobPage() {
           {form.job_type === "fixed" ? (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Fixed Price (USD) *
+                السعر الثابت (USD) *
               </label>
               <input
                 name="fixed_price"
@@ -245,9 +237,10 @@ export default function PostJobPage() {
                 value={form.fixed_price}
                 onChange={handleChange}
                 className="input-field"
-                placeholder="e.g., 500"
+                placeholder="مثال: 500"
                 min={5}
                 step={1}
+                dir="ltr"
                 required
               />
             </div>
@@ -255,7 +248,7 @@ export default function PostJobPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Min Rate (USD/hr) *
+                  الحد الأدنى (USD/س) *
                 </label>
                 <input
                   name="budget_min"
@@ -263,15 +256,16 @@ export default function PostJobPage() {
                   value={form.budget_min}
                   onChange={handleChange}
                   className="input-field"
-                  placeholder="e.g., 15"
+                  placeholder="مثال: 15"
                   min={5}
                   step={0.5}
+                  dir="ltr"
                   required
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Max Rate (USD/hr)
+                  الحد الأقصى (USD/س)
                 </label>
                 <input
                   name="budget_max"
@@ -279,9 +273,10 @@ export default function PostJobPage() {
                   value={form.budget_max}
                   onChange={handleChange}
                   className="input-field"
-                  placeholder="e.g., 50"
+                  placeholder="مثال: 50"
                   min={5}
                   step={0.5}
+                  dir="ltr"
                 />
               </div>
             </div>
@@ -290,12 +285,12 @@ export default function PostJobPage() {
 
         {/* Requirements */}
         <div className="card p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Requirements</h2>
+          <h2 className="text-lg font-semibold text-gray-900">المتطلبات</h2>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Experience Level
+                مستوى الخبرة
               </label>
               <select
                 name="experience_level"
@@ -303,15 +298,15 @@ export default function PostJobPage() {
                 onChange={handleChange}
                 className="input-field"
               >
-                <option value="">Any level</option>
-                <option value="entry">Entry Level</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="expert">Expert</option>
+                <option value="">أي مستوى</option>
+                <option value="entry">مبتدئ</option>
+                <option value="intermediate">متوسط</option>
+                <option value="expert">خبير</option>
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Estimated Duration
+                المدة المتوقعة
               </label>
               <select
                 name="duration"
@@ -319,7 +314,7 @@ export default function PostJobPage() {
                 onChange={handleChange}
                 className="input-field"
               >
-                <option value="">Not specified</option>
+                <option value="">غير محددة</option>
                 {DURATIONS.map((d) => (
                   <option key={d.value} value={d.value}>{d.label}</option>
                 ))}
@@ -330,7 +325,7 @@ export default function PostJobPage() {
           {/* Skills */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Required Skills
+              المهارات المطلوبة
             </label>
             <div className="flex gap-2 mb-3">
               <input
@@ -338,7 +333,7 @@ export default function PostJobPage() {
                 onChange={(e) => setNewSkill(e.target.value)}
                 onKeyDown={handleSkillKeyDown}
                 className="input-field flex-1"
-                placeholder="Type a skill and press Enter"
+                placeholder="اكتب مهارة ثم اضغط Enter"
                 maxLength={50}
               />
               <button
@@ -347,7 +342,7 @@ export default function PostJobPage() {
                 disabled={!newSkill.trim() || form.skills_required.length >= 15}
                 className="btn-secondary py-2 px-4 text-sm whitespace-nowrap"
               >
-                Add
+                إضافة
               </button>
             </div>
 
@@ -371,26 +366,22 @@ export default function PostJobPage() {
               </div>
             )}
             <p className="mt-2 text-xs text-gray-500">
-              {form.skills_required.length}/15 skills
+              {form.skills_required.length}/15 مهارة
             </p>
           </div>
         </div>
 
         {/* Submit */}
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-start gap-3">
+          <button type="submit" disabled={isSubmitting} className="btn-primary py-2.5 px-8">
+            {isSubmitting ? "جاري النشر..." : "نشر الوظيفة"}
+          </button>
           <button
             type="button"
             onClick={() => router.back()}
             className="btn-secondary py-2.5 px-6"
           >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="btn-primary py-2.5 px-8"
-          >
-            {isSubmitting ? "Posting..." : "Post Job"}
+            إلغاء
           </button>
         </div>
       </form>

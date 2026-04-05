@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
+import { getApiError } from "@/lib/utils";
 import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
 
 export default function RegisterClient() {
@@ -53,37 +54,20 @@ export default function RegisterClient() {
     try {
       await register(formData);
       router.push("/dashboard");
-    } catch (err: any) {
-      const detail = err.response?.data?.detail;
-      if (Array.isArray(detail)) {
-        // Pydantic validation errors — extract clear messages
-        const messages = detail.map((d: any) => {
-          const field = d.loc?.[d.loc.length - 1] || "field";
-          const msg = d.msg?.replace("Value error, ", "") || "Invalid value";
-          return `${field}: ${msg}`;
-        });
-        setError(messages.join("\n"));
-      } else if (typeof detail === "string") {
-        setError(detail);
-      } else {
-        setError("Registration failed. Check your inputs and try again.");
-      }
+    } catch (err: unknown) {
+      setError(getApiError(err, "فشل إنشاء الحساب. تحقق من بياناتك وحاول مجدداً."));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12">
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12" dir="rtl">
       <div className="w-full max-w-md">
         <div className="card p-8">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">
-              Create your account
-            </h1>
-            <p className="mt-2 text-gray-600">
-              Join Kaasb and start your freelancing journey
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900">أنشئ حسابك</h1>
+            <p className="mt-2 text-gray-600">انضم إلى كاسب وابدأ رحلتك المهنية</p>
           </div>
 
           {error && (
@@ -103,7 +87,7 @@ export default function RegisterClient() {
                 <div className="w-full border-t border-gray-200" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="bg-white px-3 text-gray-400">or sign up with email</span>
+                <span className="bg-white px-3 text-gray-400">أو سجّل بالبريد الإلكتروني</span>
               </div>
             </div>
           </div>
@@ -111,14 +95,12 @@ export default function RegisterClient() {
           {/* Role Selection */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              I want to:
+              أريد:
             </label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() =>
-                  setFormData({ ...formData, primary_role: "freelancer" })
-                }
+                onClick={() => setFormData({ ...formData, primary_role: "freelancer" })}
                 className={`p-4 rounded-lg border-2 text-center transition-all ${
                   formData.primary_role === "freelancer"
                     ? "border-brand-500 bg-brand-50 text-brand-700"
@@ -126,13 +108,11 @@ export default function RegisterClient() {
                 }`}
               >
                 <div className="text-2xl mb-1">💼</div>
-                <div className="font-medium text-sm">Work as Freelancer</div>
+                <div className="font-medium text-sm">العمل كمستقل</div>
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  setFormData({ ...formData, primary_role: "client" })
-                }
+                onClick={() => setFormData({ ...formData, primary_role: "client" })}
                 className={`p-4 rounded-lg border-2 text-center transition-all ${
                   formData.primary_role === "client"
                     ? "border-brand-500 bg-brand-50 text-brand-700"
@@ -140,7 +120,7 @@ export default function RegisterClient() {
                 }`}
               >
                 <div className="text-2xl mb-1">🏢</div>
-                <div className="font-medium text-sm">Hire Freelancers</div>
+                <div className="font-medium text-sm">توظيف مستقلين</div>
               </button>
             </div>
           </div>
@@ -148,11 +128,8 @@ export default function RegisterClient() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label
-                  htmlFor="first_name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  First Name
+                <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-1">
+                  الاسم الأول
                 </label>
                 <input
                   id="first_name"
@@ -165,11 +142,8 @@ export default function RegisterClient() {
                 />
               </div>
               <div>
-                <label
-                  htmlFor="last_name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Last Name
+                <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 mb-1">
+                  اسم العائلة
                 </label>
                 <input
                   id="last_name"
@@ -184,11 +158,8 @@ export default function RegisterClient() {
             </div>
 
             <div>
-              <label
-                htmlFor="username"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Username
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+                اسم المستخدم
               </label>
               <input
                 id="username"
@@ -197,22 +168,20 @@ export default function RegisterClient() {
                 value={formData.username}
                 onChange={handleChange}
                 className="input-field"
-                placeholder="e.g. almustafa_abed"
+                placeholder="مثال: ali_hassan"
                 pattern="^[a-zA-Z0-9_-]+$"
                 minLength={3}
+                dir="ltr"
                 required
               />
               <p className="mt-1 text-xs text-gray-500">
-                Letters, numbers, underscores and hyphens only — no spaces
+                أحرف لاتينية وأرقام وشرطات فقط، بدون مسافات
               </p>
             </div>
 
             <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Email
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                البريد الإلكتروني
               </label>
               <input
                 id="email"
@@ -222,16 +191,14 @@ export default function RegisterClient() {
                 onChange={handleChange}
                 className="input-field"
                 placeholder="you@example.com"
+                dir="ltr"
                 required
               />
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Password
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                كلمة المرور
               </label>
               <input
                 id="password"
@@ -240,31 +207,24 @@ export default function RegisterClient() {
                 value={formData.password}
                 onChange={handleChange}
                 className="input-field"
-                placeholder="Min 8 chars, uppercase, digit, special"
+                placeholder="8 أحرف كحد أدنى"
                 minLength={8}
                 required
               />
               <p className="mt-1 text-xs text-gray-500">
-                Must include uppercase letter, number, and special character
+                يجب أن تحتوي على حرف كبير ورقم وحرف خاص
               </p>
             </div>
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="btn-primary w-full py-3 mt-2"
-            >
-              {isLoading ? "Creating account..." : "Create Account"}
+            <button type="submit" disabled={isLoading} className="btn-primary w-full py-3 mt-2">
+              {isLoading ? "جاري إنشاء الحساب..." : "إنشاء الحساب"}
             </button>
           </form>
 
           <p className="mt-6 text-center text-sm text-gray-600">
-            Already have an account?{" "}
-            <Link
-              href="/auth/login"
-              className="text-brand-500 hover:text-brand-600 font-medium"
-            >
-              Log in
+            لديك حساب بالفعل؟{" "}
+            <Link href="/auth/login" className="text-brand-500 hover:text-brand-600 font-medium">
+              تسجيل الدخول
             </Link>
           </p>
         </div>

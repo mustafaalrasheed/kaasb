@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { messagesApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
+import { useWebSocket } from "@/lib/use-websocket";
+import type { WsMessageData } from "@/lib/use-websocket";
 import { toast } from "sonner";
 import type { ConversationSummary, MessageDetail } from "@/types/message";
 
@@ -15,14 +17,17 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeConvoRef = useRef<ConversationSummary | null>(null);
+  activeConvoRef.current = activeConvo;
+
+  // === Data fetching ===
 
   const fetchConversations = useCallback(async () => {
     try {
-      setLoading(true);
       const res = await messagesApi.getConversations();
       setConversations(res.data.conversations);
     } catch {
-      toast.error("Failed to load conversations");
+      toast.error("تعذّر تحميل المحادثات");
     } finally {
       setLoading(false);
     }
@@ -33,7 +38,7 @@ export default function MessagesPage() {
       const res = await messagesApi.getMessages(convoId);
       setMessages(res.data.messages.reverse()); // Show oldest first
     } catch {
-      toast.error("Failed to load messages");
+      toast.error("تعذّر تحميل الرسائل");
     }
   }, []);
 
@@ -42,33 +47,85 @@ export default function MessagesPage() {
   }, [fetchConversations]);
 
   useEffect(() => {
-    if (activeConvo) {
-      fetchMessages(activeConvo.id);
-      // Smart polling: only poll when tab is visible (saves bandwidth when user switches tabs)
-      // Uses 3s interval for active chat — 10x less overhead than re-rendering on every poll
-      const interval = setInterval(() => {
-        if (!document.hidden) {
-          fetchMessages(activeConvo.id);
-        }
-      }, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [activeConvo, fetchMessages]);
+    if (!activeConvo) return;
+    fetchMessages(activeConvo.id);
+    // Fallback polling: catches messages from users on different Gunicorn workers
+    // (WebSocket push covers same-worker delivery instantly)
+    const interval = setInterval(() => {
+      if (!document.hidden && activeConvoRef.current) {
+        fetchMessages(activeConvoRef.current.id);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [activeConvo?.id, fetchMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // === WebSocket (real-time push) ===
+
+  const handleWsMessage = useCallback((data: WsMessageData) => {
+    const currentConvo = activeConvoRef.current;
+
+    // Append to active chat if the message belongs to it
+    if (currentConvo && data.conversation_id === currentConvo.id) {
+      const newMsg: MessageDetail = {
+        id: data.id,
+        content: data.content,
+        is_read: false,
+        sender: {
+          id: data.sender_id,
+          username: "",
+          first_name: data.sender_name,
+          last_name: "",
+          avatar_url: data.sender_avatar,
+        },
+        created_at: data.created_at,
+      };
+      setMessages((prev) => [...prev, newMsg]);
+    }
+
+    // Always refresh conversation list to update last_message_text + unread badge
+    fetchConversations();
+  }, [fetchConversations]);
+
+  useWebSocket({ onMessage: handleWsMessage, enabled: !!user });
+
+  // === Send message ===
+
   const handleSend = async () => {
     if (!newMessage.trim() || !activeConvo || sending) return;
+    const content = newMessage.trim();
+    setNewMessage("");
+
+    // Optimistic append
+    if (user) {
+      const optimistic: MessageDetail = {
+        id: `tmp-${Date.now()}`,
+        content,
+        is_read: true,
+        sender: {
+          id: user.id,
+          username: user.username,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          avatar_url: user.avatar_url,
+        },
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, optimistic]);
+    }
+
     try {
       setSending(true);
-      await messagesApi.sendMessage(activeConvo.id, { content: newMessage });
-      setNewMessage("");
-      fetchMessages(activeConvo.id);
-      fetchConversations(); // Update last message preview
+      await messagesApi.sendMessage(activeConvo.id, { content });
+      fetchConversations();
     } catch {
-      toast.error("Failed to send message");
+      toast.error("تعذّر إرسال الرسالة");
+      // Roll back optimistic message on error
+      setMessages((prev) => prev.filter((m) => !m.id.startsWith("tmp-")));
+      setNewMessage(content);
     } finally {
       setSending(false);
     }
@@ -81,62 +138,99 @@ export default function MessagesPage() {
     }
   };
 
+  const selectConversation = (c: ConversationSummary) => {
+    setActiveConvo(c);
+    // Clear unread badge locally immediately
+    setConversations((prev) =>
+      prev.map((conv) => (conv.id === c.id ? { ...conv, unread_count: 0 } : conv))
+    );
+  };
+
   const timeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "now";
-    if (mins < 60) return `${mins}m`;
+    if (mins < 1) return "الآن";
+    if (mins < 60) return `${mins}د`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h`;
-    return `${Math.floor(hrs / 24)}d`;
+    if (hrs < 24) return `${hrs}س`;
+    return `${Math.floor(hrs / 24)}ي`;
   };
 
+  const avatarLetters = (first: string, last: string) =>
+    `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase();
+
   return (
-    <div className="flex h-[calc(100vh-80px)]">
-      {/* Conversation List */}
-      <div className="w-80 border-r border-gray-200 flex flex-col">
+    <div className="flex h-[calc(100vh-80px)] bg-white" dir="rtl">
+      {/* Sidebar: Conversation List */}
+      <div className="w-72 border-l border-gray-200 flex flex-col shrink-0">
         <div className="p-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">Messages</h2>
+          <h2 className="font-bold text-gray-900 text-base">الرسائل</h2>
         </div>
+
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="p-4 text-center text-gray-400">Loading...</div>
+            <div className="p-4 space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex gap-3 animate-pulse">
+                  <div className="w-10 h-10 rounded-full bg-gray-200 shrink-0" />
+                  <div className="flex-1 space-y-1.5 pt-1">
+                    <div className="h-3 bg-gray-200 rounded w-3/4" />
+                    <div className="h-2.5 bg-gray-100 rounded w-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : conversations.length === 0 ? (
             <div className="p-8 text-center text-gray-400 text-sm">
-              No conversations yet
+              لا توجد محادثات بعد
             </div>
           ) : (
             conversations.map((c) => (
               <button
                 key={c.id}
-                onClick={() => setActiveConvo(c)}
-                className={`w-full p-3 text-left border-b border-gray-50 hover:bg-gray-50 transition ${
-                  activeConvo?.id === c.id ? "bg-blue-50" : ""
+                onClick={() => selectConversation(c)}
+                className={`w-full p-3 text-right border-b border-gray-50 hover:bg-gray-50 transition-colors ${
+                  activeConvo?.id === c.id ? "bg-brand-50 border-r-2 border-r-brand-500" : ""
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-sm font-medium text-gray-600">
-                    {c.other_user.first_name[0]}
-                    {c.other_user.last_name[0]}
+                  <div className="relative shrink-0">
+                    {c.other_user.avatar_url ? (
+                      <img
+                        src={c.other_user.avatar_url}
+                        alt=""
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 bg-brand-100 rounded-full flex items-center justify-center text-sm font-semibold text-brand-700">
+                        {avatarLetters(c.other_user.first_name, c.other_user.last_name)}
+                      </div>
+                    )}
+                    {c.unread_count > 0 && (
+                      <span className="absolute -top-0.5 -left-0.5 w-4 h-4 bg-brand-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                        {c.unread_count > 9 ? "9+" : c.unread_count}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-gray-900 text-sm truncate">
+
+                  <div className="flex-1 min-w-0 text-right">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className={`text-sm truncate ${c.unread_count > 0 ? "font-semibold text-gray-900" : "font-medium text-gray-700"}`}>
                         {c.other_user.first_name} {c.other_user.last_name}
                       </span>
                       {c.last_message_at && (
-                        <span className="text-xs text-gray-400">
+                        <span className="text-[11px] text-gray-400 shrink-0">
                           {timeAgo(c.last_message_at)}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 truncate mt-0.5">
-                      {c.last_message_text || "No messages"}
+                    <p className={`text-xs truncate mt-0.5 ${c.unread_count > 0 ? "text-gray-700" : "text-gray-400"}`}>
+                      {c.last_message_text || "لا توجد رسائل"}
                     </p>
-                    {c.unread_count > 0 && (
-                      <span className="inline-block mt-1 text-xs bg-blue-500 text-white rounded-full px-1.5 py-0.5">
-                        {c.unread_count}
-                      </span>
+                    {c.job && (
+                      <p className="text-[10px] text-brand-400 truncate mt-0.5">
+                        {c.job.title}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -147,45 +241,49 @@ export default function MessagesPage() {
       </div>
 
       {/* Chat View */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {activeConvo ? (
           <>
             {/* Header */}
-            <div className="p-4 border-b border-gray-200 bg-white">
-              <div className="font-semibold text-gray-900">
-                {activeConvo.other_user.first_name}{" "}
-                {activeConvo.other_user.last_name}
-              </div>
-              {activeConvo.job && (
-                <div className="text-sm text-gray-500">
-                  Re: {activeConvo.job.title}
+            <div className="px-5 py-3.5 border-b border-gray-200 bg-white flex items-center gap-3">
+              {activeConvo.other_user.avatar_url ? (
+                <img
+                  src={activeConvo.other_user.avatar_url}
+                  alt=""
+                  className="w-9 h-9 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center text-sm font-semibold text-brand-700">
+                  {avatarLetters(activeConvo.other_user.first_name, activeConvo.other_user.last_name)}
                 </div>
               )}
+              <div>
+                <div className="font-semibold text-gray-900 text-sm">
+                  {activeConvo.other_user.first_name} {activeConvo.other_user.last_name}
+                </div>
+                {activeConvo.job && (
+                  <div className="text-xs text-gray-400">بشأن: {activeConvo.job.title}</div>
+                )}
+              </div>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50">
               {messages.map((msg) => {
                 const isMe = msg.sender.id === user?.id;
+                const isOptimistic = msg.id.startsWith("tmp-");
                 return (
-                  <div
-                    key={msg.id}
-                    className={`flex ${isMe ? "justify-end" : "justify-start"}`}
-                  >
+                  <div key={msg.id} className={`flex ${isMe ? "justify-start" : "justify-end"}`}>
                     <div
-                      className={`max-w-[70%] rounded-2xl px-4 py-2 ${
+                      className={`max-w-[72%] rounded-2xl px-4 py-2.5 ${
                         isMe
-                          ? "bg-blue-500 text-white"
-                          : "bg-white text-gray-900 border border-gray-200"
-                      }`}
+                          ? "bg-brand-500 text-white rounded-bl-sm"
+                          : "bg-white text-gray-900 border border-gray-200 rounded-br-sm"
+                      } ${isOptimistic ? "opacity-70" : ""}`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      <p
-                        className={`text-xs mt-1 ${
-                          isMe ? "text-blue-100" : "text-gray-400"
-                        }`}
-                      >
-                        {new Date(msg.created_at).toLocaleTimeString("en-US", {
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                      <p className={`text-[11px] mt-1 text-left ${isMe ? "text-brand-200" : "text-gray-400"}`}>
+                        {new Date(msg.created_at).toLocaleTimeString("ar-IQ", {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
@@ -198,29 +296,45 @@ export default function MessagesPage() {
             </div>
 
             {/* Input */}
-            <div className="p-4 border-t border-gray-200 bg-white">
-              <div className="flex gap-2">
+            <div className="px-4 py-3 border-t border-gray-200 bg-white">
+              <div className="flex gap-2 items-end">
+                <button
+                  onClick={handleSend}
+                  disabled={!newMessage.trim() || sending}
+                  className="shrink-0 w-10 h-10 flex items-center justify-center bg-brand-500 text-white rounded-xl hover:bg-brand-600 disabled:opacity-40 transition-colors"
+                  aria-label="إرسال"
+                >
+                  <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
                 <textarea
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Type a message..."
+                  placeholder="اكتب رسالتك..."
                   rows={1}
-                  className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  style={{ minHeight: "42px", maxHeight: "120px" }}
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    el.style.height = "auto";
+                    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+                  }}
                 />
-                <button
-                  onClick={handleSend}
-                  disabled={!newMessage.trim() || sending}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-xl text-sm font-medium hover:bg-blue-600 disabled:opacity-50"
-                >
-                  {sending ? "..." : "Send"}
-                </button>
               </div>
+              <p className="text-[10px] text-gray-400 mt-1.5 text-center">
+                Enter للإرسال · Shift+Enter لسطر جديد
+              </p>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400">
-            Select a conversation to start chatting
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
+            <svg className="w-14 h-14 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <p className="text-sm">اختر محادثة للبدء</p>
           </div>
         )}
       </div>

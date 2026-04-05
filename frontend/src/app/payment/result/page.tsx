@@ -105,7 +105,7 @@ export default function PaymentResultPage() {
               href="/dashboard/payments"
               className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
             >
-              Go to Payments Dashboard
+              الانتقال إلى المدفوعات
             </Link>
           )}
           {(status === "failed" || status === "cancelled" || status === "unknown") && (
@@ -114,13 +114,13 @@ export default function PaymentResultPage() {
                 href="/dashboard/payments"
                 className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
               >
-                Return to Dashboard
+                العودة إلى لوحة التحكم
               </Link>
               <Link
                 href="/dashboard"
                 className="w-full py-2.5 px-4 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
               >
-                Go to Home
+                الصفحة الرئيسية
               </Link>
             </>
           )}

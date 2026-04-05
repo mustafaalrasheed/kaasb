@@ -8,10 +8,10 @@ import type { UserProfile } from "@/types/user";
 import { Breadcrumbs } from "@/components/seo/breadcrumbs";
 
 const SORT_OPTIONS = [
-  { value: "rating", label: "Top Rated" },
-  { value: "rate_low", label: "Rate: Low to High" },
-  { value: "rate_high", label: "Rate: High to Low" },
-  { value: "newest", label: "Newest" },
+  { value: "rating", label: "الأعلى تقييماً" },
+  { value: "rate_low", label: "السعر: الأقل أولاً" },
+  { value: "rate_high", label: "السعر: الأعلى أولاً" },
+  { value: "newest", label: "الأحدث" },
 ];
 
 export default function FreelancersClient() {
@@ -20,7 +20,6 @@ export default function FreelancersClient() {
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [skills, setSkills] = useState("");
   const [experienceLevel, setExperienceLevel] = useState("");
@@ -61,18 +60,17 @@ export default function FreelancersClient() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" dir="rtl">
       {/* Breadcrumbs */}
       <Breadcrumbs
-        items={[{ name: "Freelancers", href: "/freelancers" }]}
+        items={[{ name: "المستقلون", href: "/freelancers" }]}
         className="mb-4"
       />
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Find Freelancers</h1>
+        <h1 className="text-3xl font-bold text-gray-900">ابحث عن مستقل</h1>
         <p className="mt-2 text-gray-600">
-          Browse {total > 0 ? total.toLocaleString() : ""} talented freelancers
-          ready to work on your project.
+          تصفّح{total > 0 ? ` ${total.toLocaleString("ar-IQ")} ` : " "}مستقلاً موهوباً جاهزاً للعمل على مشروعك.
         </p>
       </div>
 
@@ -83,15 +81,16 @@ export default function FreelancersClient() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="input-field flex-1"
-            placeholder="Search by name, title, or skills..."
-            aria-label="Search freelancers"
+            placeholder="ابحث بالاسم أو العنوان أو المهارات..."
+            aria-label="البحث في المستقلين"
           />
           <input
             value={skills}
             onChange={(e) => setSkills(e.target.value)}
             className="input-field sm:w-48"
-            placeholder="Skills (e.g., Python,React)"
-            aria-label="Filter by skills"
+            placeholder="مهارات (مثال: Python,React)"
+            aria-label="تصفية حسب المهارات"
+            dir="ltr"
           />
           <select
             value={experienceLevel}
@@ -100,12 +99,12 @@ export default function FreelancersClient() {
               setPage(1);
             }}
             className="input-field sm:w-40"
-            aria-label="Filter by experience level"
+            aria-label="تصفية حسب مستوى الخبرة"
           >
-            <option value="">All Levels</option>
-            <option value="entry">Entry</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="expert">Expert</option>
+            <option value="">كل المستويات</option>
+            <option value="entry">مبتدئ</option>
+            <option value="intermediate">متوسط</option>
+            <option value="expert">خبير</option>
           </select>
           <select
             value={sortBy}
@@ -114,7 +113,7 @@ export default function FreelancersClient() {
               setPage(1);
             }}
             className="input-field sm:w-44"
-            aria-label="Sort freelancers by"
+            aria-label="ترتيب المستقلين"
           >
             {SORT_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -122,8 +121,11 @@ export default function FreelancersClient() {
               </option>
             ))}
           </select>
-          <button type="submit" className="btn-primary py-2.5 px-6 whitespace-nowrap">
-            Search
+          <button
+            type="submit"
+            className="btn-primary py-2.5 px-6 whitespace-nowrap"
+          >
+            بحث
           </button>
         </form>
       </div>
@@ -131,15 +133,15 @@ export default function FreelancersClient() {
       {/* Results */}
       {isLoading ? (
         <div className="text-center py-12 text-gray-500">
-          Loading freelancers...
+          جاري تحميل المستقلين...
         </div>
       ) : freelancers.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-lg font-medium text-gray-900">
-            No freelancers found
+            لا يوجد مستقلون مطابقون
           </p>
           <p className="mt-2 text-gray-600">
-            Try adjusting your search or filters.
+            جرّب تعديل معايير البحث أو الفلاتر.
           </p>
         </div>
       ) : (
@@ -152,23 +154,26 @@ export default function FreelancersClient() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <nav aria-label="Freelancer results pagination" className="mt-8 flex items-center justify-center gap-2">
+            <nav
+              aria-label="ترقيم صفحات المستقلين"
+              className="mt-8 flex items-center justify-center gap-2"
+            >
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
               >
-                Previous
+                السابق
               </button>
               <span className="text-sm text-gray-600 px-4">
-                Page {page} of {totalPages}
+                صفحة {page} من {totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
                 className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
               >
-                Next
+                التالي
               </button>
             </nav>
           )}
@@ -208,7 +213,9 @@ function FreelancerCard({ user }: { user: UserProfile }) {
               <p className="text-sm text-gray-600 truncate">{user.title}</p>
             )}
             <div className="mt-1 flex items-center gap-3 text-sm text-gray-500">
-              {user.hourly_rate && <span>${user.hourly_rate}/hr</span>}
+              {user.hourly_rate && (
+                <span dir="ltr">${user.hourly_rate}/hr</span>
+              )}
               {user.avg_rating > 0 && (
                 <span>
                   ⭐ {user.avg_rating.toFixed(1)} ({user.total_reviews})
@@ -220,7 +227,7 @@ function FreelancerCard({ user }: { user: UserProfile }) {
             className={`shrink-0 w-2.5 h-2.5 rounded-full mt-1 ${
               user.is_online ? "bg-success-500" : "bg-gray-300"
             }`}
-            aria-label={user.is_online ? "Online" : "Offline"}
+            aria-label={user.is_online ? "متصل" : "غير متصل"}
           />
         </div>
 

@@ -82,7 +82,7 @@ export default function HomePage() {
                 href="/jobs"
                 className="btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"
               >
-                Browse Jobs
+                تصفّح الوظائف
               </Link>
             </div>
           </div>

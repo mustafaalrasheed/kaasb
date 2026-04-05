@@ -5,11 +5,17 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { usersApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
-import { backendUrl } from "@/lib/utils";
+import { backendUrl, getApiStatus } from "@/lib/utils";
 import type { UserProfile } from "@/types/user";
 import { Breadcrumbs } from "@/components/seo/breadcrumbs";
 import { PersonJsonLd } from "@/components/seo/json-ld";
 import { canonicalUrl } from "@/lib/seo";
+
+const EXPERIENCE_LABELS: Record<string, string> = {
+  entry: "مبتدئ",
+  intermediate: "متوسط",
+  expert: "خبير",
+};
 
 export default function ProfileClient() {
   const params = useParams();
@@ -25,11 +31,11 @@ export default function ProfileClient() {
       try {
         const response = await usersApi.getProfile(username);
         setProfile(response.data);
-      } catch (err: any) {
+      } catch (err: unknown) {
         setError(
-          err.response?.status === 404
-            ? "User not found"
-            : "Failed to load profile"
+          getApiStatus(err) === 404
+            ? "المستخدم غير موجود"
+            : "تعذّر تحميل الملف الشخصي"
         );
       } finally {
         setIsLoading(false);
@@ -41,18 +47,23 @@ export default function ProfileClient() {
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="text-gray-500">Loading profile...</div>
+        <div className="text-gray-500">جاري تحميل الملف الشخصي...</div>
       </div>
     );
   }
 
   if (error || !profile) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="min-h-[60vh] flex items-center justify-center" dir="rtl">
         <div className="text-center">
-          <p className="text-xl font-semibold text-gray-900">{error}</p>
-          <Link href="/" className="mt-4 inline-block text-brand-500 hover:text-brand-600">
-            Go home
+          <p className="text-xl font-semibold text-gray-900">
+            {error || "المستخدم غير موجود"}
+          </p>
+          <Link
+            href="/"
+            className="mt-4 inline-block text-brand-500 hover:text-brand-600"
+          >
+            العودة للرئيسية
           </Link>
         </div>
       </div>
@@ -65,7 +76,10 @@ export default function ProfileClient() {
     profile.display_name || `${profile.first_name} ${profile.last_name}`;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div
+      className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+      dir="rtl"
+    >
       {/* Person JSON-LD */}
       <PersonJsonLd
         name={fullName}
@@ -86,7 +100,7 @@ export default function ProfileClient() {
       <Breadcrumbs
         items={[
           ...(isFreelancer
-            ? [{ name: "Freelancers", href: "/freelancers" }]
+            ? [{ name: "المستقلون", href: "/freelancers" }]
             : []),
           { name: fullName, href: `/profile/${profile.username}` },
         ]}
@@ -102,7 +116,7 @@ export default function ProfileClient() {
               {profile.avatar_url ? (
                 <img
                   src={backendUrl(profile.avatar_url)}
-                  alt={`${profile.first_name}'s avatar`}
+                  alt={`صورة ${profile.first_name}`}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -118,10 +132,10 @@ export default function ProfileClient() {
           <div className="flex-1">
             <div className="flex items-start justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  {fullName}
-                </h1>
-                <p className="text-gray-500">@{profile.username}</p>
+                <h1 className="text-2xl font-bold text-gray-900">{fullName}</h1>
+                <p className="text-gray-500" dir="ltr">
+                  @{profile.username}
+                </p>
                 {isFreelancer && profile.title && (
                   <p className="mt-1 text-lg text-gray-700">{profile.title}</p>
                 )}
@@ -132,7 +146,7 @@ export default function ProfileClient() {
                   href="/dashboard/profile/edit"
                   className="btn-secondary py-2 px-4 text-sm"
                 >
-                  Edit Profile
+                  تعديل الملف
                 </Link>
               )}
             </div>
@@ -141,7 +155,7 @@ export default function ProfileClient() {
             <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-600">
               {profile.country && (
                 <span className="flex items-center gap-1">
-                  📍 {profile.city ? `${profile.city}, ` : ""}
+                  📍 {profile.city ? `${profile.city}، ` : ""}
                   {profile.country}
                 </span>
               )}
@@ -155,12 +169,12 @@ export default function ProfileClient() {
                     profile.is_online ? "bg-success-500" : "bg-gray-300"
                   }`}
                 />
-                {profile.is_online ? "Online" : "Offline"}
+                {profile.is_online ? "متصل الآن" : "غير متصل"}
               </span>
               <span className="text-gray-400">
-                Member since{" "}
+                عضو منذ{" "}
                 <time dateTime={profile.created_at}>
-                  {new Date(profile.created_at).toLocaleDateString("en-US", {
+                  {new Date(profile.created_at).toLocaleDateString("ar-IQ", {
                     month: "short",
                     year: "numeric",
                   })}
@@ -173,22 +187,25 @@ export default function ProfileClient() {
               <div className="mt-4 flex flex-wrap gap-6 text-sm">
                 {profile.hourly_rate && (
                   <div>
-                    <span className="font-semibold text-gray-900 text-lg">
+                    <span
+                      className="font-semibold text-gray-900 text-lg"
+                      dir="ltr"
+                    >
                       ${profile.hourly_rate}
                     </span>
-                    <span className="text-gray-500">/hr</span>
+                    <span className="text-gray-500">/س</span>
                   </div>
                 )}
                 <div>
                   <span className="font-semibold text-gray-900">
                     {profile.avg_rating > 0
                       ? `⭐ ${profile.avg_rating.toFixed(1)}`
-                      : "No ratings yet"}
+                      : "لا توجد تقييمات بعد"}
                   </span>
                   {profile.total_reviews > 0 && (
                     <span className="text-gray-500">
                       {" "}
-                      ({profile.total_reviews} reviews)
+                      ({profile.total_reviews} تقييم)
                     </span>
                   )}
                 </div>
@@ -196,12 +213,13 @@ export default function ProfileClient() {
                   <span className="font-semibold text-gray-900">
                     {profile.jobs_completed}
                   </span>
-                  <span className="text-gray-500"> jobs completed</span>
+                  <span className="text-gray-500"> وظيفة مكتملة</span>
                 </div>
                 {profile.experience_level && (
-                  <div className="capitalize">
+                  <div>
                     <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-brand-50 text-brand-700 border border-brand-200">
-                      {profile.experience_level}
+                      {EXPERIENCE_LABELS[profile.experience_level] ||
+                        profile.experience_level}
                     </span>
                   </div>
                 )}
@@ -214,7 +232,7 @@ export default function ProfileClient() {
       {/* Bio */}
       {profile.bio && (
         <div className="card p-6 mt-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">About</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">نبذة عني</h2>
           <p className="text-gray-700 whitespace-pre-line leading-relaxed">
             {profile.bio}
           </p>
@@ -224,7 +242,7 @@ export default function ProfileClient() {
       {/* Skills */}
       {isFreelancer && profile.skills && profile.skills.length > 0 && (
         <div className="card p-6 mt-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">Skills</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">المهارات</h2>
           <div className="flex flex-wrap gap-2">
             {profile.skills.map((skill) => (
               <span
@@ -242,15 +260,16 @@ export default function ProfileClient() {
       {isFreelancer && profile.portfolio_url && (
         <div className="card p-6 mt-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-3">
-            Portfolio
+            أعمالي / المحفظة
           </h2>
           <a
             href={profile.portfolio_url}
             target="_blank"
             rel="noopener noreferrer"
             className="text-brand-500 hover:text-brand-600 font-medium break-all"
+            dir="ltr"
           >
-            {profile.portfolio_url} →
+            {profile.portfolio_url} ←
           </a>
         </div>
       )}
@@ -259,26 +278,26 @@ export default function ProfileClient() {
       {isFreelancer && (
         <div className="card p-6 mt-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-3">
-            Share Profile
+            مشاركة الملف الشخصي
           </h2>
           <div className="flex gap-2">
             <a
-              href={`https://wa.me/?text=${encodeURIComponent(`Check out ${fullName} on Kaasb: ${canonicalUrl(`/profile/${profile.username}`)}`)}`}
+              href={`https://wa.me/?text=${encodeURIComponent(`تفقّد ملف ${fullName} على كاسب: ${canonicalUrl(`/profile/${profile.username}`)}`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="py-2 px-4 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors"
-              aria-label="Share on WhatsApp"
+              aria-label="مشاركة عبر واتساب"
             >
-              WhatsApp
+              واتساب
             </a>
             <a
-              href={`https://t.me/share/url?url=${encodeURIComponent(canonicalUrl(`/profile/${profile.username}`))}&text=${encodeURIComponent(`${fullName} on Kaasb`)}`}
+              href={`https://t.me/share/url?url=${encodeURIComponent(canonicalUrl(`/profile/${profile.username}`))}&text=${encodeURIComponent(`${fullName} على كاسب`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="py-2 px-4 text-sm rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-              aria-label="Share on Telegram"
+              aria-label="مشاركة عبر تيليغرام"
             >
-              Telegram
+              تيليغرام
             </a>
           </div>
         </div>
@@ -287,7 +306,7 @@ export default function ProfileClient() {
       {/* Placeholder for future: Reviews, Job History */}
       <div className="card p-6 mt-6 text-center text-gray-400">
         <p className="text-sm">
-          Reviews and job history will appear here once available.
+          ستظهر هنا التقييمات وسجل العمل عند توفّرها.
         </p>
       </div>
     </div>

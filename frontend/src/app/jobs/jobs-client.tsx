@@ -9,22 +9,27 @@ import { JOB_CATEGORIES, DURATION_LABELS, EXPERIENCE_LABELS } from "@/types/job"
 import { Breadcrumbs } from "@/components/seo/breadcrumbs";
 
 const SORT_OPTIONS = [
-  { value: "newest", label: "Newest First" },
-  { value: "oldest", label: "Oldest First" },
-  { value: "budget_high", label: "Budget: High to Low" },
-  { value: "budget_low", label: "Budget: Low to High" },
-  { value: "most_proposals", label: "Most Proposals" },
+  { value: "newest", label: "الأحدث أولاً" },
+  { value: "oldest", label: "الأقدم أولاً" },
+  { value: "budget_high", label: "الميزانية: الأعلى أولاً" },
+  { value: "budget_low", label: "الميزانية: الأقل أولاً" },
+  { value: "most_proposals", label: "الأكثر عروضاً" },
 ];
+
+const JOB_TYPE_AR: Record<string, string> = {
+  fixed: "سعر ثابت",
+  hourly: "بالساعة",
+};
 
 function formatBudget(job: JobSummary): string {
   if (job.job_type === "fixed" && job.fixed_price) {
     return `$${job.fixed_price.toLocaleString()}`;
   }
   if (job.budget_min && job.budget_max) {
-    return `$${job.budget_min} - $${job.budget_max}/hr`;
+    return `$${job.budget_min} - $${job.budget_max}/س`;
   }
-  if (job.budget_min) return `From $${job.budget_min}/hr`;
-  return "Budget not set";
+  if (job.budget_min) return `من $${job.budget_min}/س`;
+  return "الميزانية غير محددة";
 }
 
 export default function JobsClient() {
@@ -33,7 +38,6 @@ export default function JobsClient() {
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [category, setCategory] = useState("");
   const [jobType, setJobType] = useState("");
@@ -70,7 +74,6 @@ export default function JobsClient() {
     fetchJobs();
   }, [fetchJobs]);
 
-  // Debounce search input — fires API call 300ms after user stops typing
   const debouncedSearch = useDebouncedCallback((value: unknown) => {
     setSearchQuery(value as string);
     setPage(1);
@@ -83,19 +86,19 @@ export default function JobsClient() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" dir="rtl">
       {/* Breadcrumbs */}
       <Breadcrumbs
-        items={[{ name: "Jobs", href: "/jobs" }]}
+        items={[{ name: "الوظائف", href: "/jobs" }]}
         className="mb-4"
       />
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Browse Jobs</h1>
+        <h1 className="text-3xl font-bold text-gray-900">تصفّح الوظائف</h1>
         <p className="mt-2 text-gray-600">
           {total > 0
-            ? `${total.toLocaleString()} jobs available`
-            : "Find your next opportunity"}
+            ? `${total.toLocaleString("ar-IQ")} وظيفة متاحة`
+            : "ابحث عن فرصتك القادمة"}
         </p>
       </div>
 
@@ -107,14 +110,14 @@ export default function JobsClient() {
               defaultValue={searchQuery}
               onChange={(e) => debouncedSearch(e.target.value)}
               className="input-field flex-1"
-              placeholder="Search jobs by title, description, or skills..."
-              aria-label="Search jobs"
+              placeholder="ابحث بالعنوان أو الوصف أو المهارات..."
+              aria-label="البحث في الوظائف"
             />
             <button
               type="submit"
               className="btn-primary py-2.5 px-6 whitespace-nowrap"
             >
-              Search
+              بحث
             </button>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
@@ -125,9 +128,9 @@ export default function JobsClient() {
                 setPage(1);
               }}
               className="input-field sm:w-48"
-              aria-label="Filter by category"
+              aria-label="تصفية حسب التصنيف"
             >
-              <option value="">All Categories</option>
+              <option value="">كل التصنيفات</option>
               {JOB_CATEGORIES.map((cat) => (
                 <option key={cat} value={cat}>
                   {cat}
@@ -141,11 +144,11 @@ export default function JobsClient() {
                 setPage(1);
               }}
               className="input-field sm:w-36"
-              aria-label="Filter by job type"
+              aria-label="تصفية حسب نوع الوظيفة"
             >
-              <option value="">All Types</option>
-              <option value="fixed">Fixed Price</option>
-              <option value="hourly">Hourly</option>
+              <option value="">كل الأنواع</option>
+              <option value="fixed">سعر ثابت</option>
+              <option value="hourly">بالساعة</option>
             </select>
             <select
               value={experienceLevel}
@@ -154,12 +157,12 @@ export default function JobsClient() {
                 setPage(1);
               }}
               className="input-field sm:w-40"
-              aria-label="Filter by experience level"
+              aria-label="تصفية حسب مستوى الخبرة"
             >
-              <option value="">All Levels</option>
-              <option value="entry">Entry Level</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="expert">Expert</option>
+              <option value="">كل المستويات</option>
+              <option value="entry">مبتدئ</option>
+              <option value="intermediate">متوسط</option>
+              <option value="expert">خبير</option>
             </select>
             <select
               value={sortBy}
@@ -168,7 +171,7 @@ export default function JobsClient() {
                 setPage(1);
               }}
               className="input-field sm:w-44"
-              aria-label="Sort jobs by"
+              aria-label="ترتيب الوظائف"
             >
               {SORT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -182,12 +185,14 @@ export default function JobsClient() {
 
       {/* Results */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500">Loading jobs...</div>
+        <div className="text-center py-12 text-gray-500">
+          جاري تحميل الوظائف...
+        </div>
       ) : jobs.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-lg font-medium text-gray-900">No jobs found</p>
+          <p className="text-lg font-medium text-gray-900">لا توجد وظائف مطابقة</p>
           <p className="mt-2 text-gray-600">
-            Try adjusting your search or filters.
+            جرّب تعديل معايير البحث أو الفلاتر.
           </p>
         </div>
       ) : (
@@ -200,23 +205,26 @@ export default function JobsClient() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <nav aria-label="Job results pagination" className="mt-8 flex items-center justify-center gap-2">
+            <nav
+              aria-label="ترقيم صفحات الوظائف"
+              className="mt-8 flex items-center justify-center gap-2"
+            >
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
               >
-                Previous
+                السابق
               </button>
               <span className="text-sm text-gray-600 px-4">
-                Page {page} of {totalPages}
+                صفحة {page} من {totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
                 className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
               >
-                Next
+                التالي
               </button>
             </nav>
           )}
@@ -239,11 +247,11 @@ function JobCard({ job }: { job: JobSummary }) {
               <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-brand-50 text-brand-700 border border-brand-200">
                 {job.category}
               </span>
-              <span className="capitalize text-xs text-gray-400">
-                {job.job_type} price
+              <span className="text-xs text-gray-400">
+                {job.job_type === "fixed" ? "سعر ثابت" : "بالساعة"}
               </span>
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 group-hover:text-brand-600">
+            <h2 className="text-lg font-semibold text-gray-900">
               {job.title}
             </h2>
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-500">
@@ -255,7 +263,7 @@ function JobCard({ job }: { job: JobSummary }) {
               )}
               {job.duration && <span>{DURATION_LABELS[job.duration]}</span>}
               <span>
-                {job.proposal_count} proposal{job.proposal_count !== 1 ? "s" : ""}
+                {job.proposal_count} عرض
               </span>
             </div>
           </div>
@@ -306,9 +314,8 @@ function JobCard({ job }: { job: JobSummary }) {
             {job.client.country && <span>📍 {job.client.country}</span>}
           </div>
           <time dateTime={job.published_at || job.created_at}>
-            Posted{" "}
             {new Date(job.published_at || job.created_at).toLocaleDateString(
-              "en-US",
+              "ar-IQ",
               { month: "short", day: "numeric" }
             )}
           </time>
