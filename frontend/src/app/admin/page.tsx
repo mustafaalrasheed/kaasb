@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { adminApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
+import { useLocale } from "@/providers/locale-provider";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getApiError } from "@/lib/utils";
@@ -59,47 +60,12 @@ interface AdminTransaction {
 
 type Tab = "stats" | "users" | "jobs" | "transactions";
 
-const ROLE_LABELS: Record<string, string> = {
-  client: "عميل",
-  freelancer: "مستقل",
-  admin: "مدير",
-};
-
-const USER_STATUS_LABELS: Record<string, string> = {
-  active: "نشط",
-  suspended: "موقوف",
-  deactivated: "مُلغى",
-  pending_verification: "قيد التحقق",
-};
-
-const JOB_STATUS_LABELS: Record<string, string> = {
-  open: "مفتوح",
-  in_progress: "جارٍ",
-  completed: "مكتمل",
-  closed: "مغلق",
-  cancelled: "ملغى",
-  draft: "مسودة",
-};
-
-const TX_TYPE_LABELS: Record<string, string> = {
-  escrow_fund: "تمويل ضمان",
-  escrow_release: "تحرير ضمان",
-  escrow_refund: "استرداد ضمان",
-  platform_fee: "عمولة المنصة",
-  payout: "سحب",
-};
-
-const TX_STATUS_LABELS: Record<string, string> = {
-  pending: "معلق",
-  processing: "جارٍ",
-  completed: "مكتمل",
-  failed: "فشل",
-  refunded: "مسترد",
-};
-
 export default function AdminPage() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+
   const [tab, setTab] = useState<Tab>("stats");
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -116,17 +82,43 @@ export default function AdminPage() {
   const [txTypeFilter, setTxTypeFilter] = useState("");
   const [txStatusFilter, setTxStatusFilter] = useState("");
 
+  const ROLE_LABELS: Record<string, string> = ar
+    ? { client: "عميل", freelancer: "مستقل", admin: "مدير" }
+    : { client: "Client", freelancer: "Freelancer", admin: "Admin" };
+
+  const USER_STATUS_LABELS: Record<string, string> = ar
+    ? { active: "نشط", suspended: "موقوف", deactivated: "مُلغى", pending_verification: "قيد التحقق" }
+    : { active: "Active", suspended: "Suspended", deactivated: "Deactivated", pending_verification: "Pending Verification" };
+
+  const JOB_STATUS_LABELS: Record<string, string> = ar
+    ? { open: "مفتوح", in_progress: "جارٍ", completed: "مكتمل", closed: "مغلق", cancelled: "ملغى", draft: "مسودة" }
+    : { open: "Open", in_progress: "In Progress", completed: "Completed", closed: "Closed", cancelled: "Cancelled", draft: "Draft" };
+
+  const TX_TYPE_LABELS: Record<string, string> = ar
+    ? { escrow_fund: "تمويل ضمان", escrow_release: "تحرير ضمان", escrow_refund: "استرداد ضمان", platform_fee: "عمولة المنصة", payout: "سحب" }
+    : { escrow_fund: "Escrow Fund", escrow_release: "Escrow Release", escrow_refund: "Escrow Refund", platform_fee: "Platform Fee", payout: "Payout" };
+
+  const TX_STATUS_LABELS: Record<string, string> = ar
+    ? { pending: "معلق", processing: "جارٍ", completed: "مكتمل", failed: "فشل", refunded: "مسترد" }
+    : { pending: "Pending", processing: "Processing", completed: "Completed", failed: "Failed", refunded: "Refunded" };
+
+  const TABS = [
+    { value: "stats" as Tab, label: ar ? "📊 نظرة عامة" : "📊 Overview" },
+    { value: "users" as Tab, label: ar ? "👥 المستخدمون" : "👥 Users" },
+    { value: "jobs" as Tab, label: ar ? "📋 الوظائف" : "📋 Jobs" },
+    { value: "transactions" as Tab, label: ar ? "💳 المعاملات" : "💳 Transactions" },
+  ];
+
+  const dateLocale = ar ? "ar-IQ" : "en-GB";
+
   useEffect(() => {
     if (authLoading) return;
-    if (!user) {
-      router.push("/auth/login");
-      return;
-    }
+    if (!user) { router.push("/auth/login"); return; }
     if (!user.is_superuser) {
-      toast.error("صلاحية المدير مطلوبة");
+      toast.error(ar ? "صلاحية المدير مطلوبة" : "Admin access required");
       router.push("/dashboard");
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, ar]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -134,11 +126,9 @@ export default function AdminPage() {
       const res = await adminApi.getStats();
       setStats(res.data);
     } catch {
-      toast.error("تعذّر تحميل الإحصاءات");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      toast.error(ar ? "تعذّر تحميل الإحصاءات" : "Failed to load stats");
+    } finally { setLoading(false); }
+  }, [ar]);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -150,11 +140,9 @@ export default function AdminPage() {
       setUsers(res.data.users);
       setUserTotal(res.data.total);
     } catch {
-      toast.error("تعذّر تحميل المستخدمين");
-    } finally {
-      setLoading(false);
-    }
-  }, [userSearch, roleFilter]);
+      toast.error(ar ? "تعذّر تحميل المستخدمين" : "Failed to load users");
+    } finally { setLoading(false); }
+  }, [userSearch, roleFilter, ar]);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -166,11 +154,9 @@ export default function AdminPage() {
       setJobs(res.data.jobs);
       setJobTotal(res.data.total);
     } catch {
-      toast.error("تعذّر تحميل الوظائف");
-    } finally {
-      setLoading(false);
-    }
-  }, [jobSearch, jobStatusFilter]);
+      toast.error(ar ? "تعذّر تحميل الوظائف" : "Failed to load jobs");
+    } finally { setLoading(false); }
+  }, [jobSearch, jobStatusFilter, ar]);
 
   const fetchTransactions = useCallback(async () => {
     try {
@@ -182,11 +168,9 @@ export default function AdminPage() {
       setTransactions(res.data.transactions);
       setTxTotal(res.data.total);
     } catch {
-      toast.error("تعذّر تحميل المعاملات");
-    } finally {
-      setLoading(false);
-    }
-  }, [txTypeFilter, txStatusFilter]);
+      toast.error(ar ? "تعذّر تحميل المعاملات" : "Failed to load transactions");
+    } finally { setLoading(false); }
+  }, [txTypeFilter, txStatusFilter, ar]);
 
   useEffect(() => {
     if (tab === "stats") fetchStats();
@@ -198,44 +182,43 @@ export default function AdminPage() {
   const handleStatusUpdate = async (userId: string, status: string) => {
     try {
       await adminApi.updateUserStatus(userId, { status });
-      toast.success("تم تحديث حالة المستخدم");
+      toast.success(ar ? "تم تحديث حالة المستخدم" : "User status updated");
       fetchUsers();
     } catch (err: unknown) {
-      toast.error(getApiError(err, "تعذّر التحديث"));
+      toast.error(getApiError(err, ar ? "تعذّر التحديث" : "Failed to update"));
     }
   };
 
   const handleToggleAdmin = async (userId: string) => {
     try {
       await adminApi.toggleAdmin(userId);
-      toast.success("تم تغيير صلاحية المدير");
+      toast.success(ar ? "تم تغيير صلاحية المدير" : "Admin role toggled");
       fetchUsers();
     } catch (err: unknown) {
-      toast.error(getApiError(err, "تعذّر تغيير الصلاحية"));
+      toast.error(getApiError(err, ar ? "تعذّر تغيير الصلاحية" : "Failed to change role"));
     }
   };
 
   if (authLoading || !user?.is_superuser) {
     return (
       <div className="p-6 text-center text-gray-500">
-        {authLoading ? "جاري التحميل..." : "جاري التحقق من الصلاحية..."}
+        {authLoading
+          ? (ar ? "جاري التحميل..." : "Loading...")
+          : (ar ? "جاري التحقق من الصلاحية..." : "Verifying access...")}
       </div>
     );
   }
 
-  const TABS = [
-    { value: "stats" as Tab, label: "📊 نظرة عامة" },
-    { value: "users" as Tab, label: "👥 المستخدمون" },
-    { value: "jobs" as Tab, label: "📋 الوظائف" },
-    { value: "transactions" as Tab, label: "💳 المعاملات" },
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-50" dir="rtl">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <h1 className="text-2xl font-bold text-gray-900">لوحة الإدارة</h1>
-        <p className="text-sm text-gray-500 mt-1">إدارة منصة كاسب</p>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {ar ? "لوحة الإدارة" : "Admin Dashboard"}
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">
+          {ar ? "إدارة منصة كاسب" : "Manage the Kaasb platform"}
+        </p>
       </div>
 
       {/* Tabs */}
@@ -246,9 +229,7 @@ export default function AdminPage() {
               key={t.value}
               onClick={() => setTab(t.value)}
               className={`py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
-                tab === t.value
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                tab === t.value ? "border-blue-500 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
               {t.label}
@@ -262,21 +243,23 @@ export default function AdminPage() {
         {tab === "stats" && stats && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <StatCard label="إجمالي المستخدمين" value={stats.users.total} icon="👥" />
-              <StatCard label="النشطون (30 يوم)" value={stats.users.active_30d} icon="🟢" />
-              <StatCard label="الوظائف المفتوحة" value={stats.jobs.open} icon="📋" />
-              <StatCard label="العقود النشطة" value={stats.contracts.active} icon="📝" />
+              <StatCard label={ar ? "إجمالي المستخدمين" : "Total Users"} value={stats.users.total} icon="👥" />
+              <StatCard label={ar ? "النشطون (30 يوم)" : "Active (30d)"} value={stats.users.active_30d} icon="🟢" />
+              <StatCard label={ar ? "الوظائف المفتوحة" : "Open Jobs"} value={stats.jobs.open} icon="📋" />
+              <StatCard label={ar ? "العقود النشطة" : "Active Contracts"} value={stats.contracts.active} icon="📝" />
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <StatCard label="إجمالي حجم التداول" value={`$${stats.financials.total_volume.toFixed(2)}`} icon="💰" isText />
-              <StatCard label="عمولات المنصة" value={`$${stats.financials.platform_fees_earned.toFixed(2)}`} icon="🏦" isText />
-              <StatCard label="في الضمان" value={`$${stats.financials.pending_escrow.toFixed(2)}`} icon="🔒" isText />
+              <StatCard label={ar ? "إجمالي حجم التداول" : "Total Volume"} value={`$${stats.financials.total_volume.toFixed(2)}`} icon="💰" isText />
+              <StatCard label={ar ? "عمولات المنصة" : "Platform Fees"} value={`$${stats.financials.platform_fees_earned.toFixed(2)}`} icon="🏦" isText />
+              <StatCard label={ar ? "في الضمان" : "In Escrow"} value={`$${stats.financials.pending_escrow.toFixed(2)}`} icon="🔒" isText />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-white rounded-lg border p-4">
-                <h3 className="font-semibold text-gray-900 mb-3">المستخدمون حسب الدور</h3>
+                <h3 className="font-semibold text-gray-900 mb-3">
+                  {ar ? "المستخدمون حسب الدور" : "Users by Role"}
+                </h3>
                 {Object.entries(stats.users.by_role).map(([role, count]) => (
                   <div key={role} className="flex justify-between text-sm py-1">
                     <span className="text-gray-600">{ROLE_LABELS[role] ?? role}</span>
@@ -284,43 +267,43 @@ export default function AdminPage() {
                   </div>
                 ))}
                 <div className="flex justify-between text-sm py-1 border-t mt-2 pt-2">
-                  <span className="text-gray-600">جدد (7 أيام)</span>
+                  <span className="text-gray-600">{ar ? "جدد (7 أيام)" : "New (7 days)"}</span>
                   <span className="font-medium text-green-600">+{stats.users.new_7d}</span>
                 </div>
               </div>
 
               <div className="bg-white rounded-lg border p-4">
-                <h3 className="font-semibold text-gray-900 mb-3">السوق</h3>
+                <h3 className="font-semibold text-gray-900 mb-3">{ar ? "السوق" : "Marketplace"}</h3>
                 <div className="flex justify-between text-sm py-1">
-                  <span className="text-gray-600">إجمالي الوظائف</span>
+                  <span className="text-gray-600">{ar ? "إجمالي الوظائف" : "Total Jobs"}</span>
                   <span className="font-medium">{stats.jobs.total}</span>
                 </div>
                 <div className="flex justify-between text-sm py-1">
-                  <span className="text-gray-600">إجمالي العروض</span>
+                  <span className="text-gray-600">{ar ? "إجمالي العروض" : "Total Proposals"}</span>
                   <span className="font-medium">{stats.proposals.total}</span>
                 </div>
                 <div className="flex justify-between text-sm py-1">
-                  <span className="text-gray-600">العقود المكتملة</span>
+                  <span className="text-gray-600">{ar ? "العقود المكتملة" : "Completed Contracts"}</span>
                   <span className="font-medium">{stats.contracts.completed}</span>
                 </div>
                 <div className="flex justify-between text-sm py-1">
-                  <span className="text-gray-600">وظائف جديدة (7 أيام)</span>
+                  <span className="text-gray-600">{ar ? "وظائف جديدة (7 أيام)" : "New Jobs (7 days)"}</span>
                   <span className="font-medium text-green-600">+{stats.jobs.new_7d}</span>
                 </div>
               </div>
 
               <div className="bg-white rounded-lg border p-4">
-                <h3 className="font-semibold text-gray-900 mb-3">المجتمع</h3>
+                <h3 className="font-semibold text-gray-900 mb-3">{ar ? "المجتمع" : "Community"}</h3>
                 <div className="flex justify-between text-sm py-1">
-                  <span className="text-gray-600">التقييمات</span>
+                  <span className="text-gray-600">{ar ? "التقييمات" : "Reviews"}</span>
                   <span className="font-medium">{stats.reviews.total}</span>
                 </div>
                 <div className="flex justify-between text-sm py-1">
-                  <span className="text-gray-600">متوسط التقييم</span>
+                  <span className="text-gray-600">{ar ? "متوسط التقييم" : "Avg. Rating"}</span>
                   <span className="font-medium">{stats.reviews.average_rating}★</span>
                 </div>
                 <div className="flex justify-between text-sm py-1">
-                  <span className="text-gray-600">الرسائل</span>
+                  <span className="text-gray-600">{ar ? "الرسائل" : "Messages"}</span>
                   <span className="font-medium">{stats.messages.total}</span>
                 </div>
               </div>
@@ -332,30 +315,19 @@ export default function AdminPage() {
         {tab === "users" && (
           <div className="space-y-4">
             <div className="flex gap-3 flex-wrap">
-              <input
-                type="text"
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="بحث عن مستخدم..."
+              <input type="text" value={userSearch} onChange={(e) => setUserSearch(e.target.value)}
+                placeholder={ar ? "بحث عن مستخدم..." : "Search users..."}
                 className="flex-1 min-w-[200px] border border-gray-300 rounded-lg px-4 py-2 text-sm"
-                dir="rtl"
-                onKeyDown={(e) => e.key === "Enter" && fetchUsers()}
-              />
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
-                <option value="">كل الأدوار</option>
-                <option value="client">عميل</option>
-                <option value="freelancer">مستقل</option>
-                <option value="admin">مدير</option>
+                onKeyDown={(e) => e.key === "Enter" && fetchUsers()} />
+              <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="">{ar ? "كل الأدوار" : "All Roles"}</option>
+                <option value="client">{ar ? "عميل" : "Client"}</option>
+                <option value="freelancer">{ar ? "مستقل" : "Freelancer"}</option>
+                <option value="admin">{ar ? "مدير" : "Admin"}</option>
               </select>
-              <button
-                onClick={fetchUsers}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-              >
-                بحث
+              <button onClick={fetchUsers} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                {ar ? "بحث" : "Search"}
               </button>
             </div>
 
@@ -363,12 +335,12 @@ export default function AdminPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-right p-3 font-medium text-gray-600">المستخدم</th>
-                    <th className="text-right p-3 font-medium text-gray-600">الدور</th>
-                    <th className="text-right p-3 font-medium text-gray-600">الحالة</th>
-                    <th className="text-right p-3 font-medium text-gray-600">التقييم</th>
-                    <th className="text-right p-3 font-medium text-gray-600">تاريخ الانضمام</th>
-                    <th className="text-left p-3 font-medium text-gray-600">الإجراءات</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "المستخدم" : "User"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "الدور" : "Role"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "الحالة" : "Status"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "التقييم" : "Rating"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "تاريخ الانضمام" : "Joined"}</th>
+                    <th className="text-end p-3 font-medium text-gray-600">{ar ? "الإجراءات" : "Actions"}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -378,16 +350,14 @@ export default function AdminPage() {
                         <div className="font-medium text-gray-900">
                           {u.first_name} {u.last_name}
                           {u.is_superuser && (
-                            <span className="mr-1 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                              مدير
+                            <span className="ms-1 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                              {ar ? "مدير" : "Admin"}
                             </span>
                           )}
                         </div>
                         <div className="text-xs text-gray-500">{u.email}</div>
                       </td>
-                      <td className="p-3 text-gray-600">
-                        {ROLE_LABELS[u.primary_role] ?? u.primary_role}
-                      </td>
+                      <td className="p-3 text-gray-600">{ROLE_LABELS[u.primary_role] ?? u.primary_role}</td>
                       <td className="p-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
                           u.status === "active" ? "bg-green-50 text-green-700" :
@@ -397,40 +367,30 @@ export default function AdminPage() {
                           {USER_STATUS_LABELS[u.status] ?? u.status}
                         </span>
                       </td>
-                      <td className="p-3 text-gray-600">
-                        {u.avg_rating > 0 ? `${u.avg_rating}★` : "—"}
-                      </td>
+                      <td className="p-3 text-gray-600">{u.avg_rating > 0 ? `${u.avg_rating}★` : "—"}</td>
                       <td className="p-3 text-gray-500">
-                        {new Date(u.created_at).toLocaleDateString("ar-IQ", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
+                        {new Date(u.created_at).toLocaleDateString(dateLocale, {
+                          year: "numeric", month: "short", day: "numeric",
                         })}
                       </td>
                       <td className="p-3">
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 justify-end">
                           {u.status === "active" && !u.is_superuser && (
-                            <button
-                              onClick={() => handleStatusUpdate(u.id, "suspended")}
-                              className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100"
-                            >
-                              إيقاف
+                            <button onClick={() => handleStatusUpdate(u.id, "suspended")}
+                              className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100">
+                              {ar ? "إيقاف" : "Suspend"}
                             </button>
                           )}
                           {u.status === "suspended" && (
-                            <button
-                              onClick={() => handleStatusUpdate(u.id, "active")}
-                              className="px-2 py-1 text-xs bg-green-50 text-green-600 rounded hover:bg-green-100"
-                            >
-                              تفعيل
+                            <button onClick={() => handleStatusUpdate(u.id, "active")}
+                              className="px-2 py-1 text-xs bg-green-50 text-green-600 rounded hover:bg-green-100">
+                              {ar ? "تفعيل" : "Activate"}
                             </button>
                           )}
                           {!u.is_superuser && (
-                            <button
-                              onClick={() => handleToggleAdmin(u.id)}
-                              className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
-                            >
-                              صلاحية مدير
+                            <button onClick={() => handleToggleAdmin(u.id)}
+                              className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100">
+                              {ar ? "صلاحية مدير" : "Toggle Admin"}
                             </button>
                           )}
                         </div>
@@ -440,10 +400,14 @@ export default function AdminPage() {
                 </tbody>
               </table>
               {users.length === 0 && !loading && (
-                <div className="p-8 text-center text-gray-400">لا يوجد مستخدمون</div>
+                <div className="p-8 text-center text-gray-400">
+                  {ar ? "لا يوجد مستخدمون" : "No users found"}
+                </div>
               )}
             </div>
-            <p className="text-sm text-gray-500">{userTotal} مستخدم إجمالاً</p>
+            <p className="text-sm text-gray-500">
+              {ar ? `${userTotal} مستخدم إجمالاً` : `${userTotal} user(s) total`}
+            </p>
           </div>
         )}
 
@@ -451,32 +415,21 @@ export default function AdminPage() {
         {tab === "jobs" && (
           <div className="space-y-4">
             <div className="flex gap-3 flex-wrap">
-              <input
-                type="text"
-                value={jobSearch}
-                onChange={(e) => setJobSearch(e.target.value)}
-                placeholder="بحث عن وظيفة..."
+              <input type="text" value={jobSearch} onChange={(e) => setJobSearch(e.target.value)}
+                placeholder={ar ? "بحث عن وظيفة..." : "Search jobs..."}
                 className="flex-1 min-w-[200px] border border-gray-300 rounded-lg px-4 py-2 text-sm"
-                dir="rtl"
-                onKeyDown={(e) => e.key === "Enter" && fetchJobs()}
-              />
-              <select
-                value={jobStatusFilter}
-                onChange={(e) => setJobStatusFilter(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
-                <option value="">كل الحالات</option>
-                <option value="open">مفتوح</option>
-                <option value="in_progress">جارٍ</option>
-                <option value="completed">مكتمل</option>
-                <option value="closed">مغلق</option>
-                <option value="cancelled">ملغى</option>
+                onKeyDown={(e) => e.key === "Enter" && fetchJobs()} />
+              <select value={jobStatusFilter} onChange={(e) => setJobStatusFilter(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="">{ar ? "كل الحالات" : "All Statuses"}</option>
+                <option value="open">{ar ? "مفتوح" : "Open"}</option>
+                <option value="in_progress">{ar ? "جارٍ" : "In Progress"}</option>
+                <option value="completed">{ar ? "مكتمل" : "Completed"}</option>
+                <option value="closed">{ar ? "مغلق" : "Closed"}</option>
+                <option value="cancelled">{ar ? "ملغى" : "Cancelled"}</option>
               </select>
-              <button
-                onClick={fetchJobs}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-              >
-                بحث
+              <button onClick={fetchJobs} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                {ar ? "بحث" : "Search"}
               </button>
             </div>
 
@@ -484,30 +437,26 @@ export default function AdminPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-right p-3 font-medium text-gray-600">العنوان</th>
-                    <th className="text-right p-3 font-medium text-gray-600">النوع</th>
-                    <th className="text-right p-3 font-medium text-gray-600">الميزانية</th>
-                    <th className="text-right p-3 font-medium text-gray-600">الحالة</th>
-                    <th className="text-right p-3 font-medium text-gray-600">العروض</th>
-                    <th className="text-right p-3 font-medium text-gray-600">تاريخ النشر</th>
-                    <th className="text-left p-3 font-medium text-gray-600">إجراءات</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "العنوان" : "Title"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "النوع" : "Type"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "الميزانية" : "Budget"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "الحالة" : "Status"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "العروض" : "Proposals"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "تاريخ النشر" : "Posted"}</th>
+                    <th className="text-end p-3 font-medium text-gray-600">{ar ? "إجراءات" : "Actions"}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {jobs.map((j) => (
                     <tr key={j.id} className="hover:bg-gray-50">
-                      <td className="p-3 font-medium text-gray-900 max-w-xs truncate">
-                        {j.title}
-                      </td>
+                      <td className="p-3 font-medium text-gray-900 max-w-xs truncate">{j.title}</td>
                       <td className="p-3 text-gray-600">
-                        {j.job_type === "fixed" ? "ثابت" : "بالساعة"}
+                        {j.job_type === "fixed" ? (ar ? "ثابت" : "Fixed") : (ar ? "بالساعة" : "Hourly")}
                       </td>
                       <td className="p-3 text-gray-600 text-xs" dir="ltr">
                         {j.budget_min != null && j.budget_max != null
                           ? `$${j.budget_min}–$${j.budget_max}`
-                          : j.budget_min != null
-                          ? `from $${j.budget_min}`
-                          : "—"}
+                          : j.budget_min != null ? `from $${j.budget_min}` : "—"}
                       </td>
                       <td className="p-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -521,38 +470,38 @@ export default function AdminPage() {
                       </td>
                       <td className="p-3 text-gray-600">{j.proposal_count}</td>
                       <td className="p-3 text-gray-500">
-                        {new Date(j.created_at).toLocaleDateString("ar-IQ", {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        {new Date(j.created_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric" })}
                       </td>
                       <td className="p-3">
-                        {j.status === "open" && (
-                          <button
-                            onClick={async () => {
-                              try {
-                                await adminApi.updateJobStatus(j.id, { status: "closed" });
-                                toast.success("تم إغلاق الوظيفة");
-                                fetchJobs();
-                              } catch {
-                                toast.error("تعذّر إغلاق الوظيفة");
-                              }
-                            }}
-                            className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100"
-                          >
-                            إغلاق
-                          </button>
-                        )}
+                        <div className="flex justify-end">
+                          {j.status === "open" && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await adminApi.updateJobStatus(j.id, { status: "closed" });
+                                  toast.success(ar ? "تم إغلاق الوظيفة" : "Job closed");
+                                  fetchJobs();
+                                } catch {
+                                  toast.error(ar ? "تعذّر إغلاق الوظيفة" : "Failed to close job");
+                                }
+                              }}
+                              className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100">
+                              {ar ? "إغلاق" : "Close"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {jobs.length === 0 && !loading && (
-                <div className="p-8 text-center text-gray-400">لا توجد وظائف</div>
+                <div className="p-8 text-center text-gray-400">{ar ? "لا توجد وظائف" : "No jobs found"}</div>
               )}
             </div>
-            <p className="text-sm text-gray-500">{jobTotal} وظيفة إجمالاً</p>
+            <p className="text-sm text-gray-500">
+              {ar ? `${jobTotal} وظيفة إجمالاً` : `${jobTotal} job(s) total`}
+            </p>
           </div>
         )}
 
@@ -560,35 +509,26 @@ export default function AdminPage() {
         {tab === "transactions" && (
           <div className="space-y-4">
             <div className="flex gap-3 flex-wrap">
-              <select
-                value={txTypeFilter}
-                onChange={(e) => setTxTypeFilter(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
-                <option value="">كل الأنواع</option>
-                <option value="escrow_fund">تمويل ضمان</option>
-                <option value="escrow_release">تحرير ضمان</option>
-                <option value="escrow_refund">استرداد ضمان</option>
-                <option value="platform_fee">عمولة المنصة</option>
-                <option value="payout">سحب</option>
+              <select value={txTypeFilter} onChange={(e) => setTxTypeFilter(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="">{ar ? "كل الأنواع" : "All Types"}</option>
+                <option value="escrow_fund">{ar ? "تمويل ضمان" : "Escrow Fund"}</option>
+                <option value="escrow_release">{ar ? "تحرير ضمان" : "Escrow Release"}</option>
+                <option value="escrow_refund">{ar ? "استرداد ضمان" : "Escrow Refund"}</option>
+                <option value="platform_fee">{ar ? "عمولة المنصة" : "Platform Fee"}</option>
+                <option value="payout">{ar ? "سحب" : "Payout"}</option>
               </select>
-              <select
-                value={txStatusFilter}
-                onChange={(e) => setTxStatusFilter(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
-                <option value="">كل الحالات</option>
-                <option value="pending">معلق</option>
-                <option value="processing">جارٍ</option>
-                <option value="completed">مكتمل</option>
-                <option value="failed">فشل</option>
-                <option value="refunded">مسترد</option>
+              <select value={txStatusFilter} onChange={(e) => setTxStatusFilter(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="">{ar ? "كل الحالات" : "All Statuses"}</option>
+                <option value="pending">{ar ? "معلق" : "Pending"}</option>
+                <option value="processing">{ar ? "جارٍ" : "Processing"}</option>
+                <option value="completed">{ar ? "مكتمل" : "Completed"}</option>
+                <option value="failed">{ar ? "فشل" : "Failed"}</option>
+                <option value="refunded">{ar ? "مسترد" : "Refunded"}</option>
               </select>
-              <button
-                onClick={fetchTransactions}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-              >
-                تصفية
+              <button onClick={fetchTransactions} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                {ar ? "تصفية" : "Filter"}
               </button>
             </div>
 
@@ -596,30 +536,22 @@ export default function AdminPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-right p-3 font-medium text-gray-600">النوع</th>
-                    <th className="text-right p-3 font-medium text-gray-600">المبلغ</th>
-                    <th className="text-right p-3 font-medium text-gray-600">العمولة</th>
-                    <th className="text-right p-3 font-medium text-gray-600">الصافي</th>
-                    <th className="text-right p-3 font-medium text-gray-600">الحالة</th>
-                    <th className="text-right p-3 font-medium text-gray-600">الوصف</th>
-                    <th className="text-right p-3 font-medium text-gray-600">التاريخ</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "النوع" : "Type"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "المبلغ" : "Amount"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "العمولة" : "Fee"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "الصافي" : "Net"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "الحالة" : "Status"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "الوصف" : "Description"}</th>
+                    <th className="text-start p-3 font-medium text-gray-600">{ar ? "التاريخ" : "Date"}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {transactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-gray-50">
-                      <td className="p-3 text-gray-900">
-                        {TX_TYPE_LABELS[tx.transaction_type] ?? tx.transaction_type}
-                      </td>
-                      <td className="p-3 font-medium" dir="ltr">
-                        {tx.amount.toLocaleString()} {tx.currency}
-                      </td>
-                      <td className="p-3 text-gray-500" dir="ltr">
-                        {tx.platform_fee.toLocaleString()}
-                      </td>
-                      <td className="p-3 text-green-700 font-medium" dir="ltr">
-                        {tx.net_amount.toLocaleString()}
-                      </td>
+                      <td className="p-3 text-gray-900">{TX_TYPE_LABELS[tx.transaction_type] ?? tx.transaction_type}</td>
+                      <td className="p-3 font-medium" dir="ltr">{tx.amount.toLocaleString()} {tx.currency}</td>
+                      <td className="p-3 text-gray-500" dir="ltr">{tx.platform_fee.toLocaleString()}</td>
+                      <td className="p-3 text-green-700 font-medium" dir="ltr">{tx.net_amount.toLocaleString()}</td>
                       <td className="p-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
                           tx.status === "completed" ? "bg-green-50 text-green-700" :
@@ -630,30 +562,27 @@ export default function AdminPage() {
                           {TX_STATUS_LABELS[tx.status] ?? tx.status}
                         </span>
                       </td>
-                      <td className="p-3 text-gray-500 max-w-xs truncate">
-                        {tx.description || "—"}
-                      </td>
+                      <td className="p-3 text-gray-500 max-w-xs truncate">{tx.description || "—"}</td>
                       <td className="p-3 text-gray-500">
-                        {new Date(tx.created_at).toLocaleDateString("ar-IQ", {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        {new Date(tx.created_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric" })}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {transactions.length === 0 && !loading && (
-                <div className="p-8 text-center text-gray-400">لا توجد معاملات</div>
+                <div className="p-8 text-center text-gray-400">{ar ? "لا توجد معاملات" : "No transactions found"}</div>
               )}
             </div>
-            <p className="text-sm text-gray-500">{txTotal} معاملة إجمالاً</p>
+            <p className="text-sm text-gray-500">
+              {ar ? `${txTotal} معاملة إجمالاً` : `${txTotal} transaction(s) total`}
+            </p>
           </div>
         )}
 
         {loading && (
           <div className="flex items-center justify-center py-12">
-            <div className="text-gray-400">جاري التحميل...</div>
+            <div className="text-gray-400">{ar ? "جاري التحميل..." : "Loading..."}</div>
           </div>
         )}
       </div>
@@ -661,23 +590,13 @@ export default function AdminPage() {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  icon,
-  isText = false,
-}: {
-  label: string;
-  value: number | string;
-  icon: string;
-  isText?: boolean;
+function StatCard({ label, value, icon, isText = false }: {
+  label: string; value: number | string; icon: string; isText?: boolean;
 }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4">
       <span className="text-2xl">{icon}</span>
-      <div className={`mt-2 ${isText ? "text-lg" : "text-2xl"} font-bold text-gray-900`}>
-        {value}
-      </div>
+      <div className={`mt-2 ${isText ? "text-lg" : "text-2xl"} font-bold text-gray-900`}>{value}</div>
       <div className="text-sm text-gray-500 mt-0.5">{label}</div>
     </div>
   );

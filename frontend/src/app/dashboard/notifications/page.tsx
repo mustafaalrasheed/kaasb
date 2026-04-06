@@ -2,11 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { notificationsApi } from "@/lib/api";
+import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
 import type { NotificationDetail } from "@/types/notification";
 import { NOTIFICATION_ICONS } from "@/types/notification";
 
 export default function NotificationsPage() {
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+
   const [notifications, setNotifications] = useState<NotificationDetail[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [total, setTotal] = useState(0);
@@ -18,31 +22,27 @@ export default function NotificationsPage() {
     try {
       setLoading(true);
       const res = await notificationsApi.getNotifications({
-        unread_only: filter === "unread",
-        page,
-        page_size: 20,
+        unread_only: filter === "unread", page, page_size: 20,
       });
       setNotifications(res.data.notifications);
       setUnreadCount(res.data.unread_count);
       setTotal(res.data.total);
     } catch {
-      toast.error("تعذّر تحميل الإشعارات");
+      toast.error(ar ? "تعذّر تحميل الإشعارات" : "Failed to load notifications");
     } finally {
       setLoading(false);
     }
-  }, [page, filter]);
+  }, [page, filter, ar]);
 
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
+  useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
   const handleMarkAllRead = async () => {
     try {
       await notificationsApi.markAllRead();
-      toast.success("تم تحديد جميع الإشعارات كمقروءة");
+      toast.success(ar ? "تم تحديد جميع الإشعارات كمقروءة" : "All notifications marked as read");
       fetchNotifications();
     } catch {
-      toast.error("تعذّر تحديث الإشعارات");
+      toast.error(ar ? "تعذّر تحديث الإشعارات" : "Failed to update notifications");
     }
   };
 
@@ -50,9 +50,7 @@ export default function NotificationsPage() {
     try {
       await notificationsApi.markRead({ notification_ids: [id] });
       fetchNotifications();
-    } catch {
-      // Silent fail
-    }
+    } catch { /* silent */ }
   };
 
   const getLink = (n: NotificationDetail): string | null => {
@@ -67,36 +65,34 @@ export default function NotificationsPage() {
   };
 
   const totalPages = Math.ceil(total / 20);
+  const dateLocale = ar ? "ar-IQ" : "en-GB";
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-4" dir="rtl">
-      <div className="flex items-center justify-between">
+    <div className="max-w-3xl mx-auto space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">الإشعارات</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {ar ? "الإشعارات" : "Notifications"}
+          </h1>
           {unreadCount > 0 && (
             <p className="text-sm text-gray-500 mt-1">
-              {unreadCount} غير مقروء
+              {ar ? `${unreadCount} غير مقروء` : `${unreadCount} unread`}
             </p>
           )}
         </div>
         <div className="flex gap-2">
           <select
             value={filter}
-            onChange={(e) => {
-              setFilter(e.target.value as "all" | "unread");
-              setPage(1);
-            }}
+            onChange={(e) => { setFilter(e.target.value as "all" | "unread"); setPage(1); }}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
           >
-            <option value="all">الكل</option>
-            <option value="unread">غير المقروءة</option>
+            <option value="all">{ar ? "الكل" : "All"}</option>
+            <option value="unread">{ar ? "غير المقروءة" : "Unread"}</option>
           </select>
           {unreadCount > 0 && (
-            <button
-              onClick={handleMarkAllRead}
-              className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              تحديد الكل كمقروء
+            <button onClick={handleMarkAllRead}
+              className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+              {ar ? "تحديد الكل كمقروء" : "Mark all read"}
             </button>
           )}
         </div>
@@ -104,13 +100,13 @@ export default function NotificationsPage() {
 
       {loading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />
-          ))}
+          {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />)}
         </div>
       ) : notifications.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
-          {filter === "unread" ? "لا توجد إشعارات غير مقروءة" : "لا توجد إشعارات بعد"}
+          {filter === "unread"
+            ? (ar ? "لا توجد إشعارات غير مقروءة" : "No unread notifications")
+            : (ar ? "لا توجد إشعارات بعد" : "No notifications yet")}
         </div>
       ) : (
         <div className="space-y-2">
@@ -123,38 +119,25 @@ export default function NotificationsPage() {
                 {...(link ? { href: link } : {})}
                 onClick={() => !n.is_read && handleMarkRead(n.id)}
                 className={`block p-4 rounded-lg border transition cursor-pointer ${
-                  n.is_read
-                    ? "bg-white border-gray-100"
-                    : "bg-blue-50 border-blue-200 hover:bg-blue-100"
+                  n.is_read ? "bg-white border-gray-100" : "bg-blue-50 border-blue-200 hover:bg-blue-100"
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <span className="text-xl shrink-0">
-                    {NOTIFICATION_ICONS[n.type] || "🔔"}
-                  </span>
+                  <span className="text-xl shrink-0">{NOTIFICATION_ICONS[n.type] || "🔔"}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`text-sm font-medium truncate ${
-                          n.is_read ? "text-gray-700" : "text-gray-900"
-                        }`}
-                      >
+                      <span className={`text-sm font-medium truncate ${n.is_read ? "text-gray-700" : "text-gray-900"}`}>
                         {n.title}
                       </span>
                       <span className="text-xs text-gray-400 shrink-0">
-                        {new Date(n.created_at).toLocaleDateString("ar-IQ", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
+                        {new Date(n.created_at).toLocaleDateString(dateLocale, {
+                          month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
                         })}
                       </span>
                     </div>
                     <p className="text-sm text-gray-500 mt-0.5">{n.message}</p>
                   </div>
-                  {!n.is_read && (
-                    <span className="w-2 h-2 bg-blue-500 rounded-full mt-2 shrink-0" />
-                  )}
+                  {!n.is_read && <span className="w-2 h-2 bg-blue-500 rounded-full mt-2 shrink-0" />}
                 </div>
               </Wrapper>
             );
@@ -164,22 +147,14 @@ export default function NotificationsPage() {
 
       {total > 20 && (
         <div className="flex items-center justify-center gap-2 pt-4">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
-          >
-            السابق
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50">
+            {ar ? "السابق" : "Previous"}
           </button>
-          <span className="text-sm text-gray-600">
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => p + 1)}
-            disabled={page >= totalPages}
-            className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
-          >
-            التالي
+          <span className="text-sm text-gray-600">{page} / {totalPages}</span>
+          <button onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages}
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50">
+            {ar ? "التالي" : "Next"}
           </button>
         </div>
       )}

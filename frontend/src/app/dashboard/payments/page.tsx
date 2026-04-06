@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { paymentsApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
+import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
 import { getApiError } from "@/lib/utils";
 import type { PaymentSummary, TransactionDetail } from "@/types/payment";
@@ -12,12 +13,6 @@ import {
   PROVIDER_LABELS,
 } from "@/types/payment";
 
-const ACCOUNT_STATUS_LABELS: Record<string, string> = {
-  verified: "موثَّق",
-  pending: "قيد المراجعة",
-  rejected: "مرفوض",
-};
-
 const TX_SIGN: Record<string, string> = {
   escrow_fund: "-",
   platform_fee: "-",
@@ -25,6 +20,9 @@ const TX_SIGN: Record<string, string> = {
 
 export default function PaymentsPage() {
   const { user } = useAuthStore();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
   const [transactions, setTransactions] = useState<TransactionDetail[]>([]);
   const [totalTx, setTotalTx] = useState(0);
@@ -38,6 +36,10 @@ export default function PaymentsPage() {
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutAccountId, setPayoutAccountId] = useState("");
 
+  const ACCOUNT_STATUS_LABELS: Record<string, string> = ar
+    ? { verified: "موثَّق", pending: "قيد المراجعة", rejected: "مرفوض" }
+    : { verified: "Verified", pending: "Pending Review", rejected: "Rejected" };
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -49,15 +51,13 @@ export default function PaymentsPage() {
       setTransactions(txRes.data.transactions);
       setTotalTx(txRes.data.total);
     } catch {
-      toast.error("تعذّر تحميل بيانات المدفوعات");
+      toast.error(ar ? "تعذّر تحميل بيانات المدفوعات" : "Failed to load payment data");
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, ar]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleSetupAccount = async () => {
     try {
@@ -65,36 +65,33 @@ export default function PaymentsPage() {
         provider: "qi_card",
         ...(qiCardPhone ? { qi_card_phone: qiCardPhone } : {}),
       });
-      toast.success("تم إنشاء حساب Qi Card");
+      toast.success(ar ? "تم إنشاء حساب Qi Card" : "Qi Card account created");
       setShowSetup(false);
       setQiCardPhone("");
       fetchData();
     } catch (err: unknown) {
-      toast.error(getApiError(err, "تعذّر إنشاء الحساب"));
+      toast.error(getApiError(err, ar ? "تعذّر إنشاء الحساب" : "Failed to create account"));
     }
   };
 
   const handlePayout = async () => {
     const amount = parseFloat(payoutAmount);
     if (isNaN(amount) || amount < 10) {
-      toast.error("الحد الأدنى للسحب هو $10");
+      toast.error(ar ? "الحد الأدنى للسحب هو $10" : "Minimum withdrawal is $10");
       return;
     }
     if (!payoutAccountId) {
-      toast.error("اختر حساب الدفع");
+      toast.error(ar ? "اختر حساب الدفع" : "Select a payment account");
       return;
     }
     try {
-      const res = await paymentsApi.requestPayout({
-        amount,
-        payment_account_id: payoutAccountId,
-      });
+      const res = await paymentsApi.requestPayout({ amount, payment_account_id: payoutAccountId });
       toast.success(res.data.message);
       setShowPayout(false);
       setPayoutAmount("");
       fetchData();
     } catch (err: unknown) {
-      toast.error(getApiError(err, "تعذّر طلب السحب"));
+      toast.error(getApiError(err, ar ? "تعذّر طلب السحب" : "Failed to request payout"));
     }
   };
 
@@ -104,9 +101,7 @@ export default function PaymentsPage() {
         <div className="animate-pulse space-y-4">
           <div className="h-8 w-48 bg-gray-200 rounded" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-24 bg-gray-100 rounded-lg" />
-            ))}
+            {[1, 2, 3, 4].map((i) => <div key={i} className="h-24 bg-gray-100 rounded-lg" />)}
           </div>
         </div>
       </div>
@@ -115,24 +110,27 @@ export default function PaymentsPage() {
 
   const isFreelancer = user?.primary_role === "freelancer";
   const totalPages = Math.ceil(totalTx / 10);
+  const dateLocale = ar ? "ar-IQ" : "en-GB";
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6" dir="rtl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">المدفوعات</h1>
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-2xl font-bold text-gray-900">
+          {ar ? "المدفوعات" : "Payments"}
+        </h1>
         <div className="flex gap-2">
           <button
             onClick={() => setShowSetup(!showSetup)}
             className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
-            + إضافة حساب
+            {ar ? "+ إضافة حساب" : "+ Add Account"}
           </button>
           {isFreelancer && (
             <button
               onClick={() => setShowPayout(!showPayout)}
               className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
             >
-              طلب سحب
+              {ar ? "طلب سحب" : "Request Payout"}
             </button>
           )}
         </div>
@@ -143,17 +141,17 @@ export default function PaymentsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {isFreelancer ? (
             <>
-              <SummaryCard label="إجمالي الأرباح" value={summary.total_earned} color="green" />
-              <SummaryCard label="محتجز في الضمان" value={summary.pending_escrow} color="blue" />
-              <SummaryCard label="عمولة المنصة" value={summary.total_platform_fees} color="yellow" />
-              <SummaryCard label="المعاملات" value={summary.transaction_count} isCurrency={false} color="gray" />
+              <SummaryCard label={ar ? "إجمالي الأرباح" : "Total Earned"} value={summary.total_earned} color="green" />
+              <SummaryCard label={ar ? "محتجز في الضمان" : "In Escrow"} value={summary.pending_escrow} color="blue" />
+              <SummaryCard label={ar ? "عمولة المنصة" : "Platform Fees"} value={summary.total_platform_fees} color="yellow" />
+              <SummaryCard label={ar ? "المعاملات" : "Transactions"} value={summary.transaction_count} isCurrency={false} color="gray" />
             </>
           ) : (
             <>
-              <SummaryCard label="إجمالي الإنفاق" value={summary.total_spent} color="red" />
-              <SummaryCard label="في الضمان" value={summary.pending_escrow} color="blue" />
-              <SummaryCard label="عمولة المنصة" value={summary.total_platform_fees} color="yellow" />
-              <SummaryCard label="المعاملات" value={summary.transaction_count} isCurrency={false} color="gray" />
+              <SummaryCard label={ar ? "إجمالي الإنفاق" : "Total Spent"} value={summary.total_spent} color="red" />
+              <SummaryCard label={ar ? "في الضمان" : "In Escrow"} value={summary.pending_escrow} color="blue" />
+              <SummaryCard label={ar ? "عمولة المنصة" : "Platform Fees"} value={summary.total_platform_fees} color="yellow" />
+              <SummaryCard label={ar ? "المعاملات" : "Transactions"} value={summary.transaction_count} isCurrency={false} color="gray" />
             </>
           )}
         </div>
@@ -162,10 +160,14 @@ export default function PaymentsPage() {
       {/* Setup Account Form */}
       {showSetup && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-          <h3 className="font-semibold text-gray-900">إضافة حساب Qi Card</h3>
+          <h3 className="font-semibold text-gray-900">
+            {ar ? "إضافة حساب Qi Card" : "Add Qi Card Account"}
+          </h3>
           <div className="flex gap-3 items-end">
             <div className="flex-1">
-              <label className="block text-sm text-gray-600 mb-1">رقم الهاتف (اختياري)</label>
+              <label className="block text-sm text-gray-600 mb-1">
+                {ar ? "رقم الهاتف (اختياري)" : "Phone Number (optional)"}
+              </label>
               <input
                 type="tel"
                 value={qiCardPhone}
@@ -179,7 +181,7 @@ export default function PaymentsPage() {
               onClick={handleSetupAccount}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
-              إنشاء الحساب
+              {ar ? "إنشاء الحساب" : "Create Account"}
             </button>
           </div>
         </div>
@@ -188,10 +190,14 @@ export default function PaymentsPage() {
       {/* Payout Form */}
       {showPayout && summary && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-          <h3 className="font-semibold text-gray-900">طلب سحب</h3>
+          <h3 className="font-semibold text-gray-900">
+            {ar ? "طلب سحب" : "Request Payout"}
+          </h3>
           <div className="flex gap-3 items-end flex-wrap">
             <div>
-              <label className="block text-sm text-gray-600 mb-1">المبلغ ($)</label>
+              <label className="block text-sm text-gray-600 mb-1">
+                {ar ? "المبلغ ($)" : "Amount ($)"}
+              </label>
               <input
                 type="number"
                 value={payoutAmount}
@@ -204,13 +210,15 @@ export default function PaymentsPage() {
               />
             </div>
             <div className="flex-1 min-w-[160px]">
-              <label className="block text-sm text-gray-600 mb-1">إلى الحساب</label>
+              <label className="block text-sm text-gray-600 mb-1">
+                {ar ? "إلى الحساب" : "To Account"}
+              </label>
               <select
                 value={payoutAccountId}
                 onChange={(e) => setPayoutAccountId(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               >
-                <option value="">اختر الحساب...</option>
+                <option value="">{ar ? "اختر الحساب..." : "Select account..."}</option>
                 {summary.payment_accounts.map((acc) => (
                   <option key={acc.id} value={acc.id}>
                     {PROVIDER_LABELS[acc.provider] || acc.provider}
@@ -223,7 +231,7 @@ export default function PaymentsPage() {
               onClick={handlePayout}
               className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
             >
-              تأكيد السحب
+              {ar ? "تأكيد السحب" : "Confirm Payout"}
             </button>
           </div>
         </div>
@@ -232,13 +240,12 @@ export default function PaymentsPage() {
       {/* Payment Accounts */}
       {summary && summary.payment_accounts.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <h3 className="font-semibold text-gray-900 mb-3">حسابات الدفع</h3>
+          <h3 className="font-semibold text-gray-900 mb-3">
+            {ar ? "حسابات الدفع" : "Payment Accounts"}
+          </h3>
           <div className="space-y-2">
             {summary.payment_accounts.map((acc) => (
-              <div
-                key={acc.id}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-              >
+              <div key={acc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <span className="text-lg">💳</span>
                   <div>
@@ -246,17 +253,13 @@ export default function PaymentsPage() {
                       {PROVIDER_LABELS[acc.provider] || acc.provider}
                     </span>
                     {acc.qi_card_phone && (
-                      <span className="text-sm text-gray-500 mr-2">{acc.qi_card_phone}</span>
+                      <span className="text-sm text-gray-500 ms-2">{acc.qi_card_phone}</span>
                     )}
                   </div>
                 </div>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    acc.status === "verified"
-                      ? "bg-green-50 text-green-700"
-                      : "bg-yellow-50 text-yellow-700"
-                  }`}
-                >
+                <span className={`text-xs px-2 py-1 rounded-full ${
+                  acc.status === "verified" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"
+                }`}>
                   {ACCOUNT_STATUS_LABELS[acc.status] || acc.status}
                 </span>
               </div>
@@ -269,11 +272,13 @@ export default function PaymentsPage() {
       <div className="bg-white border border-gray-200 rounded-lg">
         <div className="p-4 border-b border-gray-100">
           <h3 className="font-semibold text-gray-900">
-            سجل المعاملات ({totalTx})
+            {ar ? `سجل المعاملات (${totalTx})` : `Transaction History (${totalTx})`}
           </h3>
         </div>
         {transactions.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">لا توجد معاملات بعد</div>
+          <div className="p-8 text-center text-gray-500">
+            {ar ? "لا توجد معاملات بعد" : "No transactions yet"}
+          </div>
         ) : (
           <div className="divide-y divide-gray-100">
             {transactions.map((tx) => (
@@ -284,25 +289,17 @@ export default function PaymentsPage() {
                   </div>
                   <div className="text-sm text-gray-500">{tx.description || "—"}</div>
                   <div className="text-xs text-gray-400 mt-1">
-                    {new Date(tx.created_at).toLocaleDateString("ar-IQ", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
+                    {new Date(tx.created_at).toLocaleDateString(dateLocale, {
+                      month: "short", day: "numeric", year: "numeric",
+                      hour: "2-digit", minute: "2-digit",
                     })}
                   </div>
                 </div>
-                <div className="text-left">
+                <div className="text-end">
                   <div className="font-semibold text-gray-900">
-                    {TX_SIGN[tx.transaction_type] ?? "+"}
-                    ${tx.amount.toFixed(2)}
+                    {TX_SIGN[tx.transaction_type] ?? "+"}${tx.amount.toFixed(2)}
                   </div>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full ${
-                      TRANSACTION_STATUS_COLORS[tx.status] || "bg-gray-100"
-                    }`}
-                  >
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${TRANSACTION_STATUS_COLORS[tx.status] || "bg-gray-100"}`}>
                     {tx.status}
                   </span>
                 </div>
@@ -313,20 +310,14 @@ export default function PaymentsPage() {
 
         {totalTx > 10 && (
           <div className="p-4 border-t border-gray-100 flex items-center justify-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
-            >
-              السابق
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50">
+              {ar ? "السابق" : "Previous"}
             </button>
             <span className="text-sm text-gray-600">{page} / {totalPages}</span>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page >= totalPages}
-              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
-            >
-              التالي
+            <button onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages}
+              className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50">
+              {ar ? "التالي" : "Next"}
             </button>
           </div>
         )}
@@ -335,16 +326,8 @@ export default function PaymentsPage() {
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  color,
-  isCurrency = true,
-}: {
-  label: string;
-  value: number;
-  color: string;
-  isCurrency?: boolean;
+function SummaryCard({ label, value, color, isCurrency = true }: {
+  label: string; value: number; color: string; isCurrency?: boolean;
 }) {
   const colorMap: Record<string, string> = {
     green: "bg-green-50 border-green-200",
@@ -353,7 +336,6 @@ function SummaryCard({
     yellow: "bg-yellow-50 border-yellow-200",
     gray: "bg-gray-50 border-gray-200",
   };
-
   return (
     <div className={`p-4 rounded-lg border ${colorMap[color] || colorMap.gray}`}>
       <div className="text-sm text-gray-600">{label}</div>

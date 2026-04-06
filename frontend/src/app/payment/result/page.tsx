@@ -3,17 +3,19 @@
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
+import { useLocale } from "@/providers/locale-provider";
 
 type PaymentStatus = "success" | "failed" | "cancelled" | "unknown";
 
 export default function PaymentResultPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
 
   const status = (searchParams.get("status") ?? "unknown") as PaymentStatus;
   const orderId = searchParams.get("order") ?? "";
 
-  // Auto-redirect to dashboard after success
   useEffect(() => {
     if (status === "success") {
       const timer = setTimeout(() => router.push("/dashboard/payments"), 4000);
@@ -30,11 +32,11 @@ export default function PaymentResultPage() {
           </svg>
         </div>
       ),
-      titleEn: "Payment Successful",
-      titleAr: "تمت عملية الدفع بنجاح",
-      messageEn: "Your escrow payment was confirmed. Redirecting to your dashboard…",
-      messageAr: "تم تأكيد دفعة الضمان. جارٍ تحويلك إلى لوحة التحكم…",
-      color: "text-green-700",
+      title: ar ? "تمت عملية الدفع بنجاح" : "Payment Successful",
+      message: ar
+        ? "تم تأكيد دفعة الضمان. جارٍ تحويلك إلى لوحة التحكم…"
+        : "Your escrow payment was confirmed. Redirecting to your dashboard…",
+      color: ar ? "text-green-700" : "text-green-700",
     },
     failed: {
       icon: (
@@ -44,10 +46,10 @@ export default function PaymentResultPage() {
           </svg>
         </div>
       ),
-      titleEn: "Payment Failed",
-      titleAr: "فشلت عملية الدفع",
-      messageEn: "Your payment could not be processed. No funds were charged.",
-      messageAr: "تعذّر معالجة دفعتك. لم يتم خصم أي مبلغ.",
+      title: ar ? "فشلت عملية الدفع" : "Payment Failed",
+      message: ar
+        ? "تعذّر معالجة دفعتك. لم يتم خصم أي مبلغ."
+        : "Your payment could not be processed. No funds were charged.",
       color: "text-red-700",
     },
     cancelled: {
@@ -59,10 +61,10 @@ export default function PaymentResultPage() {
           </svg>
         </div>
       ),
-      titleEn: "Payment Cancelled",
-      titleAr: "تم إلغاء الدفع",
-      messageEn: "You cancelled the payment. No funds were charged.",
-      messageAr: "لقد ألغيت عملية الدفع. لم يتم خصم أي مبلغ.",
+      title: ar ? "تم إلغاء الدفع" : "Payment Cancelled",
+      message: ar
+        ? "لقد ألغيت عملية الدفع. لم يتم خصم أي مبلغ."
+        : "You cancelled the payment. No funds were charged.",
       color: "text-yellow-700",
     },
     unknown: {
@@ -74,10 +76,10 @@ export default function PaymentResultPage() {
           </svg>
         </div>
       ),
-      titleEn: "Unknown Status",
-      titleAr: "حالة غير معروفة",
-      messageEn: "We could not determine your payment status. Please check your dashboard.",
-      messageAr: "تعذّر تحديد حالة دفعتك. يرجى التحقق من لوحة التحكم.",
+      title: ar ? "حالة غير معروفة" : "Unknown Status",
+      message: ar
+        ? "تعذّر تحديد حالة دفعتك. يرجى التحقق من لوحة التحكم."
+        : "We could not determine your payment status. Please check your dashboard.",
       color: "text-gray-700",
     },
   };
@@ -89,38 +91,31 @@ export default function PaymentResultPage() {
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
         <div className="mb-6">{c.icon}</div>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">{c.titleEn}</h1>
-        <h2 className={`text-lg font-medium mb-4 ${c.color}`} dir="rtl">{c.titleAr}</h2>
-
-        <p className="text-gray-600 mb-1">{c.messageEn}</p>
-        <p className="text-gray-500 text-sm mb-6" dir="rtl">{c.messageAr}</p>
+        <h1 className={`text-2xl font-bold text-gray-900 mb-3 ${c.color}`}>{c.title}</h1>
+        <p className="text-gray-600 mb-6">{c.message}</p>
 
         {orderId && (
-          <p className="text-xs text-gray-400 mb-6 font-mono break-all">Order: {orderId}</p>
+          <p className="text-xs text-gray-400 mb-6 font-mono break-all">
+            {ar ? "رقم الطلب: " : "Order: "}{orderId}
+          </p>
         )}
 
         <div className="flex flex-col gap-3">
           {status === "success" && (
-            <Link
-              href="/dashboard/payments"
-              className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
-            >
-              الانتقال إلى المدفوعات
+            <Link href="/dashboard/payments"
+              className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors">
+              {ar ? "الانتقال إلى المدفوعات" : "Go to Payments"}
             </Link>
           )}
           {(status === "failed" || status === "cancelled" || status === "unknown") && (
             <>
-              <Link
-                href="/dashboard/payments"
-                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-              >
-                العودة إلى لوحة التحكم
+              <Link href="/dashboard/payments"
+                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+                {ar ? "العودة إلى لوحة التحكم" : "Go to Dashboard"}
               </Link>
-              <Link
-                href="/dashboard"
-                className="w-full py-2.5 px-4 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-              >
-                الصفحة الرئيسية
+              <Link href="/dashboard"
+                className="w-full py-2.5 px-4 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors">
+                {ar ? "الصفحة الرئيسية" : "Home"}
               </Link>
             </>
           )}

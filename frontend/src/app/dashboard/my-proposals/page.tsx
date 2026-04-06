@@ -3,30 +3,38 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { proposalsApi } from "@/lib/api";
+import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
 import { getApiError } from "@/lib/utils";
 import type { ProposalSummary } from "@/types/proposal";
 import { PROPOSAL_STATUS_LABELS, PROPOSAL_STATUS_COLORS } from "@/types/proposal";
 
-const STATUS_TABS = [
-  { value: "", label: "الكل" },
-  { value: "pending", label: "معلق" },
-  { value: "shortlisted", label: "قائمة مختصرة" },
-  { value: "accepted", label: "مقبول" },
-  { value: "rejected", label: "مرفوض" },
-  { value: "withdrawn", label: "مسحوب" },
-];
-
-function formatBudget(job: ProposalSummary["job"]): string {
-  if (job.job_type === "fixed" && job.fixed_price)
-    return `${job.fixed_price.toLocaleString("ar-IQ")} د.ع`;
-  if (job.budget_min && job.budget_max)
-    return `${job.budget_min.toLocaleString("ar-IQ")} - ${job.budget_max.toLocaleString("ar-IQ")} د.ع/س`;
-  if (job.budget_min) return `من ${job.budget_min.toLocaleString("ar-IQ")} د.ع/س`;
-  return "—";
-}
-
 export default function MyProposalsPage() {
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+
+  const STATUS_TABS = [
+    { value: "", label: ar ? "الكل" : "All" },
+    { value: "pending", label: ar ? "معلق" : "Pending" },
+    { value: "shortlisted", label: ar ? "قائمة مختصرة" : "Shortlisted" },
+    { value: "accepted", label: ar ? "مقبول" : "Accepted" },
+    { value: "rejected", label: ar ? "مرفوض" : "Rejected" },
+    { value: "withdrawn", label: ar ? "مسحوب" : "Withdrawn" },
+  ];
+
+  const formatBudget = (job: ProposalSummary["job"]): string => {
+    const numLocale = ar ? "ar-IQ" : "en-US";
+    const currency = ar ? "د.ع" : "IQD";
+    const perHour = ar ? "د.ع/س" : "IQD/hr";
+    const from = ar ? "من " : "from ";
+    if (job.job_type === "fixed" && job.fixed_price)
+      return `${job.fixed_price.toLocaleString(numLocale)} ${currency}`;
+    if (job.budget_min && job.budget_max)
+      return `${job.budget_min.toLocaleString(numLocale)} - ${job.budget_max.toLocaleString(numLocale)} ${perHour}`;
+    if (job.budget_min) return `${from}${job.budget_min.toLocaleString(numLocale)} ${perHour}`;
+    return "—";
+  };
+
   const [proposals, setProposals] = useState<ProposalSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -50,27 +58,35 @@ export default function MyProposalsPage() {
     }
   }, [statusFilter, page]);
 
-  useEffect(() => {
-    fetchProposals();
-  }, [fetchProposals]);
+  useEffect(() => { fetchProposals(); }, [fetchProposals]);
 
   const handleWithdraw = async (proposalId: string) => {
-    if (!confirm("هل تريد سحب هذا العرض؟ لن تتمكن من إعادة تقديمه.")) return;
+    const msg = ar
+      ? "هل تريد سحب هذا العرض؟ لن تتمكن من إعادة تقديمه."
+      : "Withdraw this proposal? You won't be able to resubmit it.";
+    if (!confirm(msg)) return;
     try {
       await proposalsApi.withdraw(proposalId);
-      toast.success("تم سحب العرض");
+      toast.success(ar ? "تم سحب العرض" : "Proposal withdrawn");
       fetchProposals();
     } catch (err: unknown) {
-      toast.error(getApiError(err, "تعذّر سحب العرض"));
+      toast.error(getApiError(err, ar ? "تعذّر سحب العرض" : "Failed to withdraw proposal"));
     }
   };
 
+  const dateLocale = ar ? "ar-IQ" : "en-GB";
+  const numLocale = ar ? "ar-IQ" : "en-US";
+
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">عروضي</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {ar ? "عروضي" : "My Proposals"}
+        </h1>
         <p className="mt-1 text-gray-600">
-          {total > 0 ? `${total} عرض مقدَّم` : "تتبع عروضك المقدمة"}
+          {total > 0
+            ? (ar ? `${total} عرض مقدَّم` : `${total} proposal${total !== 1 ? "s" : ""} submitted`)
+            : (ar ? "تتبع عروضك المقدمة" : "Track your submitted proposals")}
         </p>
       </div>
 
@@ -91,17 +107,22 @@ export default function MyProposalsPage() {
         ))}
       </div>
 
-      {/* Proposals list */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500">جاري التحميل...</div>
+        <div className="text-center py-12 text-gray-500">
+          {ar ? "جاري التحميل..." : "Loading..."}
+        </div>
       ) : proposals.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-lg font-medium text-gray-900">لا توجد عروض</p>
+          <p className="text-lg font-medium text-gray-900">
+            {ar ? "لا توجد عروض" : "No proposals found"}
+          </p>
           <p className="mt-2 text-gray-600">
-            {statusFilter ? "لا توجد عروض بهذه الحالة." : "لم تقدم أي عروض بعد."}
+            {statusFilter
+              ? (ar ? "لا توجد عروض بهذه الحالة." : "No proposals with this status.")
+              : (ar ? "لم تقدم أي عروض بعد." : "You haven't submitted any proposals yet.")}
           </p>
           <Link href="/jobs" className="inline-block mt-4 btn-primary py-2 px-5 text-sm">
-            تصفح الوظائف
+            {ar ? "تصفح الوظائف" : "Browse Jobs"}
           </Link>
         </div>
       ) : (
@@ -110,11 +131,9 @@ export default function MyProposalsPage() {
             <div key={proposal.id} className="card p-5">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Link
-                      href={`/jobs/${proposal.job.id}`}
-                      className="font-semibold text-gray-900 hover:text-brand-600 truncate"
-                    >
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <Link href={`/jobs/${proposal.job.id}`}
+                      className="font-semibold text-gray-900 hover:text-brand-600 truncate">
                       {proposal.job.title}
                     </Link>
                     <span className={`shrink-0 px-2 py-0.5 text-xs font-medium rounded-full border ${PROPOSAL_STATUS_COLORS[proposal.status]}`}>
@@ -123,11 +142,23 @@ export default function MyProposalsPage() {
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                     <span>{proposal.job.category}</span>
-                    <span>ميزانية الوظيفة: {formatBudget(proposal.job)}</span>
-                    <span>عرضك: <span className="font-medium text-gray-900">{proposal.bid_amount.toLocaleString("ar-IQ")} د.ع</span></span>
-                    {proposal.estimated_duration && <span>المدة المقدَّرة: {proposal.estimated_duration}</span>}
                     <span>
-                      قُدِّم {new Date(proposal.submitted_at).toLocaleDateString("ar-IQ", {
+                      {ar ? "ميزانية الوظيفة:" : "Job budget:"} {formatBudget(proposal.job)}
+                    </span>
+                    <span>
+                      {ar ? "عرضك:" : "Your bid:"}{" "}
+                      <span className="font-medium text-gray-900">
+                        {proposal.bid_amount.toLocaleString(numLocale)} {ar ? "د.ع" : "IQD"}
+                      </span>
+                    </span>
+                    {proposal.estimated_duration && (
+                      <span>
+                        {ar ? "المدة المقدَّرة:" : "Est. duration:"} {proposal.estimated_duration}
+                      </span>
+                    )}
+                    <span>
+                      {ar ? "قُدِّم " : "Submitted "}
+                      {new Date(proposal.submitted_at).toLocaleDateString(dateLocale, {
                         month: "short", day: "numeric",
                       })}
                     </span>
@@ -136,14 +167,12 @@ export default function MyProposalsPage() {
 
                 <div className="flex gap-2 shrink-0">
                   <Link href={`/jobs/${proposal.job.id}`} className="btn-secondary py-1.5 px-3 text-xs">
-                    عرض الوظيفة
+                    {ar ? "عرض الوظيفة" : "View Job"}
                   </Link>
                   {(proposal.status === "pending" || proposal.status === "shortlisted") && (
-                    <button
-                      onClick={() => handleWithdraw(proposal.id)}
-                      className="text-xs text-danger-500 hover:text-danger-700 px-2"
-                    >
-                      سحب
+                    <button onClick={() => handleWithdraw(proposal.id)}
+                      className="text-xs text-danger-500 hover:text-danger-700 px-2">
+                      {ar ? "سحب" : "Withdraw"}
                     </button>
                   )}
                 </div>
@@ -153,23 +182,16 @@ export default function MyProposalsPage() {
         </div>
       )}
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
-          >
-            السابق
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+            className="btn-secondary py-2 px-4 text-sm disabled:opacity-40">
+            {ar ? "السابق" : "Previous"}
           </button>
           <span className="text-sm text-gray-600 px-4">{page} / {totalPages}</span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
-          >
-            التالي
+          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            className="btn-secondary py-2 px-4 text-sm disabled:opacity-40">
+            {ar ? "التالي" : "Next"}
           </button>
         </div>
       )}

@@ -6,10 +6,14 @@ import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
 import { getApiError } from "@/lib/utils";
 import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
+import { useLocale } from "@/providers/locale-provider";
 
 export default function RegisterClient() {
   const router = useRouter();
   const { register } = useAuthStore();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
@@ -24,21 +28,16 @@ export default function RegisterClient() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     const updated = { ...formData, [name]: value };
-
-    // Auto-suggest username from first + last name (no spaces, lowercase)
     if (name === "first_name" || name === "last_name") {
       const first = name === "first_name" ? value : formData.first_name;
-      const last = name === "last_name" ? value : formData.last_name;
+      const last  = name === "last_name"  ? value : formData.last_name;
       if (!formData.username || formData.username === autoUsername(formData.first_name, formData.last_name)) {
         updated.username = autoUsername(first, last);
       }
     }
-
-    // Strip spaces from username as user types
     if (name === "username") {
       updated.username = value.replace(/\s/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
     }
-
     setFormData(updated);
   };
 
@@ -50,24 +49,29 @@ export default function RegisterClient() {
     e.preventDefault();
     setError("");
     setIsLoading(true);
-
     try {
       await register(formData);
       router.push("/dashboard");
     } catch (err: unknown) {
-      setError(getApiError(err, "فشل إنشاء الحساب. تحقق من بياناتك وحاول مجدداً."));
+      setError(getApiError(err, ar
+        ? "فشل إنشاء الحساب. تحقق من بياناتك وحاول مجدداً."
+        : "Registration failed. Please check your details and try again."));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12" dir="rtl">
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="card p-8">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">أنشئ حسابك</h1>
-            <p className="mt-2 text-gray-600">انضم إلى كاسب وابدأ رحلتك المهنية</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {ar ? "أنشئ حسابك" : "Create your account"}
+            </h1>
+            <p className="mt-2 text-gray-600">
+              {ar ? "انضم إلى كاسب وابدأ رحلتك المهنية" : "Join Kaasb and start your professional journey"}
+            </p>
           </div>
 
           {error && (
@@ -78,16 +82,15 @@ export default function RegisterClient() {
 
           {/* Social login */}
           <div className="mb-6">
-            <SocialLoginButtons
-              role={formData.primary_role}
-              onSuccess={() => router.push("/dashboard")}
-            />
+            <SocialLoginButtons role={formData.primary_role} onSuccess={() => router.push("/dashboard")} />
             <div className="relative mt-5 mb-1">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-200" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="bg-white px-3 text-gray-400">أو سجّل بالبريد الإلكتروني</span>
+                <span className="bg-white px-3 text-gray-400">
+                  {ar ? "أو سجّل بالبريد الإلكتروني" : "Or register with email"}
+                </span>
               </div>
             </div>
           </div>
@@ -95,7 +98,7 @@ export default function RegisterClient() {
           {/* Role Selection */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              أريد:
+              {ar ? "أريد:" : "I want to:"}
             </label>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -108,7 +111,9 @@ export default function RegisterClient() {
                 }`}
               >
                 <div className="text-2xl mb-1">💼</div>
-                <div className="font-medium text-sm">العمل كمستقل</div>
+                <div className="font-medium text-sm">
+                  {ar ? "العمل كمستقل" : "Work as Freelancer"}
+                </div>
               </button>
               <button
                 type="button"
@@ -120,7 +125,9 @@ export default function RegisterClient() {
                 }`}
               >
                 <div className="text-2xl mb-1">🏢</div>
-                <div className="font-medium text-sm">توظيف مستقلين</div>
+                <div className="font-medium text-sm">
+                  {ar ? "توظيف مستقلين" : "Hire Freelancers"}
+                </div>
               </button>
             </div>
           </div>
@@ -129,102 +136,68 @@ export default function RegisterClient() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-1">
-                  الاسم الأول
+                  {ar ? "الاسم الأول" : "First name"}
                 </label>
-                <input
-                  id="first_name"
-                  name="first_name"
-                  type="text"
-                  value={formData.first_name}
-                  onChange={handleChange}
-                  className="input-field"
-                  required
-                />
+                <input id="first_name" name="first_name" type="text" value={formData.first_name}
+                  onChange={handleChange} className="input-field" required />
               </div>
               <div>
                 <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 mb-1">
-                  اسم العائلة
+                  {ar ? "اسم العائلة" : "Last name"}
                 </label>
-                <input
-                  id="last_name"
-                  name="last_name"
-                  type="text"
-                  value={formData.last_name}
-                  onChange={handleChange}
-                  className="input-field"
-                  required
-                />
+                <input id="last_name" name="last_name" type="text" value={formData.last_name}
+                  onChange={handleChange} className="input-field" required />
               </div>
             </div>
 
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
-                اسم المستخدم
+                {ar ? "اسم المستخدم" : "Username"}
               </label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                value={formData.username}
-                onChange={handleChange}
-                className="input-field"
-                placeholder="مثال: ali_hassan"
-                pattern="^[a-zA-Z0-9_-]+$"
-                minLength={3}
-                dir="ltr"
-                required
-              />
+              <input id="username" name="username" type="text" value={formData.username}
+                onChange={handleChange} className="input-field"
+                placeholder={ar ? "مثال: ali_hassan" : "e.g. ali_hassan"}
+                pattern="^[a-zA-Z0-9_-]+$" minLength={3} dir="ltr" required />
               <p className="mt-1 text-xs text-gray-500">
-                أحرف لاتينية وأرقام وشرطات فقط، بدون مسافات
+                {ar ? "أحرف لاتينية وأرقام وشرطات فقط، بدون مسافات"
+                     : "Latin letters, numbers and hyphens only — no spaces"}
               </p>
             </div>
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                البريد الإلكتروني
+                {ar ? "البريد الإلكتروني" : "Email address"}
               </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="input-field"
-                placeholder="you@example.com"
-                dir="ltr"
-                required
-              />
+              <input id="email" name="email" type="email" value={formData.email}
+                onChange={handleChange} className="input-field"
+                placeholder="you@example.com" dir="ltr" required />
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                كلمة المرور
+                {ar ? "كلمة المرور" : "Password"}
               </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                value={formData.password}
-                onChange={handleChange}
-                className="input-field"
-                placeholder="8 أحرف كحد أدنى"
-                minLength={8}
-                required
-              />
+              <input id="password" name="password" type="password" value={formData.password}
+                onChange={handleChange} className="input-field"
+                placeholder={ar ? "8 أحرف كحد أدنى" : "Min. 8 characters"}
+                minLength={8} required />
               <p className="mt-1 text-xs text-gray-500">
-                يجب أن تحتوي على حرف كبير ورقم وحرف خاص
+                {ar ? "يجب أن تحتوي على حرف كبير ورقم وحرف خاص"
+                     : "Must include an uppercase letter, number and special character"}
               </p>
             </div>
 
             <button type="submit" disabled={isLoading} className="btn-primary w-full py-3 mt-2">
-              {isLoading ? "جاري إنشاء الحساب..." : "إنشاء الحساب"}
+              {isLoading
+                ? (ar ? "جاري إنشاء الحساب..." : "Creating account...")
+                : (ar ? "إنشاء الحساب" : "Create account")}
             </button>
           </form>
 
           <p className="mt-6 text-center text-sm text-gray-600">
-            لديك حساب بالفعل؟{" "}
+            {ar ? "لديك حساب بالفعل؟" : "Already have an account?"}{" "}
             <Link href="/auth/login" className="text-brand-500 hover:text-brand-600 font-medium">
-              تسجيل الدخول
+              {ar ? "تسجيل الدخول" : "Sign in"}
             </Link>
           </p>
         </div>
