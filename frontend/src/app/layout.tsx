@@ -167,7 +167,7 @@ export default async function RootLayout({
           {/* Site Footer */}
           <footer className="bg-white border-t border-gray-200 mt-auto">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-6">
+              <div className={`flex flex-col gap-6 ${locale === "ar" ? "sm:flex-row-reverse" : "sm:flex-row"} justify-between items-start`}>
                 {/* Brand */}
                 <div>
                   <span className="text-lg font-bold text-brand-500">

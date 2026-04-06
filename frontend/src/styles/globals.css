@@ -2,13 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* === Kaasb Global Styles === */
+/* ============================================================
+   Kaasb Global Styles
+   ============================================================ */
 
 @layer base {
   :root {
     --brand-primary: #338bff;
-    --brand-dark: #1354e1;
-    --brand-light: #eef7ff;
+    --brand-dark:    #1354e1;
+    --brand-light:   #eef7ff;
   }
 
   body {
@@ -38,7 +40,7 @@
 
   .btn-danger {
     @apply bg-danger-500 text-white px-6 py-2.5 rounded-lg font-medium
-           hover:bg-danger-700 active:bg-red-800
+           hover:bg-danger-700
            transition-colors duration-150;
   }
 
@@ -54,92 +56,110 @@
   }
 }
 
-/* =====================================================================
-   RTL / Arabic Support
-   ===================================================================== */
+/* ============================================================
+   ARABIC / RTL SUPPORT
+   ============================================================
+   Strategy:
+   - html[dir="rtl"] selectors override physical Tailwind utilities
+   - Tailwind rtl: variant (prefix) is used in new code
+   - Arabic font activated by html.font-arabic or html[lang="ar"]
+   ============================================================ */
 
-/* Arabic font: activated via html class or lang attribute */
+/* ── Arabic font ─────────────────────────────────────────── */
 html.font-arabic body,
 html[lang="ar"] body {
   font-family: "Tajawal", system-ui, sans-serif;
-  /* Arabic characters need slightly more line-height */
-  line-height: 1.7;
+  line-height: 1.75;           /* Arabic glyphs need more breathing room */
+  letter-spacing: 0;           /* Arabic doesn't use letter-spacing */
 }
 
-/* ---- Directional icon flip ---- */
-[dir="rtl"] .rtl-flip,
-[dir="rtl"] .icon-directional {
+/* ── Base text direction ──────────────────────────────────── */
+html[dir="rtl"] body {
+  text-align: right;
+}
+
+/* ── Form inputs ──────────────────────────────────────────── */
+html[dir="rtl"] input,
+html[dir="rtl"] textarea,
+html[dir="rtl"] .input-field {
+  text-align: right;
+  direction: rtl;
+}
+
+html[dir="rtl"] input::placeholder,
+html[dir="rtl"] textarea::placeholder {
+  text-align: right;
+}
+
+html[dir="rtl"] select {
+  direction: rtl;
+  text-align: right;
+  /* Flip the dropdown arrow to the left side */
+  background-position: left 0.75rem center;
+  padding-right: 0.75rem;
+  padding-left: 2.5rem;
+}
+
+/* ── Tables ───────────────────────────────────────────────── */
+html[dir="rtl"] th,
+html[dir="rtl"] td {
+  text-align: right;
+}
+
+/* ── Tailwind text-start/text-end logical utilities ──────── */
+html[dir="rtl"] .text-start { text-align: right; }
+html[dir="ltr"] .text-start { text-align: left;  }
+html[dir="rtl"] .text-end   { text-align: left;  }
+html[dir="ltr"] .text-end   { text-align: right; }
+
+/* ── Logical border helpers ───────────────────────────────── */
+html[dir="rtl"] .border-s { border-right-width: 1px; border-left-width: 0; }
+html[dir="rtl"] .border-e { border-left-width: 1px;  border-right-width: 0; }
+html[dir="ltr"] .border-s { border-left-width: 1px;  border-right-width: 0; }
+html[dir="ltr"] .border-e { border-right-width: 1px; border-left-width: 0; }
+
+html[dir="rtl"] .border-s-0 { border-right-width: 0; }
+html[dir="ltr"] .border-s-0 { border-left-width: 0;  }
+
+/* ── Logical padding/margin helpers ───────────────────────── */
+html[dir="rtl"] .ps-3 { padding-right: 0.75rem; padding-left:  0; }
+html[dir="rtl"] .pe-3 { padding-left:  0.75rem; padding-right: 0; }
+html[dir="rtl"] .ps-4 { padding-right: 1rem;    padding-left:  0; }
+html[dir="rtl"] .pe-4 { padding-left:  1rem;    padding-right: 0; }
+html[dir="rtl"] .ms-2 { margin-right: 0.5rem;   margin-left:   0; }
+html[dir="rtl"] .me-2 { margin-left:  0.5rem;   margin-right:  0; }
+html[dir="rtl"] .ms-3 { margin-right: 0.75rem;  margin-left:   0; }
+html[dir="rtl"] .me-3 { margin-left:  0.75rem;  margin-right:  0; }
+html[dir="rtl"] .ms-4 { margin-right: 1rem;     margin-left:   0; }
+html[dir="rtl"] .me-4 { margin-left:  1rem;     margin-right:  0; }
+
+/* ── Directional icon flip ────────────────────────────────── */
+html[dir="rtl"] .rtl-flip,
+html[dir="rtl"] .icon-directional {
   transform: scaleX(-1);
 }
 
-/* ---- Logical text alignment ---- */
-/* Use these classes for text that should follow document direction */
-[dir="rtl"] .text-start { text-align: right; }
-[dir="ltr"] .text-start { text-align: left; }
-[dir="rtl"] .text-end   { text-align: left; }
-[dir="ltr"] .text-end   { text-align: right; }
-
-/* ---- Logical borders (when using border-s / border-e) ---- */
-[dir="rtl"] .border-s { border-right-width: 1px; border-left-width: 0; }
-[dir="rtl"] .border-e { border-left-width: 1px;  border-right-width: 0; }
-[dir="ltr"] .border-s { border-left-width: 1px;  border-right-width: 0; }
-[dir="ltr"] .border-e { border-right-width: 1px; border-left-width: 0; }
-
-/* ---- Smooth direction transition ---- */
-html { transition: direction 0.1s ease; }
-
-/* ---- RTL-aware form inputs ---- */
-[dir="rtl"] .input-field {
-  text-align: right;
-}
-
-/* ---- RTL-aware select dropdowns ---- */
-[dir="rtl"] select {
-  direction: rtl;
-  text-align: right;
-}
-
-/* ---- Fixes for Tailwind physical margin/padding in RTL ---- */
-/* Critical components only — use Tailwind logical classes (ms-/me-/ps-/pe-) for new code */
-
-/* Navbar: ensure full-width fixed bar works in both directions */
-[dir="rtl"] nav.fixed {
-  left: 0;
-  right: 0;
-}
-
-/* Toast notifications: position based on dir */
-[dir="rtl"] [data-sonner-toaster] {
-  --offset: 16px;
-}
-
-/* ---- Number formatting ---- */
-/* Arabic numerals display correctly; keep Latin digits for IQD amounts */
-[dir="rtl"] .latin-digits {
-  font-feature-settings: "tnum";
-  unicode-bidi: embed;
+/* ── Number display: keep IQD amounts in LTR ─────────────── */
+html[dir="rtl"] .latin-digits {
   direction: ltr;
   display: inline-block;
+  unicode-bidi: isolate;
 }
 
-/* ---- Table cells alignment in RTL ---- */
-[dir="rtl"] th,
-[dir="rtl"] td {
-  text-align: right;
+/* ── Smooth direction transition ──────────────────────────── */
+html {
+  transition: direction 0.15s ease;
 }
 
-/* ---- Placeholder text direction ---- */
-[dir="rtl"] input::placeholder,
-[dir="rtl"] textarea::placeholder {
-  text-align: right;
-}
+/* ── Toast position ───────────────────────────────────────── */
+/* Sonner positions: top-left in RTL (handled via JS in layout.tsx) */
 
-/* ---- Progress bar fill direction ---- */
-[dir="rtl"] .progress-bar {
-  transform-origin: right;
-}
-
-/* ---- Scrollbar: keep LTR for scrollbars (visual consistency) ---- */
-[dir="rtl"] * {
+/* ── Scrollbar (keep LTR for visual consistency) ─────────── */
+html[dir="rtl"] * {
   scrollbar-width: thin;
+}
+
+/* ── Fix: prevent input-field from overflowing card boundaries ── */
+.input-field {
+  min-width: 0;
 }
