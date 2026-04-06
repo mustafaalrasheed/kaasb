@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.contract import Contract, Milestone, MilestoneStatus
+from app.models.notification import NotificationType
 from app.models.payment import (
     Escrow,
     EscrowStatus,
@@ -45,7 +46,6 @@ from app.schemas.payment import (
     PayoutRequest,
     PayoutResponse,
 )
-from app.models.notification import NotificationType
 from app.services.base import BaseService
 from app.services.notification_service import notify
 from app.services.qi_card_client import QiCardClient, QiCardError, usd_to_iqd

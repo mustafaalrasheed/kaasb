@@ -5,7 +5,6 @@ Import all models here so Alembic can discover them.
 
 from app.models.base import BaseModel
 from app.models.contract import Contract, ContractStatus, Milestone, MilestoneStatus
-from app.models.phone_otp import PhoneOtp
 from app.models.gig import (
     Category,
     Gig,
@@ -29,6 +28,7 @@ from app.models.payment import (
     TransactionStatus,
     TransactionType,
 )
+from app.models.phone_otp import PhoneOtp
 from app.models.proposal import Proposal, ProposalStatus
 from app.models.refresh_token import RefreshToken
 from app.models.report import Report, ReportReason, ReportStatus, ReportType
