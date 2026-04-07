@@ -7,8 +7,9 @@ import { backendUrl, useDebouncedCallback } from "@/lib/utils";
 import type { JobSummary, JobListResponse } from "@/types/job";
 import { JOB_CATEGORIES, DURATION_LABELS, EXPERIENCE_LABELS } from "@/types/job";
 import { Breadcrumbs } from "@/components/seo/breadcrumbs";
+import { useLocale } from "@/providers/locale-provider";
 
-const SORT_OPTIONS = [
+const SORT_OPTIONS_AR = [
   { value: "newest", label: "الأحدث أولاً" },
   { value: "oldest", label: "الأقدم أولاً" },
   { value: "budget_high", label: "الميزانية: الأعلى أولاً" },
@@ -16,23 +17,44 @@ const SORT_OPTIONS = [
   { value: "most_proposals", label: "الأكثر عروضاً" },
 ];
 
-const JOB_TYPE_AR: Record<string, string> = {
-  fixed: "سعر ثابت",
-  hourly: "بالساعة",
+const SORT_OPTIONS_EN = [
+  { value: "newest", label: "Newest First" },
+  { value: "oldest", label: "Oldest First" },
+  { value: "budget_high", label: "Budget: High to Low" },
+  { value: "budget_low", label: "Budget: Low to High" },
+  { value: "most_proposals", label: "Most Proposals" },
+];
+
+const EXPERIENCE_LABELS_EN: Record<string, string> = {
+  entry: "Entry Level",
+  intermediate: "Intermediate",
+  expert: "Expert",
 };
 
-function formatBudget(job: JobSummary): string {
+const DURATION_LABELS_EN: Record<string, string> = {
+  "less_than_1_week": "< 1 Week",
+  "1_to_2_weeks": "1-2 Weeks",
+  "2_to_4_weeks": "2-4 Weeks",
+  "1_to_3_months": "1-3 Months",
+  "3_to_6_months": "3-6 Months",
+  "more_than_6_months": "6+ Months",
+};
+
+function formatBudget(job: JobSummary, ar: boolean): string {
   if (job.job_type === "fixed" && job.fixed_price) {
     return `$${job.fixed_price.toLocaleString()}`;
   }
   if (job.budget_min && job.budget_max) {
-    return `$${job.budget_min} - $${job.budget_max}/س`;
+    return `$${job.budget_min} - $${job.budget_max}/${ar ? "س" : "hr"}`;
   }
-  if (job.budget_min) return `من $${job.budget_min}/س`;
-  return "الميزانية غير محددة";
+  if (job.budget_min) return `${ar ? "من" : "From"} $${job.budget_min}/${ar ? "س" : "hr"}`;
+  return ar ? "الميزانية غير محددة" : "Budget not specified";
 }
 
 export default function JobsClient() {
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -44,6 +66,8 @@ export default function JobsClient() {
   const [experienceLevel, setExperienceLevel] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [page, setPage] = useState(1);
+
+  const sortOptions = ar ? SORT_OPTIONS_AR : SORT_OPTIONS_EN;
 
   const fetchJobs = useCallback(async () => {
     setIsLoading(true);
@@ -86,19 +110,25 @@ export default function JobsClient() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" dir="rtl">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Breadcrumbs */}
       <Breadcrumbs
-        items={[{ name: "الوظائف", href: "/jobs" }]}
+        items={[{ name: ar ? "الوظائف" : "Jobs", href: "/jobs" }]}
         className="mb-4"
       />
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">تصفّح الوظائف</h1>
+        <h1 className="text-3xl font-bold text-gray-900">
+          {ar ? "تصفّح الوظائف" : "Browse Jobs"}
+        </h1>
         <p className="mt-2 text-gray-600">
           {total > 0
-            ? `${total.toLocaleString("ar-IQ")} وظيفة متاحة`
-            : "ابحث عن فرصتك القادمة"}
+            ? ar
+              ? `${total.toLocaleString("ar-IQ")} وظيفة متاحة`
+              : `${total.toLocaleString()} jobs available`
+            : ar
+            ? "ابحث عن فرصتك القادمة"
+            : "Find your next opportunity"}
         </p>
       </div>
 
@@ -110,14 +140,14 @@ export default function JobsClient() {
               defaultValue={searchQuery}
               onChange={(e) => debouncedSearch(e.target.value)}
               className="input-field flex-1"
-              placeholder="ابحث بالعنوان أو الوصف أو المهارات..."
-              aria-label="البحث في الوظائف"
+              placeholder={ar ? "ابحث بالعنوان أو الوصف أو المهارات..." : "Search by title, description, or skills..."}
+              aria-label={ar ? "البحث في الوظائف" : "Search jobs"}
             />
             <button
               type="submit"
               className="btn-primary py-2.5 px-6 whitespace-nowrap"
             >
-              بحث
+              {ar ? "بحث" : "Search"}
             </button>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
@@ -128,9 +158,9 @@ export default function JobsClient() {
                 setPage(1);
               }}
               className="input-field sm:w-48"
-              aria-label="تصفية حسب التصنيف"
+              aria-label={ar ? "تصفية حسب التصنيف" : "Filter by category"}
             >
-              <option value="">كل التصنيفات</option>
+              <option value="">{ar ? "كل التصنيفات" : "All Categories"}</option>
               {JOB_CATEGORIES.map((cat) => (
                 <option key={cat} value={cat}>
                   {cat}
@@ -144,11 +174,11 @@ export default function JobsClient() {
                 setPage(1);
               }}
               className="input-field sm:w-36"
-              aria-label="تصفية حسب نوع الوظيفة"
+              aria-label={ar ? "تصفية حسب نوع الوظيفة" : "Filter by job type"}
             >
-              <option value="">كل الأنواع</option>
-              <option value="fixed">سعر ثابت</option>
-              <option value="hourly">بالساعة</option>
+              <option value="">{ar ? "كل الأنواع" : "All Types"}</option>
+              <option value="fixed">{ar ? "سعر ثابت" : "Fixed Price"}</option>
+              <option value="hourly">{ar ? "بالساعة" : "Hourly"}</option>
             </select>
             <select
               value={experienceLevel}
@@ -157,12 +187,12 @@ export default function JobsClient() {
                 setPage(1);
               }}
               className="input-field sm:w-40"
-              aria-label="تصفية حسب مستوى الخبرة"
+              aria-label={ar ? "تصفية حسب مستوى الخبرة" : "Filter by experience"}
             >
-              <option value="">كل المستويات</option>
-              <option value="entry">مبتدئ</option>
-              <option value="intermediate">متوسط</option>
-              <option value="expert">خبير</option>
+              <option value="">{ar ? "كل المستويات" : "All Levels"}</option>
+              <option value="entry">{ar ? "مبتدئ" : "Entry Level"}</option>
+              <option value="intermediate">{ar ? "متوسط" : "Intermediate"}</option>
+              <option value="expert">{ar ? "خبير" : "Expert"}</option>
             </select>
             <select
               value={sortBy}
@@ -171,9 +201,9 @@ export default function JobsClient() {
                 setPage(1);
               }}
               className="input-field sm:w-44"
-              aria-label="ترتيب الوظائف"
+              aria-label={ar ? "ترتيب الوظائف" : "Sort jobs"}
             >
-              {SORT_OPTIONS.map((opt) => (
+              {sortOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -186,27 +216,31 @@ export default function JobsClient() {
       {/* Results */}
       {isLoading ? (
         <div className="text-center py-12 text-gray-500">
-          جاري تحميل الوظائف...
+          {ar ? "جاري تحميل الوظائف..." : "Loading jobs..."}
         </div>
       ) : jobs.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-lg font-medium text-gray-900">لا توجد وظائف مطابقة</p>
+          <p className="text-lg font-medium text-gray-900">
+            {ar ? "لا توجد وظائف مطابقة" : "No matching jobs found"}
+          </p>
           <p className="mt-2 text-gray-600">
-            جرّب تعديل معايير البحث أو الفلاتر.
+            {ar
+              ? "جرّب تعديل معايير البحث أو الفلاتر."
+              : "Try adjusting your search criteria or filters."}
           </p>
         </div>
       ) : (
         <>
           <div className="space-y-4">
             {jobs.map((job) => (
-              <JobCard key={job.id} job={job} />
+              <JobCard key={job.id} job={job} ar={ar} />
             ))}
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
             <nav
-              aria-label="ترقيم صفحات الوظائف"
+              aria-label={ar ? "ترقيم صفحات الوظائف" : "Job pagination"}
               className="mt-8 flex items-center justify-center gap-2"
             >
               <button
@@ -214,17 +248,19 @@ export default function JobsClient() {
                 disabled={page === 1}
                 className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
               >
-                السابق
+                {ar ? "السابق" : "Previous"}
               </button>
               <span className="text-sm text-gray-600 px-4">
-                صفحة {page} من {totalPages}
+                {ar
+                  ? `صفحة ${page} من ${totalPages}`
+                  : `Page ${page} of ${totalPages}`}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
                 className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
               >
-                التالي
+                {ar ? "التالي" : "Next"}
               </button>
             </nav>
           )}
@@ -234,7 +270,7 @@ export default function JobsClient() {
   );
 }
 
-function JobCard({ job }: { job: JobSummary }) {
+function JobCard({ job, ar }: { job: JobSummary; ar: boolean }) {
   return (
     <Link
       href={`/jobs/${job.id}`}
@@ -248,7 +284,9 @@ function JobCard({ job }: { job: JobSummary }) {
                 {job.category}
               </span>
               <span className="text-xs text-gray-400">
-                {job.job_type === "fixed" ? "سعر ثابت" : "بالساعة"}
+                {job.job_type === "fixed"
+                  ? ar ? "سعر ثابت" : "Fixed Price"
+                  : ar ? "بالساعة" : "Hourly"}
               </span>
             </div>
             <h2 className="text-lg font-semibold text-gray-900">
@@ -256,14 +294,24 @@ function JobCard({ job }: { job: JobSummary }) {
             </h2>
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-500">
               <span className="font-medium text-gray-900">
-                {formatBudget(job)}
+                {formatBudget(job, ar)}
               </span>
               {job.experience_level && (
-                <span>{EXPERIENCE_LABELS[job.experience_level]}</span>
+                <span>
+                  {ar
+                    ? EXPERIENCE_LABELS[job.experience_level]
+                    : EXPERIENCE_LABELS_EN[job.experience_level] || job.experience_level}
+                </span>
               )}
-              {job.duration && <span>{DURATION_LABELS[job.duration]}</span>}
+              {job.duration && (
+                <span>
+                  {ar
+                    ? DURATION_LABELS[job.duration]
+                    : DURATION_LABELS_EN[job.duration] || job.duration}
+                </span>
+              )}
               <span>
-                {job.proposal_count} عرض
+                {job.proposal_count} {ar ? "عرض" : "proposals"}
               </span>
             </div>
           </div>
@@ -301,8 +349,8 @@ function JobCard({ job }: { job: JobSummary }) {
                   />
                 ) : (
                   <span className="text-[10px] font-bold text-brand-500">
-                    {job.client.first_name[0]}
-                    {job.client.last_name[0]}
+                    {job.client.first_name?.[0]}
+                    {job.client.last_name?.[0]}
                   </span>
                 )}
               </div>
@@ -315,7 +363,7 @@ function JobCard({ job }: { job: JobSummary }) {
           </div>
           <time dateTime={job.published_at || job.created_at}>
             {new Date(job.published_at || job.created_at).toLocaleDateString(
-              "ar-IQ",
+              ar ? "ar-IQ" : "en-US",
               { month: "short", day: "numeric" }
             )}
           </time>

@@ -63,7 +63,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   fetchUser: async () => {
     try {
       const response = await authApi.getMe();
-      set({ user: response.data.data, isAuthenticated: true });
+      set({ user: response.data, isAuthenticated: true });
     } catch {
       set({ user: null, isAuthenticated: false });
     }
@@ -73,7 +73,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       // Cookie is sent automatically — just check if we have a valid session
       const response = await authApi.getMe();
-      set({ user: response.data.data, isAuthenticated: true, isLoading: false });
+      set({ user: response.data, isAuthenticated: true, isLoading: false });
     } catch {
       set({ user: null, isAuthenticated: false, isLoading: false });
     }

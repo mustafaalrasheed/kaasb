@@ -7,9 +7,13 @@ import { useWebSocket } from "@/lib/use-websocket";
 import type { WsMessageData } from "@/lib/use-websocket";
 import { toast } from "sonner";
 import type { ConversationSummary, MessageDetail } from "@/types/message";
+import { useLocale } from "@/providers/locale-provider";
 
 export default function MessagesPage() {
   const { user } = useAuthStore();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConvo, setActiveConvo] = useState<ConversationSummary | null>(null);
   const [messages, setMessages] = useState<MessageDetail[]>([]);
@@ -27,20 +31,20 @@ export default function MessagesPage() {
       const res = await messagesApi.getConversations();
       setConversations(res.data.conversations);
     } catch {
-      toast.error("تعذّر تحميل المحادثات");
+      toast.error(ar ? "تعذّر تحميل المحادثات" : "Failed to load conversations");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [ar]);
 
   const fetchMessages = useCallback(async (convoId: string) => {
     try {
       const res = await messagesApi.getMessages(convoId);
       setMessages(res.data.messages.reverse()); // Show oldest first
     } catch {
-      toast.error("تعذّر تحميل الرسائل");
+      toast.error(ar ? "تعذّر تحميل الرسائل" : "Failed to load messages");
     }
-  }, []);
+  }, [ar]);
 
   useEffect(() => {
     fetchConversations();
@@ -49,8 +53,6 @@ export default function MessagesPage() {
   useEffect(() => {
     if (!activeConvo) return;
     fetchMessages(activeConvo.id);
-    // Fallback polling: catches messages from users on different Gunicorn workers
-    // (WebSocket push covers same-worker delivery instantly)
     const interval = setInterval(() => {
       if (!document.hidden && activeConvoRef.current) {
         fetchMessages(activeConvoRef.current.id);
@@ -68,7 +70,6 @@ export default function MessagesPage() {
   const handleWsMessage = useCallback((data: WsMessageData) => {
     const currentConvo = activeConvoRef.current;
 
-    // Append to active chat if the message belongs to it
     if (currentConvo && data.conversation_id === currentConvo.id) {
       const newMsg: MessageDetail = {
         id: data.id,
@@ -86,7 +87,6 @@ export default function MessagesPage() {
       setMessages((prev) => [...prev, newMsg]);
     }
 
-    // Always refresh conversation list to update last_message_text + unread badge
     fetchConversations();
   }, [fetchConversations]);
 
@@ -99,7 +99,6 @@ export default function MessagesPage() {
     const content = newMessage.trim();
     setNewMessage("");
 
-    // Optimistic append
     if (user) {
       const optimistic: MessageDetail = {
         id: `tmp-${Date.now()}`,
@@ -122,8 +121,7 @@ export default function MessagesPage() {
       await messagesApi.sendMessage(activeConvo.id, { content });
       fetchConversations();
     } catch {
-      toast.error("تعذّر إرسال الرسالة");
-      // Roll back optimistic message on error
+      toast.error(ar ? "تعذّر إرسال الرسالة" : "Failed to send message");
       setMessages((prev) => prev.filter((m) => !m.id.startsWith("tmp-")));
       setNewMessage(content);
     } finally {
@@ -140,7 +138,6 @@ export default function MessagesPage() {
 
   const selectConversation = (c: ConversationSummary) => {
     setActiveConvo(c);
-    // Clear unread badge locally immediately
     setConversations((prev) =>
       prev.map((conv) => (conv.id === c.id ? { ...conv, unread_count: 0 } : conv))
     );
@@ -149,22 +146,24 @@ export default function MessagesPage() {
   const timeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "الآن";
-    if (mins < 60) return `${mins}د`;
+    if (mins < 1) return ar ? "الآن" : "now";
+    if (mins < 60) return ar ? `${mins}د` : `${mins}m`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}س`;
-    return `${Math.floor(hrs / 24)}ي`;
+    if (hrs < 24) return ar ? `${hrs}س` : `${hrs}h`;
+    return ar ? `${Math.floor(hrs / 24)}ي` : `${Math.floor(hrs / 24)}d`;
   };
 
   const avatarLetters = (first: string, last: string) =>
-    `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase();
+    `${first?.[0] ?? ""}${last?.[0] ?? ""}`.toUpperCase();
 
   return (
-    <div className="flex h-[calc(100vh-80px)] bg-white" dir="rtl">
+    <div className="flex h-[calc(100vh-80px)] bg-white">
       {/* Sidebar: Conversation List */}
-      <div className="w-72 border-l border-gray-200 flex flex-col shrink-0">
+      <div className={`w-72 ${ar ? "border-l" : "border-r"} border-gray-200 flex flex-col shrink-0`}>
         <div className="p-4 border-b border-gray-100">
-          <h2 className="font-bold text-gray-900 text-base">الرسائل</h2>
+          <h2 className="font-bold text-gray-900 text-base">
+            {ar ? "الرسائل" : "Messages"}
+          </h2>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -182,15 +181,17 @@ export default function MessagesPage() {
             </div>
           ) : conversations.length === 0 ? (
             <div className="p-8 text-center text-gray-400 text-sm">
-              لا توجد محادثات بعد
+              {ar ? "لا توجد محادثات بعد" : "No conversations yet"}
             </div>
           ) : (
             conversations.map((c) => (
               <button
                 key={c.id}
                 onClick={() => selectConversation(c)}
-                className={`w-full p-3 text-right border-b border-gray-50 hover:bg-gray-50 transition-colors ${
-                  activeConvo?.id === c.id ? "bg-brand-50 border-r-2 border-r-brand-500" : ""
+                className={`w-full p-3 text-start border-b border-gray-50 hover:bg-gray-50 transition-colors ${
+                  activeConvo?.id === c.id
+                    ? `bg-brand-50 ${ar ? "border-r-2 border-r-brand-500" : "border-l-2 border-l-brand-500"}`
+                    : ""
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -207,13 +208,13 @@ export default function MessagesPage() {
                       </div>
                     )}
                     {c.unread_count > 0 && (
-                      <span className="absolute -top-0.5 -left-0.5 w-4 h-4 bg-brand-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                      <span className="absolute -top-0.5 -start-0.5 w-4 h-4 bg-brand-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                         {c.unread_count > 9 ? "9+" : c.unread_count}
                       </span>
                     )}
                   </div>
 
-                  <div className="flex-1 min-w-0 text-right">
+                  <div className="flex-1 min-w-0 text-start">
                     <div className="flex items-center justify-between gap-1">
                       <span className={`text-sm truncate ${c.unread_count > 0 ? "font-semibold text-gray-900" : "font-medium text-gray-700"}`}>
                         {c.other_user.first_name} {c.other_user.last_name}
@@ -225,7 +226,7 @@ export default function MessagesPage() {
                       )}
                     </div>
                     <p className={`text-xs truncate mt-0.5 ${c.unread_count > 0 ? "text-gray-700" : "text-gray-400"}`}>
-                      {c.last_message_text || "لا توجد رسائل"}
+                      {c.last_message_text || (ar ? "لا توجد رسائل" : "No messages")}
                     </p>
                     {c.job && (
                       <p className="text-[10px] text-brand-400 truncate mt-0.5">
@@ -262,7 +263,9 @@ export default function MessagesPage() {
                   {activeConvo.other_user.first_name} {activeConvo.other_user.last_name}
                 </div>
                 {activeConvo.job && (
-                  <div className="text-xs text-gray-400">بشأن: {activeConvo.job.title}</div>
+                  <div className="text-xs text-gray-400">
+                    {ar ? "بشأن:" : "Re:"} {activeConvo.job.title}
+                  </div>
                 )}
               </div>
             </div>
@@ -273,17 +276,17 @@ export default function MessagesPage() {
                 const isMe = msg.sender.id === user?.id;
                 const isOptimistic = msg.id.startsWith("tmp-");
                 return (
-                  <div key={msg.id} className={`flex ${isMe ? "justify-start" : "justify-end"}`}>
+                  <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                     <div
                       className={`max-w-[72%] rounded-2xl px-4 py-2.5 ${
                         isMe
-                          ? "bg-brand-500 text-white rounded-bl-sm"
-                          : "bg-white text-gray-900 border border-gray-200 rounded-br-sm"
+                          ? "bg-brand-500 text-white rounded-br-sm"
+                          : "bg-white text-gray-900 border border-gray-200 rounded-bl-sm"
                       } ${isOptimistic ? "opacity-70" : ""}`}
                     >
                       <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                      <p className={`text-[11px] mt-1 text-left ${isMe ? "text-brand-200" : "text-gray-400"}`}>
-                        {new Date(msg.created_at).toLocaleTimeString("ar-IQ", {
+                      <p className={`text-[11px] mt-1 ${isMe ? "text-brand-200" : "text-gray-400"}`}>
+                        {new Date(msg.created_at).toLocaleTimeString(ar ? "ar-IQ" : "en-US", {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
@@ -298,21 +301,11 @@ export default function MessagesPage() {
             {/* Input */}
             <div className="px-4 py-3 border-t border-gray-200 bg-white">
               <div className="flex gap-2 items-end">
-                <button
-                  onClick={handleSend}
-                  disabled={!newMessage.trim() || sending}
-                  className="shrink-0 w-10 h-10 flex items-center justify-center bg-brand-500 text-white rounded-xl hover:bg-brand-600 disabled:opacity-40 transition-colors"
-                  aria-label="إرسال"
-                >
-                  <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
                 <textarea
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="اكتب رسالتك..."
+                  placeholder={ar ? "اكتب رسالتك..." : "Type a message..."}
                   rows={1}
                   className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                   style={{ minHeight: "42px", maxHeight: "120px" }}
@@ -322,9 +315,19 @@ export default function MessagesPage() {
                     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
                   }}
                 />
+                <button
+                  onClick={handleSend}
+                  disabled={!newMessage.trim() || sending}
+                  className="shrink-0 w-10 h-10 flex items-center justify-center bg-brand-500 text-white rounded-xl hover:bg-brand-600 disabled:opacity-40 transition-colors"
+                  aria-label={ar ? "إرسال" : "Send"}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
               </div>
               <p className="text-[10px] text-gray-400 mt-1.5 text-center">
-                Enter للإرسال · Shift+Enter لسطر جديد
+                {ar ? "Enter للإرسال · Shift+Enter لسطر جديد" : "Enter to send · Shift+Enter for new line"}
               </p>
             </div>
           </>
@@ -334,7 +337,7 @@ export default function MessagesPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                 d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            <p className="text-sm">اختر محادثة للبدء</p>
+            <p className="text-sm">{ar ? "اختر محادثة للبدء" : "Select a conversation to start"}</p>
           </div>
         )}
       </div>
