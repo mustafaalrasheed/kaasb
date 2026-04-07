@@ -13,7 +13,7 @@ Target market: Iraq and MENA region. Arabic is primary language (RTL).
 | Frontend    | Next.js 15.1.0, React 19, TypeScript 5.7.2, Tailwind CSS 3.4.17         |
 | UI          | shadcn/ui components, Lucide React 0.468.0                               |
 | State       | Zustand 5.0.2, React Hook Form 7.54.2, Zod 3.24.1                       |
-| i18n        | next-intl 3.26.3 (Arabic primary, English secondary)                     |
+| i18n        | Cookie-based locale + LocaleProvider context (Arabic primary, English secondary) |
 | DB          | PostgreSQL 16, asyncpg 0.30.0, psycopg2-binary 2.9.10                   |
 | Cache       | Redis 7, redis[hiredis] 5.2.1                                            |
 | Auth        | python-jose 3.3.0, passlib[bcrypt] 1.7.4, bcrypt 4.2.1                  |
@@ -155,8 +155,9 @@ Root audit reports (already completed):
 ## Database Models (All Tables + Key Columns)
 
 ### `users`
-`id` UUID PK, `email` VARCHAR unique, `username` VARCHAR unique, `hashed_password`,
-`is_email_verified` BOOL, `first_name`, `last_name`, `display_name`, `avatar_url`,
+`id` UUID PK, `email` VARCHAR unique, `username` VARCHAR unique, `hashed_password` (nullable for social-only accounts),
+`is_email_verified` BOOL, `google_id` VARCHAR unique (nullable), `facebook_id` VARCHAR unique (nullable),
+`first_name`, `last_name`, `display_name`, `avatar_url`,
 `bio` TEXT, `country`, `city`, `timezone`, `phone`,
 `primary_role` ENUM(client/freelancer/admin), `status` ENUM(active/suspended/deactivated/pending_verification),
 `is_superuser` BOOL, `title`, `hourly_rate`, `skills` ARRAY(VARCHAR), `experience_level`,
@@ -409,7 +410,7 @@ alembic upgrade head
 alembic check
 ```
 
-### Migration Chain (14 migrations, linear)
+### Migration Chain (15 migrations, linear)
 ```
 25c8a4c398f9  initial
 1f80b6c6f2e9  initialclear
@@ -425,6 +426,7 @@ a1b2c3d4e5f6  gig_marketplace          ← gigs, packages, orders, categories
 b2c3d4e5f6a7  qi_card_only_payments    ← removes Stripe/Wise from DB schema
 c3d4e5f6a7b8  phone_otp_table          ← phone_otps for OTP-based login (CP2)
 d4e5f6a7b8c9  schema_drift_fix         ← unique slug indexes, missing id/user indexes, funded_at nullable
+e5f6a7b8c9d0  social_ids_nullable_password_iqd ← google_id/facebook_id on users, nullable hashed_password, currency→IQD
 ```
 
 ### Migration Conventions
@@ -490,17 +492,17 @@ cd backend && python scripts/seed_categories.py
 ## Known Issues & Tech Debt
 
 1. **WebSocket per-worker** — Real-time push only reaches clients on the same Gunicorn worker. 5s polling fallback covers cross-worker delivery. Fix: Redis pub/sub (post-launch).
-2. **Currency default** — `transactions.currency` defaults to `"USD"`. Should be `"IQD"`. Needs migration.
+2. ~~**Currency default**~~ — **FIXED** (migration `e5f6a7b8c9d0`). Default is now `"IQD"`.
 3. **QiCard sandbox** — `QI_CARD_SANDBOX=true` by default. Live: set `false` + `QI_CARD_API_KEY`.
 4. **QiCard refunds** — Refund endpoint does NOT exist in QiCard v0 API. Must be done manually via merchant portal. `refund_payment()` in `qi_card_client.py` raises `QiCardError` to force manual flow.
 5. **QiCard payouts** — No API for sending money to freelancers. Admin must pay via QiCard dashboard and click "Mark Paid" in Kaasb.
 6. **Phone OTP (beta)** — Implemented (CP2). OTP delivered via email (no SMS). To go live: set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` and switch `email_service.send_phone_otp` → Twilio in `auth_service.send_phone_otp`.
 7. **Telegram bot** — Post-launch. Not implemented (CP4 skipped Telegram; in-app + WebSocket push is complete).
-8. **Arabic i18n** — `next-intl` 3.26.3 installed; translation files may be incomplete.
+8. **Arabic i18n** — `next-intl` removed. Using cookie-based locale with `LocaleProvider` context + inline ternaries. Translation reference files exist at `src/messages/` but are not imported at runtime.
 9. **Gig orders → QiCard** — `POST /gigs/orders` exists but QiCard payment initiation not wired.
 10. **Escrow for gig orders** — Escrow model linked to `milestones` (job marketplace). Needs wiring for gig-order flow.
 11. **USD_TO_IQD rate** — Hardcoded as `1310.0` in `qi_card_client.py`. Needs live rate API or manual update.
-12. **`users` missing `google_id`/`facebook_id`** — Social login stores user via email match but no dedicated social ID columns to prevent duplicate accounts with different emails.
+12. ~~**`users` missing `google_id`/`facebook_id`**~~ — **FIXED** (migration `e5f6a7b8c9d0`). Social login now stores provider IDs and looks up by social ID first, email second.
 
 > Security and code quality audits were completed 2026-03-24/25. All 29 security issues and 20 code quality issues are resolved. See `SECURITY_AUDIT_REPORT.md` and `CODE_QUALITY_AUDIT_REPORT.md`.
 
@@ -539,7 +541,7 @@ cd backend && python scripts/seed_categories.py
 | High | Redis pub/sub for cross-worker WebSocket | Fixes multi-worker real-time delivery |
 | High | Twilio SMS for phone OTP | Replace email-beta; need `TWILIO_*` env vars |
 | High | Live USD/IQD exchange rate | Replace hardcoded 1310 in `qi_card_client.py` |
-| Medium | `google_id`/`facebook_id` on users | Prevent duplicate social accounts |
+| ~~Medium~~ | ~~`google_id`/`facebook_id` on users~~ | **DONE** — migration `e5f6a7b8c9d0` |
 | Medium | Gig order → QiCard payment wiring | `POST /gigs/orders` needs payment initiation |
 | Medium | Escrow for gig orders | Currently job-marketplace only |
 | Medium | Full-text search with PostgreSQL tsvector on gigs | Performance improvement for catalog search |

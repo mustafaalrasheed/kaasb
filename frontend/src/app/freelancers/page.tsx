@@ -3,36 +3,45 @@
  */
 
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import FreelancersClient from "./freelancers-client";
 import { SITE_NAME, SITE_URL, KEYWORDS, ogImageUrl } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Find Freelancers",
-  description:
-    "Hire talented freelancers in Iraq and the Middle East. Browse developers, designers, writers, and more on Kaasb. Filter by skills, experience, and ratings.",
-  keywords: KEYWORDS.freelancers,
-  alternates: { canonical: "/freelancers" },
-  openGraph: {
-    title: `Find Freelancers | ${SITE_NAME}`,
-    description:
-      "Hire talented freelancers in Iraq and the Middle East on Kaasb.",
-    url: `${SITE_URL}/freelancers`,
-    type: "website",
-    images: [
-      {
-        url: ogImageUrl({ title: "Find Freelancers", subtitle: "Hire talented professionals on Kaasb", type: "profile" }),
-        width: 1200,
-        height: 630,
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: `Find Freelancers | ${SITE_NAME}`,
-    description:
-      "Hire talented freelancers in Iraq and the Middle East on Kaasb.",
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const cookieStore = await cookies();
+  const locale = cookieStore.get("locale")?.value === "en" ? "en" : "ar";
+  const ar = locale === "ar";
+
+  const title = ar ? "ابحث عن مستقلين" : "Find Freelancers";
+  const description = ar
+    ? "وظّف مستقلين موهوبين في العراق والشرق الأوسط. تصفّح المطورين والمصممين والكتّاب والمزيد على كاسب. فلتر حسب المهارات والخبرة والتقييمات."
+    : "Hire talented freelancers in Iraq and the Middle East. Browse developers, designers, writers, and more on Kaasb. Filter by skills, experience, and ratings.";
+
+  return {
+    title,
+    description,
+    keywords: KEYWORDS.freelancers,
+    alternates: { canonical: "/freelancers" },
+    openGraph: {
+      title: `${title} | ${SITE_NAME}`,
+      description,
+      url: `${SITE_URL}/freelancers`,
+      type: "website",
+      images: [
+        {
+          url: ogImageUrl({ title, subtitle: ar ? "وظّف محترفين موهوبين على كاسب" : "Hire talented professionals on Kaasb", type: "profile" }),
+          width: 1200,
+          height: 630,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${title} | ${SITE_NAME}`,
+      description,
+    },
+  };
+}
 
 export default function FreelancersPage() {
   return <FreelancersClient />;

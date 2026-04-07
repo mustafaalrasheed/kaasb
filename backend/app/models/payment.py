@@ -135,7 +135,7 @@ class Transaction(BaseModel):
 
     # === Financial ===
     amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="IQD", nullable=False)
     platform_fee: Mapped[float] = mapped_column(Numeric(12, 4), default=0.0, nullable=False)
     net_amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
 
@@ -225,7 +225,7 @@ class Escrow(BaseModel):
     amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
     platform_fee: Mapped[float] = mapped_column(Numeric(12, 4), default=0.0, nullable=False)
     freelancer_amount: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="IQD", nullable=False)
 
     # === Status ===
     status: Mapped[EscrowStatus] = mapped_column(

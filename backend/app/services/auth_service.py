@@ -6,7 +6,6 @@ Business logic for user registration, login, and token management.
 import hashlib
 import logging
 import random
-import secrets as _secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -134,6 +133,13 @@ class AuthService(BaseService):
                 detail="Account temporarily locked. Try again later.",
             )
 
+        # Social-only accounts (no password set) cannot use password login
+        if not user.hashed_password:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="This account uses social login. Please sign in with Google or Facebook.",
+            )
+
         if not await verify_password_async(data.password, user.hashed_password):
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= 10:
@@ -189,9 +195,9 @@ class AuthService(BaseService):
         """Authenticate via Google or Facebook OAuth token."""
         # Verify token and fetch profile from provider
         if provider == "google":
-            email, first_name, last_name, avatar_url = await self._verify_google_token(token)
+            social_id, email, first_name, last_name, avatar_url = await self._verify_google_token(token)
         elif provider == "facebook":
-            email, first_name, last_name, avatar_url = await self._verify_facebook_token(token)
+            social_id, email, first_name, last_name, avatar_url = await self._verify_facebook_token(token)
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported provider")
 
@@ -201,12 +207,20 @@ class AuthService(BaseService):
                 detail=f"Could not retrieve email from {provider}. Make sure email permission is granted.",
             )
 
-        # Find existing user by email
-        result = await self.db.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
+        # 1. Look up by social ID first (prevents duplicate accounts)
+        user = None
+        if social_id:
+            social_col = User.google_id if provider == "google" else User.facebook_id
+            result = await self.db.execute(select(User).where(social_col == social_id))
+            user = result.scalar_one_or_none()
+
+        # 2. Fall back to email lookup
+        if not user:
+            result = await self.db.execute(select(User).where(User.email == email))
+            user = result.scalar_one_or_none()
 
         if not user:
-            # Create new user from OAuth profile
+            # Create new user from OAuth profile (no password needed)
             base_username = (first_name + "_" + last_name).lower()
             base_username = "".join(c for c in base_username if c.isalnum() or c == "_")[:20] or "user"
 
@@ -223,13 +237,15 @@ class AuthService(BaseService):
             user = User(
                 email=email,
                 username=username,
-                hashed_password=await hash_password_async(_secrets.token_hex(32)),
+                hashed_password=None,  # Social-only accounts have no password
                 first_name=first_name or "User",
                 last_name=last_name or "",
                 avatar_url=avatar_url,
                 primary_role=UserRole(role),
                 status=UserStatus.ACTIVE,
                 is_email_verified=True,
+                google_id=social_id if provider == "google" else None,
+                facebook_id=social_id if provider == "facebook" else None,
             )
             self.db.add(user)
             await self.db.flush()
@@ -243,6 +259,12 @@ class AuthService(BaseService):
         else:
             if user.status == UserStatus.SUSPENDED:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is suspended")
+            # Link social ID if not yet stored (existing user, first social login)
+            if social_id:
+                if provider == "google" and not user.google_id:
+                    user.google_id = social_id
+                elif provider == "facebook" and not user.facebook_id:
+                    user.facebook_id = social_id
             # Update avatar if not set
             if avatar_url and not user.avatar_url:
                 user.avatar_url = avatar_url
@@ -269,8 +291,9 @@ class AuthService(BaseService):
 
         return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
-    async def _verify_google_token(self, access_token: str) -> tuple[str, str, str, str | None]:
-        """Verify Google access token via userinfo endpoint and extract user info."""
+    async def _verify_google_token(self, access_token: str) -> tuple[str, str, str, str, str | None]:
+        """Verify Google access token via userinfo endpoint and extract user info.
+        Returns (google_id, email, first_name, last_name, avatar_url)."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
@@ -284,18 +307,20 @@ class AuthService(BaseService):
             if "error" in data or not data.get("sub"):
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token")
 
+            google_id = data.get("sub", "")
             email = data.get("email", "")
             name = data.get("name", "")
             first_name = data.get("given_name", "") or (name.split()[0] if name else "")
             last_name = data.get("family_name", "") or (" ".join(name.split()[1:]) if name else "")
             avatar_url = data.get("picture")
-            return email, first_name, last_name, avatar_url
+            return google_id, email, first_name, last_name, avatar_url
         except httpx.RequestError as e:
             logger.error("Google token verification failed: %s", e)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify Google token") from e
 
-    async def _verify_facebook_token(self, access_token: str) -> tuple[str, str, str, str | None]:
-        """Verify Facebook access token and extract user info."""
+    async def _verify_facebook_token(self, access_token: str) -> tuple[str, str, str, str, str | None]:
+        """Verify Facebook access token and extract user info.
+        Returns (facebook_id, email, first_name, last_name, avatar_url)."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
@@ -312,11 +337,12 @@ class AuthService(BaseService):
             if "error" in data:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Facebook token")
 
+            facebook_id = data.get("id", "")
             email = data.get("email", "")
             first_name = data.get("first_name", "")
             last_name = data.get("last_name", "")
             avatar_url = data.get("picture", {}).get("data", {}).get("url") if isinstance(data.get("picture"), dict) else None
-            return email, first_name, last_name, avatar_url
+            return facebook_id, email, first_name, last_name, avatar_url
         except httpx.RequestError as e:
             logger.error("Facebook token verification failed: %s", e)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not verify Facebook token") from e

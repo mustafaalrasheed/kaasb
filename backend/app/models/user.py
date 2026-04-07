@@ -43,8 +43,12 @@ class User(BaseModel):
     username: Mapped[str] = mapped_column(
         String(50), unique=True, index=True, nullable=False
     )
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # === Social Login IDs (prevent duplicate accounts across providers) ===
+    google_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    facebook_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
 
     # === Profile ===
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)

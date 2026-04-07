@@ -154,34 +154,52 @@ Any path under `/dashboard/` is auto-protected. No per-page auth check needed.
 
 ## How to Add Translations (Arabic + English)
 
-**Translation file location**: `frontend/src/messages/ar.json` and `frontend/src/messages/en.json`
+**i18n approach**: Cookie-based locale (`ar` default, `en` secondary). No `next-intl` — locale
+is read server-side via `cookies()` and exposed to client components via `LocaleProvider` context.
 
-**Step 1 — Add key** to both files:
-```json
-// ar.json
-{ "gigs": { "createButton": "إنشاء خدمة جديدة" } }
-
-// en.json
-{ "gigs": { "createButton": "Create New Gig" } }
-```
-
-**Step 2 — Use in component**:
+**Client components** — use the `useLocale()` hook:
 ```typescript
-import { useTranslations } from 'next-intl';
+import { useLocale } from '@/providers/locale-provider';
 
 export function MyComponent() {
-  const t = useTranslations('gigs');
-  return <button>{t('createButton')}</button>;
+  const { locale } = useLocale();
+  const ar = locale === 'ar';
+  return <button>{ar ? 'إنشاء خدمة جديدة' : 'Create New Gig'}</button>;
 }
 ```
 
-**Step 3 — RTL layout**: Arabic is RTL. Use Tailwind logical properties:
+**Server components** — read the cookie directly:
+```typescript
+import { cookies } from 'next/headers';
+
+export default async function MyPage() {
+  const cookieStore = await cookies();
+  const locale = cookieStore.get('locale')?.value === 'en' ? 'en' : 'ar';
+  const ar = locale === 'ar';
+  return <h1>{ar ? 'مرحباً' : 'Hello'}</h1>;
+}
+```
+
+**Bilingual metadata** — use `generateMetadata()` instead of `export const metadata`:
+```typescript
+export async function generateMetadata() {
+  const cookieStore = await cookies();
+  const locale = cookieStore.get('locale')?.value === 'en' ? 'en' : 'ar';
+  const ar = locale === 'ar';
+  return { title: ar ? 'العنوان بالعربية' : 'English Title' };
+}
+```
+
+**RTL layout**: Arabic is RTL. Use Tailwind logical properties:
 - Use `start`/`end` instead of `left`/`right`: `ms-4` not `ml-4`, `ps-6` not `pl-6`
 - Use `text-start` not `text-left`
 - Use `border-s` not `border-l`
 - `dir="rtl"` is set at root layout level — components inherit it automatically.
 
 **Arabic font**: Tajawal is primary. Applied via `font-arabic` class in Tailwind config.
+
+**Translation files**: `frontend/src/messages/ar.json` and `en.json` exist as a reference
+dictionary but are not imported at runtime. All translations are inline ternaries.
 
 ---
 

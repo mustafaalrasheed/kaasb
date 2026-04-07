@@ -57,9 +57,9 @@ class Category(BaseModel):
 
     # Relationships
     subcategories: Mapped[list["Subcategory"]] = relationship(
-        "Subcategory", back_populates="category", lazy="select"
+        "Subcategory", back_populates="category", lazy="raise"
     )
-    gigs: Mapped[list["Gig"]] = relationship("Gig", back_populates="category", lazy="select")
+    gigs: Mapped[list["Gig"]] = relationship("Gig", back_populates="category", lazy="raise")
 
 
 class Subcategory(BaseModel):
@@ -77,7 +77,7 @@ class Subcategory(BaseModel):
 
     # Relationships
     category: Mapped["Category"] = relationship("Category", back_populates="subcategories")
-    gigs: Mapped[list["Gig"]] = relationship("Gig", back_populates="subcategory", lazy="select")
+    gigs: Mapped[list["Gig"]] = relationship("Gig", back_populates="subcategory", lazy="raise")
 
 
 class Gig(BaseModel):
@@ -134,7 +134,7 @@ class Gig(BaseModel):
         "GigPackage", back_populates="gig", cascade="all, delete-orphan", order_by="GigPackage.tier"
     )
     orders: Mapped[list["GigOrder"]] = relationship(
-        "GigOrder", back_populates="gig", lazy="select"
+        "GigOrder", back_populates="gig", lazy="raise"
     )
 
 

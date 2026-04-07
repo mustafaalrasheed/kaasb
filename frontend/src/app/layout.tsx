@@ -1,8 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import "@/styles/globals.css";
 
-// Force dynamic rendering so layout always reads the locale cookie fresh
-export const dynamic = "force-dynamic";
+// The layout reads cookies() to determine locale, which automatically opts into
+// dynamic rendering. No explicit `export const dynamic` is needed here.
+// Individual pages (e.g. /gigs catalog) can still use ISR/static where they
+// don't read cookies themselves — Next.js only forces dynamic at the segment
+// that actually calls cookies()/headers().
 import Link from "next/link";
 import { Toaster } from "sonner";
 import { Navbar } from "@/components/layout/navbar";
