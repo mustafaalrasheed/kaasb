@@ -110,7 +110,7 @@ export default function MessagesPage() {
           username: user.username,
           first_name: user.first_name,
           last_name: user.last_name,
-          avatar_url: user.avatar_url,
+          avatar_url: user.avatar_url ?? undefined,
         },
         created_at: new Date().toISOString(),
       };

@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "@/styles/globals.css";
+
+// Force dynamic rendering so layout always reads the locale cookie fresh
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { Toaster } from "sonner";
 import { Navbar } from "@/components/layout/navbar";

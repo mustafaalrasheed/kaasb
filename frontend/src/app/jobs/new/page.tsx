@@ -76,23 +76,21 @@ export default function PostJobPage() {
     setIsSubmitting(true);
 
     try {
-      const payload: Record<string, unknown> = {
+      const payload: Parameters<typeof jobsApi.create>[0] = {
         title: form.title,
         description: form.description,
         category: form.category,
         job_type: form.job_type,
+        ...(form.job_type === "fixed"
+          ? { fixed_price: parseFloat(form.fixed_price) }
+          : {
+              budget_min: parseFloat(form.budget_min),
+              ...(form.budget_max ? { budget_max: parseFloat(form.budget_max) } : {}),
+            }),
+        ...(form.experience_level ? { experience_level: form.experience_level } : {}),
+        ...(form.duration ? { duration: form.duration } : {}),
+        ...(form.skills_required.length > 0 ? { skills_required: form.skills_required } : {}),
       };
-
-      if (form.job_type === "fixed") {
-        payload.fixed_price = parseFloat(form.fixed_price);
-      } else {
-        payload.budget_min = parseFloat(form.budget_min);
-        if (form.budget_max) payload.budget_max = parseFloat(form.budget_max);
-      }
-
-      if (form.experience_level) payload.experience_level = form.experience_level;
-      if (form.duration) payload.duration = form.duration;
-      if (form.skills_required.length > 0) payload.skills_required = form.skills_required;
 
       const response = await jobsApi.create(payload);
       toast.success("تم نشر الوظيفة بنجاح!");
