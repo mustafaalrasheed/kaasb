@@ -46,12 +46,13 @@ jobs:
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ github.event.inputs.image_tag }}"
           else
-            SHA="${{ github.event.workflow_run.head_sha }}"
-            echo "tag=sha-${SHA:0:7}" >> "$GITHUB_OUTPUT"
+            # Must match the full SHA used by CI's docker/build-push-action
+            TAG="sha-${{ github.event.workflow_run.head_sha }}"
           fi
-          echo "Deploying tag: $(cat "$GITHUB_OUTPUT" | grep tag= | cut -d= -f2)"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Deploying tag: ${TAG}"
 
       # -----------------------------------------------------------------------
       - name: Validate required secrets
@@ -103,9 +104,12 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | \
                 docker login ghcr.io -u ${{ github.actor }} --password-stdin 2>/dev/null || true
 
-            # ---- Pull new images ----
-            echo "Pulling images..."
-            $COMPOSE pull backend frontend
+            # ---- Pull or build images ----
+            echo "Pulling images from GHCR..."
+            if ! $COMPOSE pull backend frontend 2>/dev/null; then
+                echo "GHCR pull failed — building images locally..."
+                $COMPOSE build backend frontend
+            fi
 
             # ---- Pre-deploy database backup ----
             if [ "${SKIP_BACKUP}" != "true" ]; then
@@ -115,14 +119,14 @@ jobs:
                 echo "WARN: Skipping backup (skip_backup=true)"
             fi
 
-            # ---- Run Alembic migrations ----
+            # ---- Run Alembic migrations (needs DB, so no --no-deps) ----
             echo "Running migrations..."
-            $COMPOSE run --rm --no-deps backend alembic upgrade head
+            $COMPOSE run --rm backend alembic upgrade head
             echo "Migrations complete."
 
             # ---- Seed gig categories (idempotent — skips if already seeded) ----
             echo "Seeding gig categories..."
-            $COMPOSE run --rm --no-deps backend python -m scripts.seed_categories && echo "Categories OK" || \
+            $COMPOSE run --rm backend python -m scripts.seed_categories && echo "Categories OK" || \
                 echo "WARN: seed_categories failed (non-blocking — categories may already exist)"
 
             # ---- Rolling restart: backend first, then frontend ----
@@ -185,7 +189,8 @@ jobs:
 
       # -----------------------------------------------------------------------
       - name: Notify success (Telegram)
-        if: success() && env.TELEGRAM_BOT_TOKEN != ''
+        if: success()
+        continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -200,7 +205,8 @@ jobs:
 
       # -----------------------------------------------------------------------
       - name: Notify failure (Telegram)
-        if: failure() && env.TELEGRAM_BOT_TOKEN != ''
+        if: failure()
+        continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}

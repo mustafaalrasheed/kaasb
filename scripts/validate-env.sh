@@ -32,7 +32,8 @@ check() {
     fi
 
     # Check for placeholder values
-    if echo "$val" | grep -qiE 'CHANGE_ME|YOUR_|<.*>|example\.com$|todo|placeholder|123456|password$|secret$'; then
+    # Check for placeholder values. Exclude EMAIL_FROM which legitimately contains <email>.
+    if [ "$var" != "EMAIL_FROM" ] && echo "$val" | grep -qiE 'CHANGE_ME|YOUR_|<.*>|example\.com$|todo|placeholder|123456|password$|secret$'; then
         echo -e "${RED}FAIL${NC}  $var contains placeholder value: '${val}'"
         ERRORS=$(( ERRORS + 1 ))
         return
