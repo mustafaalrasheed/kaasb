@@ -129,9 +129,6 @@ export default async function RootLayout({
   const dir = locale === "ar" ? "rtl" : "ltr";
   const htmlLang = locale === "ar" ? "ar" : "en";
 
-  // Load messages for the detected locale
-  const messages = (await import(`@/messages/${locale}.json`)).default;
-
   return (
     <html lang={htmlLang} dir={dir} className={locale === "ar" ? "font-arabic" : ""}>
       <head>
@@ -160,7 +157,7 @@ export default async function RootLayout({
         <link rel="dns-prefetch" href="//kaasb.com" />
       </head>
       <body className="min-h-screen bg-gray-50 flex flex-col">
-        <LocaleProvider initialLocale={locale} messages={messages}>
+        <LocaleProvider initialLocale={locale}>
           <Navbar />
           <main className="pt-16 flex-1">{children}</main>
 
