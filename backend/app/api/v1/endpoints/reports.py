@@ -143,7 +143,7 @@ async def list_my_reports(
     reports = list(reports_result.scalars().all())
 
     return ReportListResponse(
-        items=reports,
+        items=[ReportOut.model_validate(r) for r in reports],
         total=total,
         page=page,
         page_size=page_size,
@@ -214,7 +214,7 @@ async def admin_list_reports(
     reports = list((await db.execute(list_q)).scalars().all())
 
     return ReportListResponse(
-        items=reports,
+        items=[ReportOut.model_validate(r) for r in reports],
         total=total,
         page=page,
         page_size=page_size,

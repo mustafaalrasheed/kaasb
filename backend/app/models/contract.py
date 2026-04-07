@@ -106,7 +106,10 @@ class Contract(BaseModel):
         "User", foreign_keys=[freelancer_id], backref="freelancer_contracts", lazy="raise"
     )
 
-    # === Milestones relationship (loaded via backref from Milestone) ===
+    # === Milestones ===
+    milestones: Mapped[list["Milestone"]] = relationship(
+        "Milestone", back_populates="contract", lazy="raise"
+    )
 
     # === Timestamps ===
     started_at: Mapped[datetime] = mapped_column(
@@ -171,7 +174,7 @@ class Milestone(BaseModel):
         index=True,
     )
     contract: Mapped["Contract"] = relationship(
-        "Contract", backref="milestones", lazy="raise"
+        "Contract", back_populates="milestones", lazy="raise"
     )
 
     # === Timestamps ===

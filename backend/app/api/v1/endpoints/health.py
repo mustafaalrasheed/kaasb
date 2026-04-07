@@ -123,8 +123,8 @@ async def detailed_health(
         pool_info = {
             "size":       pool.size(),
             "checked_out": pool.checkedout(),
-            "overflow":   pool.overflow(),
-            "invalid":    pool.invalidated(),
+            "overflow":   getattr(pool, "overflow", lambda: None)(),
+            "invalid":    getattr(pool, "invalidated", lambda: None)(),
         }
 
     results["database"] = {

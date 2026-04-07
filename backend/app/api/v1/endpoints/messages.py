@@ -12,11 +12,13 @@ from app.core.database import get_db
 from app.models.user import User
 from app.schemas.message import (
     ConversationCreate,
+    ConversationJobInfo,
     ConversationListResponse,
     ConversationSummary,
     MessageCreate,
     MessageDetail,
     MessageListResponse,
+    MessageUserInfo,
 )
 from app.services.message_service import MessageService
 
@@ -47,14 +49,14 @@ async def list_conversations(
         conversations.append(
             ConversationSummary(
                 id=c.id,
-                other_user={
-                    "id": other.id,
-                    "username": other.username,
-                    "first_name": other.first_name,
-                    "last_name": other.last_name,
-                    "avatar_url": other.avatar_url,
-                },
-                job={"id": c.job.id, "title": c.job.title} if c.job else None,
+                other_user=MessageUserInfo(
+                    id=other.id,
+                    username=other.username,
+                    first_name=other.first_name,
+                    last_name=other.last_name,
+                    avatar_url=other.avatar_url,
+                ),
+                job=ConversationJobInfo(id=c.job.id, title=c.job.title) if c.job else None,
                 last_message_text=c.last_message_text,
                 last_message_at=c.last_message_at,
                 message_count=c.message_count,
@@ -97,14 +99,14 @@ async def start_conversation(
 
     return ConversationSummary(
         id=c.id,
-        other_user={
-            "id": other.id,
-            "username": other.username,
-            "first_name": other.first_name,
-            "last_name": other.last_name,
-            "avatar_url": other.avatar_url,
-        },
-        job={"id": c.job.id, "title": c.job.title} if c.job else None,
+        other_user=MessageUserInfo(
+            id=other.id,
+            username=other.username,
+            first_name=other.first_name,
+            last_name=other.last_name,
+            avatar_url=other.avatar_url,
+        ),
+        job=ConversationJobInfo(id=c.job.id, title=c.job.title) if c.job else None,
         last_message_text=c.last_message_text,
         last_message_at=c.last_message_at,
         message_count=c.message_count,
