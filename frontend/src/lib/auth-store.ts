@@ -35,13 +35,13 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     // Fetch user profile
     const userResponse = await authApi.getMe();
-    set({ user: userResponse.data.data, isAuthenticated: true });
+    set({ user: userResponse.data, isAuthenticated: true });
   },
 
   socialLogin: async (provider, token, role = "freelancer") => {
     await authApi.socialLogin({ provider, token, role });
     const userResponse = await authApi.getMe();
-    set({ user: userResponse.data.data, isAuthenticated: true });
+    set({ user: userResponse.data, isAuthenticated: true });
   },
 
   register: async (data) => {
@@ -50,7 +50,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     // Fetch user profile
     const userResponse = await authApi.getMe();
-    set({ user: userResponse.data.data, isAuthenticated: true });
+    set({ user: userResponse.data, isAuthenticated: true });
   },
 
   logout: () => {
