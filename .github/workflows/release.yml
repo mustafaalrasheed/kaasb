@@ -58,7 +58,7 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
 
-          # Backend
+          # Backend (context is repo root because Dockerfile uses COPY backend/...)
           docker buildx build \
             --file docker/backend/Dockerfile \
             --target production \
@@ -66,7 +66,7 @@ jobs:
             --tag "${{ env.IMAGE_BASE }}/backend:${TAG}" \
             --tag "${{ env.IMAGE_BASE }}/backend:latest" \
             --cache-from type=gha \
-            ./backend
+            .
 
           # Frontend
           docker buildx build \
@@ -77,6 +77,8 @@ jobs:
             --build-arg NEXT_PUBLIC_APP_NAME=Kaasb \
             --build-arg NEXT_PUBLIC_APP_VERSION="${VERSION}" \
             --build-arg NEXT_PUBLIC_ENVIRONMENT=production \
+            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }} \
+            --build-arg NEXT_PUBLIC_FACEBOOK_APP_ID=${{ secrets.NEXT_PUBLIC_FACEBOOK_APP_ID }} \
             --tag "${{ env.IMAGE_BASE }}/frontend:${TAG}" \
             --tag "${{ env.IMAGE_BASE }}/frontend:latest" \
             --cache-from type=gha \
