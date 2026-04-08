@@ -48,8 +48,8 @@ const nextConfig = {
       : `img-src 'self' data: blob: ${BACKEND_URL} https://kaasb.com https://*.kaasb.com`;
 
     const connectSrc = IS_PRODUCTION
-      ? "connect-src 'self' https://kaasb.com https://*.kaasb.com https://api.stripe.com https://accounts.google.com https://oauth2.googleapis.com https://graph.facebook.com"
-      : `connect-src 'self' ${BACKEND_URL} https://kaasb.com https://*.kaasb.com https://api.stripe.com https://accounts.google.com https://oauth2.googleapis.com https://graph.facebook.com`;
+      ? "connect-src 'self' https://kaasb.com https://*.kaasb.com https://accounts.google.com https://oauth2.googleapis.com https://graph.facebook.com"
+      : `connect-src 'self' ${BACKEND_URL} https://kaasb.com https://*.kaasb.com https://accounts.google.com https://oauth2.googleapis.com https://graph.facebook.com`;
 
     return [
       {
