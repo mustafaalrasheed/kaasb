@@ -4,12 +4,11 @@ Tests ALL 63 endpoints across 11 route groups.
 Run: python test_api.py
 Requires: Backend running on localhost:8000
 """
+# ruff: noqa: T201
+
+import uuid
 
 import requests
-import json
-import time
-import uuid
-from typing import Dict, Any, Optional
 
 BASE_URL = "http://localhost:8000/api/v1"
 
@@ -28,8 +27,8 @@ def info(msg): print(f"{C.B}  [INFO] {msg}{C.E}")
 def section(num, msg): print(f"\n{C.Y}{'='*60}\n  TEST {num}: {msg}\n{'='*60}{C.E}")
 
 # === Global state ===
-tokens: Dict[str, str] = {}
-user_ids: Dict[str, str] = {}
+tokens: dict[str, str] = {}
+user_ids: dict[str, str] = {}
 job_id = ""
 job_id_2 = ""
 proposal_id = ""
@@ -430,7 +429,7 @@ def test_05_proposals():
         "status": "accepted",
     }, headers=h("client"))
     if r.status_code == 200:
-        ok(f"Proposal accepted → contract created")
+        ok("Proposal accepted → contract created")
     else:
         fail(f"Proposal accept: {r.status_code} {r.text[:200]}")
         return False
@@ -495,8 +494,7 @@ def test_06_contracts():
         fail(f"Start milestone: {r.status_code}")
 
     r = raw("POST", f"/contracts/milestones/{milestone_id}/submit", json={
-        "deliverable_url": "https://github.com/kaasb/api",
-        "deliverable_note": "All endpoints implemented.",
+        "submission_note": "All endpoints implemented and tested.",
     }, headers=h("freelancer"))
     if r.status_code == 200:
         ok("Milestone → submitted")
@@ -511,8 +509,7 @@ def test_06_contracts():
     if milestone_id_2:
         raw("POST", f"/contracts/milestones/{milestone_id_2}/start", headers=h("freelancer"))
         raw("POST", f"/contracts/milestones/{milestone_id_2}/submit", json={
-            "deliverable_url": "https://github.com/kaasb/frontend",
-            "deliverable_note": "First draft",
+            "submission_note": "First draft of frontend integration.",
         }, headers=h("freelancer"))
         r = raw("POST", f"/contracts/milestones/{milestone_id_2}/review", json={
             "action": "request_revision",
@@ -545,25 +542,28 @@ def test_07_payments():
     """6 payment endpoints"""
     section(7, "Payments (6 endpoints)")
 
-    # --- POST /payments/accounts (Stripe for client) ---
-    r = raw("POST", "/payments/accounts", json={"provider": "stripe"}, headers=h("client"))
-    if r.status_code in (200, 201) and r.json().get("provider") == "stripe":
-        ok(f"Client Stripe account → {r.json()['status']}")
-
-    # --- POST /payments/accounts (Wise for freelancer) ---
+    # --- POST /payments/accounts (Qi Card for client) ---
     r = raw("POST", "/payments/accounts", json={
-        "provider": "wise", "wise_email": "freelancer@wise.com", "wise_currency": "USD",
+        "provider": "qi_card", "qi_card_phone": "07801234567",
+    }, headers=h("client"))
+    if r.status_code in (200, 201):
+        ok(f"Client Qi Card account → {r.json()['status']}")
+    else:
+        info(f"Client account: {r.status_code} (may already exist)")
+
+    # --- POST /payments/accounts (Qi Card for freelancer) ---
+    r = raw("POST", "/payments/accounts", json={
+        "provider": "qi_card", "qi_card_phone": "07809876543",
     }, headers=h("freelancer"))
     if r.status_code in (200, 201):
-        ok(f"Freelancer Wise account → {r.json()['status']}")
-
-    # --- Wise without email → 400 ---
-    r = raw("POST", "/payments/accounts", json={"provider": "wise"}, headers=h("freelancer"))
-    if r.status_code == 400:
-        ok("Wise without email rejected (400)")
+        ok(f"Freelancer Qi Card account → {r.json()['status']}")
+    else:
+        info(f"Freelancer account: {r.status_code} (may already exist)")
 
     # --- Duplicate → 400 ---
-    r = raw("POST", "/payments/accounts", json={"provider": "stripe"}, headers=h("client"))
+    r = raw("POST", "/payments/accounts", json={
+        "provider": "qi_card", "qi_card_phone": "07801234567",
+    }, headers=h("client"))
     if r.status_code == 400:
         ok("Duplicate account rejected (400)")
 
@@ -775,7 +775,7 @@ def test_10_notifications():
         nid = r.json()["notifications"][0]["id"]
         r2 = raw("POST", "/notifications/mark-read", json={"notification_ids": [nid]}, headers=h("freelancer"))
         if r2.status_code == 200:
-            ok(f"Marked 1 notification read")
+            ok("Marked 1 notification read")
     else:
         info("No notifications to mark as read")
 
@@ -864,8 +864,8 @@ def test_12_admin():
 
 def run_all_tests():
     print(f"\n{C.W}{'='*60}")
-    print(f"  KAASB PLATFORM — COMPREHENSIVE TEST SUITE v2")
-    print(f"  Testing ALL 63 endpoints across 11 route groups")
+    print("  KAASB PLATFORM — COMPREHENSIVE TEST SUITE v2")
+    print("  Testing ALL 63 endpoints across 11 route groups")
     print(f"  Target: {BASE_URL}")
     print(f"{'='*60}{C.E}\n")
 
@@ -903,7 +903,7 @@ def run_all_tests():
 
     # Summary
     print(f"\n{C.W}{'='*60}")
-    print(f"  TEST RESULTS SUMMARY")
+    print("  TEST RESULTS SUMMARY")
     print(f"{'='*60}{C.E}\n")
 
     for name, success in results:

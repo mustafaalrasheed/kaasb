@@ -25,19 +25,18 @@ const SORT_OPTIONS_EN = [
   { value: "most_proposals", label: "Most Proposals" },
 ];
 
-const EXPERIENCE_LABELS_EN: Record<string, string> = {
-  entry: "Entry Level",
-  intermediate: "Intermediate",
-  expert: "Expert",
+const EXPERIENCE_LABELS_AR: Record<string, string> = {
+  entry: "مبتدئ",
+  intermediate: "متوسط",
+  expert: "خبير",
 };
 
-const DURATION_LABELS_EN: Record<string, string> = {
-  "less_than_1_week": "< 1 Week",
-  "1_to_2_weeks": "1-2 Weeks",
-  "2_to_4_weeks": "2-4 Weeks",
-  "1_to_3_months": "1-3 Months",
-  "3_to_6_months": "3-6 Months",
-  "more_than_6_months": "6+ Months",
+const DURATION_LABELS_AR: Record<string, string> = {
+  "less_than_1_week": "أقل من أسبوع",
+  "1_to_4_weeks": "١-٤ أسابيع",
+  "1_to_3_months": "١-٣ أشهر",
+  "3_to_6_months": "٣-٦ أشهر",
+  "more_than_6_months": "أكثر من ٦ أشهر",
 };
 
 function formatBudget(job: JobSummary, ar: boolean): string {
@@ -299,15 +298,15 @@ function JobCard({ job, ar }: { job: JobSummary; ar: boolean }) {
               {job.experience_level && (
                 <span>
                   {ar
-                    ? EXPERIENCE_LABELS[job.experience_level]
-                    : EXPERIENCE_LABELS_EN[job.experience_level] || job.experience_level}
+                    ? EXPERIENCE_LABELS_AR[job.experience_level] || job.experience_level
+                    : EXPERIENCE_LABELS[job.experience_level] || job.experience_level}
                 </span>
               )}
               {job.duration && (
                 <span>
                   {ar
-                    ? DURATION_LABELS[job.duration]
-                    : DURATION_LABELS_EN[job.duration] || job.duration}
+                    ? DURATION_LABELS_AR[job.duration] || job.duration
+                    : DURATION_LABELS[job.duration] || job.duration}
                 </span>
               )}
               <span>
