@@ -1,11 +1,12 @@
 """
-Kaasb Platform - Create Admin User
+Kaasb Platform - Create / Reset Admin User
 Run: python -m scripts.create_admin
 
 Environment variable overrides (for non-interactive / CI use):
   ADMIN_EMAIL     default: admin@kaasb.com
   ADMIN_USERNAME  default: admin
   ADMIN_PASSWORD  required when running non-interactively (no default)
+  ADMIN_RESET     set to "1" to reset password of existing admin
 """
 
 import asyncio
@@ -21,26 +22,33 @@ from app.models.user import User, UserRole, UserStatus
 from app.core.security import hash_password
 
 
-async def create_admin(
+async def create_or_reset_admin(
     email: str,
     username: str,
     password: str,
+    reset: bool = False,
     first_name: str = "Platform",
     last_name: str = "Admin",
 ):
-    """Create an admin user."""
+    """Create a new admin user, promote an existing user, or reset their password."""
     async with async_session_factory() as db:
-        # Check if exists
-        result = await db.execute(
-            select(User).where(User.email == email)
-        )
+        result = await db.execute(select(User).where(User.email == email))
         existing = result.scalar_one_or_none()
+
         if existing:
-            print(f"User {email} already exists. Updating to admin...")
             existing.is_superuser = True
             existing.primary_role = UserRole.ADMIN
-            await db.commit()
-            print(f"✅ {email} is now admin")
+            existing.status = UserStatus.ACTIVE
+            existing.failed_login_attempts = 0
+            existing.locked_until = None
+            if reset:
+                existing.hashed_password = hash_password(password)
+                await db.commit()
+                print(f"✅ Password reset for {email}")
+            else:
+                await db.commit()
+                print(f"✅ {email} is now admin (password unchanged)")
+                print("   Run with --reset to also change the password.")
             return
 
         admin = User(
@@ -67,6 +75,7 @@ if __name__ == "__main__":
     env_email    = os.environ.get("ADMIN_EMAIL", "")
     env_username = os.environ.get("ADMIN_USERNAME", "")
     env_password = os.environ.get("ADMIN_PASSWORD", "")
+    env_reset    = os.environ.get("ADMIN_RESET", "") == "1" or "--reset" in sys.argv
 
     email    = env_email    or input("Admin email [admin@kaasb.com]: ").strip() or "admin@kaasb.com"
     username = env_username or input("Admin username [admin]: ").strip() or "admin"
@@ -80,4 +89,4 @@ if __name__ == "__main__":
             print("ERROR: Password cannot be empty.", file=sys.stderr)
             sys.exit(1)
 
-    asyncio.run(create_admin(email, username, password))
+    asyncio.run(create_or_reset_admin(email, username, password, reset=env_reset))
