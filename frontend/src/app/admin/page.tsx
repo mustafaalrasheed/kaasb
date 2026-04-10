@@ -381,7 +381,7 @@ export default function AdminPage() {
                               {ar ? "إيقاف" : "Suspend"}
                             </button>
                           )}
-                          {u.status === "suspended" && (
+                          {(u.status === "suspended" || u.status === "deactivated") && (
                             <button onClick={() => handleStatusUpdate(u.id, "active")}
                               className="px-2 py-1 text-xs bg-green-50 text-green-600 rounded hover:bg-green-100">
                               {ar ? "تفعيل" : "Activate"}
