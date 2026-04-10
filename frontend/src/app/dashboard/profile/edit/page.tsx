@@ -4,39 +4,42 @@ import { useState, useRef, useEffect } from "react";
 import { useAuthStore } from "@/lib/auth-store";
 import { usersApi } from "@/lib/api";
 import { backendUrl, getApiError } from "@/lib/utils";
+import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
 
 const EXPERIENCE_LEVELS = [
-  { value: "entry", label: "مبتدئ" },
-  { value: "intermediate", label: "متوسط" },
-  { value: "expert", label: "خبير" },
+  { value: "entry",        labelAr: "مبتدئ",      labelEn: "Entry Level" },
+  { value: "intermediate", labelAr: "متوسط",      labelEn: "Intermediate" },
+  { value: "expert",       labelAr: "خبير",        labelEn: "Expert" },
 ];
 
 const COUNTRIES = [
-  { value: "Iraq", label: "العراق" },
-  { value: "United States", label: "الولايات المتحدة" },
-  { value: "United Kingdom", label: "المملكة المتحدة" },
-  { value: "Canada", label: "كندا" },
-  { value: "Germany", label: "ألمانيا" },
-  { value: "France", label: "فرنسا" },
-  { value: "India", label: "الهند" },
-  { value: "Pakistan", label: "باكستان" },
-  { value: "Egypt", label: "مصر" },
-  { value: "Saudi Arabia", label: "المملكة العربية السعودية" },
-  { value: "UAE", label: "الإمارات" },
-  { value: "Jordan", label: "الأردن" },
-  { value: "Turkey", label: "تركيا" },
-  { value: "Australia", label: "أستراليا" },
-  { value: "Netherlands", label: "هولندا" },
-  { value: "Sweden", label: "السويد" },
-  { value: "Brazil", label: "البرازيل" },
-  { value: "Japan", label: "اليابان" },
-  { value: "South Korea", label: "كوريا الجنوبية" },
-  { value: "Other", label: "أخرى" },
+  { value: "Iraq",                 labelAr: "العراق",                   labelEn: "Iraq" },
+  { value: "United States",        labelAr: "الولايات المتحدة",          labelEn: "United States" },
+  { value: "United Kingdom",       labelAr: "المملكة المتحدة",           labelEn: "United Kingdom" },
+  { value: "Canada",               labelAr: "كندا",                      labelEn: "Canada" },
+  { value: "Germany",              labelAr: "ألمانيا",                   labelEn: "Germany" },
+  { value: "France",               labelAr: "فرنسا",                     labelEn: "France" },
+  { value: "India",                labelAr: "الهند",                     labelEn: "India" },
+  { value: "Pakistan",             labelAr: "باكستان",                   labelEn: "Pakistan" },
+  { value: "Egypt",                labelAr: "مصر",                       labelEn: "Egypt" },
+  { value: "Saudi Arabia",         labelAr: "المملكة العربية السعودية",  labelEn: "Saudi Arabia" },
+  { value: "UAE",                  labelAr: "الإمارات",                  labelEn: "UAE" },
+  { value: "Jordan",               labelAr: "الأردن",                    labelEn: "Jordan" },
+  { value: "Turkey",               labelAr: "تركيا",                     labelEn: "Turkey" },
+  { value: "Australia",            labelAr: "أستراليا",                  labelEn: "Australia" },
+  { value: "Netherlands",          labelAr: "هولندا",                    labelEn: "Netherlands" },
+  { value: "Sweden",               labelAr: "السويد",                    labelEn: "Sweden" },
+  { value: "Brazil",               labelAr: "البرازيل",                  labelEn: "Brazil" },
+  { value: "Japan",                labelAr: "اليابان",                   labelEn: "Japan" },
+  { value: "South Korea",          labelAr: "كوريا الجنوبية",            labelEn: "South Korea" },
+  { value: "Other",                labelAr: "أخرى",                      labelEn: "Other" },
 ];
 
 export default function EditProfilePage() {
   const { user, fetchUser } = useAuthStore();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -108,20 +111,20 @@ export default function EditProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
-      toast.error("يجب أن تكون الصورة أصغر من 10 ميجابايت");
+      toast.error(ar ? "يجب أن تكون الصورة أصغر من 10 ميجابايت" : "Image must be smaller than 10 MB");
       return;
     }
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      toast.error("يُسمح فقط بصور JPEG و PNG و WebP");
+      toast.error(ar ? "يُسمح فقط بصور JPEG و PNG و WebP" : "Only JPEG, PNG and WebP images are allowed");
       return;
     }
     setIsUploadingAvatar(true);
     try {
       await usersApi.uploadAvatar(file);
       await fetchUser();
-      toast.success("تم تحديث الصورة الشخصية");
+      toast.success(ar ? "تم تحديث الصورة الشخصية" : "Profile photo updated");
     } catch (err: unknown) {
-      toast.error(getApiError(err, "تعذّر رفع الصورة"));
+      toast.error(getApiError(err, ar ? "تعذّر رفع الصورة" : "Failed to upload image"));
     } finally {
       setIsUploadingAvatar(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -132,9 +135,9 @@ export default function EditProfilePage() {
     try {
       await usersApi.removeAvatar();
       await fetchUser();
-      toast.success("تم حذف الصورة الشخصية");
+      toast.success(ar ? "تم حذف الصورة الشخصية" : "Profile photo removed");
     } catch {
-      toast.error("تعذّر حذف الصورة");
+      toast.error(ar ? "تعذّر حذف الصورة" : "Failed to remove photo");
     }
   };
 
@@ -159,16 +162,16 @@ export default function EditProfilePage() {
       }
 
       if (Object.keys(payload).length === 0) {
-        toast.error("لا توجد تغييرات للحفظ");
+        toast.error(ar ? "لا توجد تغييرات للحفظ" : "No changes to save");
         setIsSubmitting(false);
         return;
       }
 
       await usersApi.updateProfile(payload);
       await fetchUser();
-      toast.success("تم تحديث الملف الشخصي بنجاح");
+      toast.success(ar ? "تم تحديث الملف الشخصي بنجاح" : "Profile updated successfully");
     } catch (err: unknown) {
-      toast.error(getApiError(err, "تعذّر تحديث الملف الشخصي"));
+      toast.error(getApiError(err, ar ? "تعذّر تحديث الملف الشخصي" : "Failed to update profile"));
     } finally {
       setIsSubmitting(false);
     }
@@ -177,17 +180,21 @@ export default function EditProfilePage() {
   if (!user) return null;
 
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">تعديل الملف الشخصي</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {ar ? "تعديل الملف الشخصي" : "Edit Profile"}
+        </h1>
         <p className="mt-1 text-gray-600">
-          تحديث معلوماتك الظاهرة للآخرين على كاسب.
+          {ar ? "تحديث معلوماتك الظاهرة للآخرين على كاسب." : "Update your information visible to others on Kaasb."}
         </p>
       </div>
 
       {/* Avatar Section */}
       <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">الصورة الشخصية</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          {ar ? "الصورة الشخصية" : "Profile Photo"}
+        </h2>
         <div className="flex items-center gap-6">
           <button
             onClick={handleAvatarClick}
@@ -196,7 +203,7 @@ export default function EditProfilePage() {
           >
             {user.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={backendUrl(user.avatar_url)} alt="صورة شخصية" className="w-full h-full object-cover" />
+              <img src={backendUrl(user.avatar_url)} alt={ar ? "صورة شخصية" : "Profile photo"} className="w-full h-full object-cover" />
             ) : (
               <span className="text-3xl font-bold text-brand-500">
                 {user.first_name[0]}{user.last_name[0]}
@@ -204,7 +211,7 @@ export default function EditProfilePage() {
             )}
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
               <span className="text-white text-xs font-medium">
-                {isUploadingAvatar ? "جاري الرفع..." : "تغيير"}
+                {isUploadingAvatar ? (ar ? "جاري الرفع..." : "Uploading...") : (ar ? "تغيير" : "Change")}
               </span>
             </div>
           </button>
@@ -223,17 +230,19 @@ export default function EditProfilePage() {
               disabled={isUploadingAvatar}
               className="btn-secondary py-2 px-4 text-sm"
             >
-              {isUploadingAvatar ? "جاري الرفع..." : "رفع صورة"}
+              {isUploadingAvatar ? (ar ? "جاري الرفع..." : "Uploading...") : (ar ? "رفع صورة" : "Upload Photo")}
             </button>
             {user.avatar_url && (
               <button
                 onClick={handleRemoveAvatar}
-                className="mr-3 text-sm text-danger-500 hover:text-danger-700"
+                className="ms-3 text-sm text-danger-500 hover:text-danger-700"
               >
-                حذف
+                {ar ? "حذف" : "Remove"}
               </button>
             )}
-            <p className="mt-2 text-xs text-gray-500">JPEG أو PNG أو WebP. الحد الأقصى 10 ميجابايت.</p>
+            <p className="mt-2 text-xs text-gray-500">
+              {ar ? "JPEG أو PNG أو WebP. الحد الأقصى 10 ميجابايت." : "JPEG, PNG or WebP. Max 10 MB."}
+            </p>
           </div>
         </div>
       </div>
@@ -242,10 +251,14 @@ export default function EditProfilePage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Info */}
         <div className="card p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">المعلومات الأساسية</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            {ar ? "المعلومات الأساسية" : "Basic Information"}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">الاسم المعروض</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {ar ? "الاسم المعروض" : "Display Name"}
+              </label>
               <input
                 name="display_name"
                 value={form.display_name}
@@ -255,12 +268,16 @@ export default function EditProfilePage() {
                 maxLength={100}
               />
               <p className="mt-1 text-xs text-gray-500">
-                كيف يظهر اسمك للآخرين (اتركه فارغاً لاستخدام اسمك الكامل)
+                {ar
+                  ? "كيف يظهر اسمك للآخرين (اتركه فارغاً لاستخدام اسمك الكامل)"
+                  : "How your name appears to others (leave blank to use your full name)"}
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {ar ? "رقم الهاتف" : "Phone Number"}
+              </label>
               <input
                 name="phone"
                 value={form.phone}
@@ -273,39 +290,49 @@ export default function EditProfilePage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">الدولة</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {ar ? "الدولة" : "Country"}
+              </label>
               <select name="country" value={form.country} onChange={handleChange} className="input-field">
-                <option value="">اختر الدولة</option>
+                <option value="">{ar ? "اختر الدولة" : "Select country"}</option>
                 {COUNTRIES.map((c) => (
-                  <option key={c.value} value={c.value}>{c.label}</option>
+                  <option key={c.value} value={c.value}>
+                    {ar ? c.labelAr : c.labelEn}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">المدينة</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {ar ? "المدينة" : "City"}
+              </label>
               <input
                 name="city"
                 value={form.city}
                 onChange={handleChange}
                 className="input-field"
-                placeholder="مدينتك"
+                placeholder={ar ? "مدينتك" : "Your city"}
                 maxLength={100}
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">نبذة شخصية</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {ar ? "نبذة شخصية" : "Bio"}
+              </label>
               <textarea
                 name="bio"
                 value={form.bio}
                 onChange={handleChange}
                 className="input-field min-h-[120px] resize-y"
-                placeholder="اكتب نبذة عنك، عن خبرتك، وما تتقنه..."
+                placeholder={ar
+                  ? "اكتب نبذة عنك، عن خبرتك، وما تتقنه..."
+                  : "Write about yourself, your experience, and what you excel at..."}
                 maxLength={2000}
                 rows={5}
               />
-              <p className="mt-1 text-xs text-gray-500 text-left">{form.bio.length}/2000</p>
+              <p className="mt-1 text-xs text-gray-500 text-end">{form.bio.length}/2000</p>
             </div>
           </div>
         </div>
@@ -313,22 +340,28 @@ export default function EditProfilePage() {
         {/* Freelancer-specific section */}
         {isFreelancer && (
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">التفاصيل المهنية</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              {ar ? "التفاصيل المهنية" : "Professional Details"}
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">اللقب المهني</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {ar ? "اللقب المهني" : "Professional Title"}
+                </label>
                 <input
                   name="title"
                   value={form.title}
                   onChange={handleChange}
                   className="input-field"
-                  placeholder="مثال: مطور Python متقدم"
+                  placeholder={ar ? "مثال: مطور Python متقدم" : "e.g. Senior Python Developer"}
                   maxLength={200}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">سعر الساعة (د.ع)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {ar ? "سعر الساعة (د.ع)" : "Hourly Rate (IQD)"}
+                </label>
                 <input
                   name="hourly_rate"
                   type="number"
@@ -344,17 +377,23 @@ export default function EditProfilePage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">مستوى الخبرة</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {ar ? "مستوى الخبرة" : "Experience Level"}
+                </label>
                 <select name="experience_level" value={form.experience_level} onChange={handleChange} className="input-field">
-                  <option value="">اختر المستوى</option>
+                  <option value="">{ar ? "اختر المستوى" : "Select level"}</option>
                   {EXPERIENCE_LEVELS.map((level) => (
-                    <option key={level.value} value={level.value}>{level.label}</option>
+                    <option key={level.value} value={level.value}>
+                      {ar ? level.labelAr : level.labelEn}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">رابط معرض الأعمال</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {ar ? "رابط معرض الأعمال" : "Portfolio URL"}
+                </label>
                 <input
                   name="portfolio_url"
                   value={form.portfolio_url}
@@ -368,14 +407,16 @@ export default function EditProfilePage() {
 
               {/* Skills Editor */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">المهارات</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {ar ? "المهارات" : "Skills"}
+                </label>
                 <div className="flex gap-2 mb-3">
                   <input
                     value={newSkill}
                     onChange={(e) => setNewSkill(e.target.value)}
                     onKeyDown={handleSkillKeyDown}
                     className="input-field flex-1"
-                    placeholder="اكتب مهارة ثم اضغط Enter"
+                    placeholder={ar ? "اكتب مهارة ثم اضغط Enter" : "Type a skill and press Enter"}
                     maxLength={50}
                   />
                   <button
@@ -384,7 +425,7 @@ export default function EditProfilePage() {
                     disabled={!newSkill.trim() || form.skills.length >= 20}
                     className="btn-secondary py-2 px-4 text-sm whitespace-nowrap"
                   >
-                    إضافة
+                    {ar ? "إضافة" : "Add"}
                   </button>
                 </div>
 
@@ -407,16 +448,18 @@ export default function EditProfilePage() {
                     ))}
                   </div>
                 )}
-                <p className="mt-2 text-xs text-gray-500">{form.skills.length}/20 مهارة</p>
+                <p className="mt-2 text-xs text-gray-500">
+                  {form.skills.length}/20 {ar ? "مهارة" : "skills"}
+                </p>
               </div>
             </div>
           </div>
         )}
 
         {/* Submit */}
-        <div className="flex justify-start gap-3">
+        <div className="flex gap-3">
           <button type="submit" disabled={isSubmitting} className="btn-primary py-2.5 px-8">
-            {isSubmitting ? "جاري الحفظ..." : "حفظ التغييرات"}
+            {isSubmitting ? (ar ? "جاري الحفظ..." : "Saving...") : (ar ? "حفظ التغييرات" : "Save Changes")}
           </button>
         </div>
       </form>

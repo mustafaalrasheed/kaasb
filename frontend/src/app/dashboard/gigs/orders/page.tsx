@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { gigsApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
+import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
 
 interface GigOrderItem {
@@ -23,7 +24,7 @@ interface GigOrderItem {
   gig?: { title: string; slug: string };
 }
 
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABELS_AR: Record<string, string> = {
   pending: "معلق",
   in_progress: "جارٍ",
   delivered: "مُسلَّم",
@@ -31,6 +32,16 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "مكتمل",
   cancelled: "ملغى",
   disputed: "متنازع عليه",
+};
+
+const STATUS_LABELS_EN: Record<string, string> = {
+  pending: "Pending",
+  in_progress: "In Progress",
+  delivered: "Delivered",
+  revision_requested: "Revision Requested",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  disputed: "Disputed",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -50,12 +61,16 @@ const TABS = [
 
 export default function GigOrdersPage() {
   const { user } = useAuthStore();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+
   const [tab, setTab] = useState<"selling" | "buying">("selling");
   const [orders, setOrders] = useState<GigOrderItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const isFreelancer = user?.primary_role === "freelancer";
+  const statusLabels = ar ? STATUS_LABELS_AR : STATUS_LABELS_EN;
 
   const fetchOrders = useCallback(async () => {
     setIsLoading(true);
@@ -76,7 +91,6 @@ export default function GigOrdersPage() {
     fetchOrders();
   }, [fetchOrders]);
 
-  // Set default tab based on role
   useEffect(() => {
     if (!isFreelancer) setTab("buying");
   }, [isFreelancer]);
@@ -85,24 +99,24 @@ export default function GigOrdersPage() {
     setActionLoading(orderId);
     try {
       await gigsApi.markDelivered(orderId);
-      toast.success("تم تسليم الطلب");
+      toast.success(ar ? "تم تسليم الطلب" : "Order delivered");
       fetchOrders();
     } catch {
-      toast.error("تعذّر تسليم الطلب");
+      toast.error(ar ? "تعذّر تسليم الطلب" : "Failed to deliver order");
     } finally {
       setActionLoading(null);
     }
   };
 
   const handleComplete = async (orderId: string) => {
-    if (!confirm("هل تريد قبول التسليم وإتمام الطلب؟")) return;
+    if (!confirm(ar ? "هل تريد قبول التسليم وإتمام الطلب؟" : "Accept delivery and complete this order?")) return;
     setActionLoading(orderId);
     try {
       await gigsApi.completeOrder(orderId);
-      toast.success("تم إتمام الطلب");
+      toast.success(ar ? "تم إتمام الطلب" : "Order completed");
       fetchOrders();
     } catch {
-      toast.error("تعذّر إتمام الطلب");
+      toast.error(ar ? "تعذّر إتمام الطلب" : "Failed to complete order");
     } finally {
       setActionLoading(null);
     }
@@ -112,27 +126,29 @@ export default function GigOrdersPage() {
     setActionLoading(orderId);
     try {
       await gigsApi.requestRevision(orderId);
-      toast.success("تم طلب المراجعة");
+      toast.success(ar ? "تم طلب المراجعة" : "Revision requested");
       fetchOrders();
     } catch {
-      toast.error("تعذّر طلب المراجعة");
+      toast.error(ar ? "تعذّر طلب المراجعة" : "Failed to request revision");
     } finally {
       setActionLoading(null);
     }
   };
 
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">طلبات الخدمات</h1>
-        <p className="mt-1 text-gray-600">إدارة طلبات الخدمات المرسلة والمستلمة</p>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {ar ? "طلبات الخدمات" : "Gig Orders"}
+        </h1>
+        <p className="mt-1 text-gray-600">
+          {ar ? "إدارة طلبات الخدمات المرسلة والمستلمة" : "Manage your sent and received gig orders"}
+        </p>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
-        {TABS.filter((t) =>
-          t.value === "selling" ? isFreelancer : true
-        ).map((t) => (
+        {TABS.filter((t) => t.value === "selling" ? isFreelancer : true).map((t) => (
           <button
             key={t.value}
             onClick={() => setTab(t.value as "selling" | "buying")}
@@ -142,21 +158,25 @@ export default function GigOrdersPage() {
                 : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
-            {t.labelAr}
+            {ar ? t.labelAr : t.labelEn}
           </button>
         ))}
       </div>
 
       {/* Orders list */}
       {isLoading ? (
-        <div className="text-center py-16 text-gray-500">جاري التحميل...</div>
+        <div className="text-center py-16 text-gray-500">
+          {ar ? "جاري التحميل..." : "Loading..."}
+        </div>
       ) : orders.length === 0 ? (
         <div className="text-center py-16">
-          <p className="text-lg font-medium text-gray-900">لا توجد طلبات</p>
+          <p className="text-lg font-medium text-gray-900">
+            {ar ? "لا توجد طلبات" : "No orders found"}
+          </p>
           <p className="mt-2 text-gray-500">
             {tab === "selling"
-              ? "ستظهر هنا الطلبات التي يرسلها العملاء لخدماتك."
-              : "ستظهر هنا الطلبات التي اشتريتها من المستقلين."}
+              ? (ar ? "ستظهر هنا الطلبات التي يرسلها العملاء لخدماتك." : "Orders from clients for your gigs will appear here.")
+              : (ar ? "ستظهر هنا الطلبات التي اشتريتها من المستقلين." : "Gigs you've ordered from freelancers will appear here.")}
           </p>
         </div>
       ) : (
@@ -166,6 +186,8 @@ export default function GigOrdersPage() {
               key={order.id}
               order={order}
               view={tab}
+              ar={ar}
+              statusLabels={statusLabels}
               actionLoading={actionLoading}
               onDeliver={handleDeliver}
               onComplete={handleComplete}
@@ -181,6 +203,8 @@ export default function GigOrdersPage() {
 function OrderCard({
   order,
   view,
+  ar,
+  statusLabels,
   actionLoading,
   onDeliver,
   onComplete,
@@ -188,6 +212,8 @@ function OrderCard({
 }: {
   order: GigOrderItem;
   view: "selling" | "buying";
+  ar: boolean;
+  statusLabels: Record<string, string>;
   actionLoading: string | null;
   onDeliver: (id: string) => void;
   onComplete: (id: string) => void;
@@ -201,43 +227,33 @@ function OrderCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-semibold text-gray-900 truncate">
-              {order.gig?.title ?? "خدمة"}
+              {order.gig?.title ?? (ar ? "خدمة" : "Gig")}
             </span>
-            <span
-              className={`shrink-0 px-2.5 py-0.5 text-xs font-medium rounded-full border ${
-                STATUS_COLORS[order.status] ?? "bg-gray-50 text-gray-600 border-gray-200"
-              }`}
-            >
-              {STATUS_LABELS[order.status] ?? order.status}
+            <span className={`shrink-0 px-2.5 py-0.5 text-xs font-medium rounded-full border ${STATUS_COLORS[order.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}>
+              {statusLabels[order.status] ?? order.status}
             </span>
           </div>
 
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 mt-1">
             <span>
-              السعر:{" "}
-              <span className="font-medium text-gray-900">
-                {order.price_paid.toLocaleString("ar-IQ")} د.ع
+              {ar ? "السعر:" : "Price:"}{" "}
+              <span className="font-medium text-gray-900" dir="ltr">
+                {order.price_paid.toLocaleString(ar ? "ar-IQ" : "en-US")} {ar ? "د.ع" : "IQD"}
               </span>
             </span>
-            <span>مدة التسليم: {order.delivery_days} يوم</span>
+            <span>{ar ? `مدة التسليم: ${order.delivery_days} يوم` : `Delivery: ${order.delivery_days} day${order.delivery_days !== 1 ? "s" : ""}`}</span>
             {order.revisions_remaining >= 0 && (
-              <span>المراجعات المتبقية: {order.revisions_remaining}</span>
+              <span>{ar ? `المراجعات المتبقية: ${order.revisions_remaining}` : `Revisions left: ${order.revisions_remaining}`}</span>
             )}
             {order.due_date && (
               <span>
-                الموعد النهائي:{" "}
-                {new Date(order.due_date).toLocaleDateString("ar-IQ", {
-                  month: "short",
-                  day: "numeric",
-                })}
+                {ar ? "الموعد النهائي: " : "Due: "}
+                {new Date(order.due_date).toLocaleDateString(ar ? "ar-IQ" : "en-US", { month: "short", day: "numeric" })}
               </span>
             )}
             <span>
-              طُلب{" "}
-              {new Date(order.created_at).toLocaleDateString("ar-IQ", {
-                month: "short",
-                day: "numeric",
-              })}
+              {ar ? "طُلب " : "Ordered "}
+              {new Date(order.created_at).toLocaleDateString(ar ? "ar-IQ" : "en-US", { month: "short", day: "numeric" })}
             </span>
           </div>
 
@@ -250,18 +266,15 @@ function OrderCard({
 
         {/* Actions */}
         <div className="flex gap-2 shrink-0 flex-wrap">
-          {/* Freelancer: can deliver in-progress orders */}
           {view === "selling" && order.status === "in_progress" && (
             <button
               onClick={() => onDeliver(order.id)}
               disabled={isBusy}
               className="btn-primary py-1.5 px-4 text-sm disabled:opacity-50"
             >
-              {isBusy ? "..." : "تسليم الطلب"}
+              {isBusy ? "..." : (ar ? "تسليم الطلب" : "Deliver")}
             </button>
           )}
-
-          {/* Client: can complete or request revision on delivered orders */}
           {view === "buying" && order.status === "delivered" && (
             <>
               <button
@@ -269,7 +282,7 @@ function OrderCard({
                 disabled={isBusy}
                 className="btn-primary py-1.5 px-4 text-sm disabled:opacity-50"
               >
-                {isBusy ? "..." : "قبول التسليم"}
+                {isBusy ? "..." : (ar ? "قبول التسليم" : "Accept")}
               </button>
               {order.revisions_remaining > 0 && (
                 <button
@@ -277,7 +290,7 @@ function OrderCard({
                   disabled={isBusy}
                   className="btn-secondary py-1.5 px-4 text-sm disabled:opacity-50"
                 >
-                  طلب مراجعة
+                  {ar ? "طلب مراجعة" : "Request Revision"}
                 </button>
               )}
             </>
