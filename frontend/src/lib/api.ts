@@ -28,7 +28,11 @@ api.interceptors.response.use(
       // login forms, etc.) — they handle it themselves.
       const isAuthEndpoint =
         originalRequest.url?.includes("/auth/me") ||
-        originalRequest.url?.includes("/auth/refresh");
+        originalRequest.url?.includes("/auth/refresh") ||
+        originalRequest.url?.includes("/auth/login") ||
+        originalRequest.url?.includes("/auth/register") ||
+        originalRequest.url?.includes("/auth/social") ||
+        originalRequest.url?.includes("/auth/phone");
       if (isAuthEndpoint) {
         return Promise.reject(error);
       }
