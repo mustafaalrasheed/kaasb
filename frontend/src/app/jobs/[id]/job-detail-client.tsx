@@ -6,6 +6,7 @@ import Link from "next/link";
 import { jobsApi, proposalsApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { backendUrl, getApiError, getApiStatus } from "@/lib/utils";
+import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
 import type { JobDetail } from "@/types/job";
 import { DURATION_LABELS, EXPERIENCE_LABELS } from "@/types/job";
@@ -22,20 +23,48 @@ const JOB_STATUS_AR: Record<string, string> = {
   draft: "مسودة",
 };
 
+const JOB_STATUS_EN: Record<string, string> = {
+  open: "Open",
+  in_progress: "In Progress",
+  completed: "Completed",
+  closed: "Closed",
+  cancelled: "Cancelled",
+  draft: "Draft",
+};
+
 const JOB_TYPE_AR: Record<string, string> = {
   fixed: "سعر ثابت",
   hourly: "بالساعة",
 };
 
-function formatBudget(job: JobDetail): string {
+const JOB_TYPE_EN: Record<string, string> = {
+  fixed: "Fixed Price",
+  hourly: "Hourly",
+};
+
+const EXPERIENCE_LABELS_AR: Record<string, string> = {
+  entry: "مبتدئ",
+  intermediate: "متوسط",
+  expert: "خبير",
+};
+
+const DURATION_LABELS_AR: Record<string, string> = {
+  "less_than_1_week": "أقل من أسبوع",
+  "1_to_4_weeks": "١-٤ أسابيع",
+  "1_to_3_months": "١-٣ أشهر",
+  "3_to_6_months": "٣-٦ أشهر",
+  "more_than_6_months": "أكثر من ٦ أشهر",
+};
+
+function formatBudget(job: JobDetail, ar: boolean): string {
   if (job.job_type === "fixed" && job.fixed_price) {
     return `$${job.fixed_price.toLocaleString()}`;
   }
   if (job.budget_min && job.budget_max) {
-    return `$${job.budget_min} - $${job.budget_max}/س`;
+    return `$${job.budget_min} - $${job.budget_max}/${ar ? "س" : "hr"}`;
   }
-  if (job.budget_min) return `من $${job.budget_min}/س`;
-  return "الميزانية غير محددة";
+  if (job.budget_min) return `${ar ? "من" : "From"} $${job.budget_min}/${ar ? "س" : "hr"}`;
+  return ar ? "الميزانية غير محددة" : "Budget not specified";
 }
 
 export default function JobDetailClient() {
@@ -43,6 +72,8 @@ export default function JobDetailClient() {
   const router = useRouter();
   const jobId = params.id as string;
   const { user } = useAuthStore();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
 
   const [job, setJob] = useState<JobDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -60,37 +91,43 @@ export default function JobDetailClient() {
         const response = await jobsApi.getById(jobId);
         setJob(response.data.data);
       } catch (err: unknown) {
-        setError(getApiStatus(err) === 404 ? "الوظيفة غير موجودة" : "تعذّر تحميل الوظيفة");
+        setError(
+          getApiStatus(err) === 404
+            ? ar ? "الوظيفة غير موجودة" : "Job not found"
+            : ar ? "تعذّر تحميل الوظيفة" : "Failed to load job"
+        );
       } finally {
         setIsLoading(false);
       }
     }
     if (jobId) loadJob();
-  }, [jobId]);
+  }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isOwner = user?.id === job?.client?.id;
   const isFreelancer = user?.primary_role === "freelancer";
 
   const handleClose = async () => {
-    if (!job || !confirm("هل أنت متأكد من إغلاق هذه الوظيفة؟")) return;
+    if (!job || !confirm(ar ? "هل أنت متأكد من إغلاق هذه الوظيفة؟" : "Are you sure you want to close this job?")) return;
     try {
       await jobsApi.close(job.id);
-      toast.success("تم إغلاق الوظيفة");
+      toast.success(ar ? "تم إغلاق الوظيفة" : "Job closed");
       router.push("/dashboard");
     } catch (err: unknown) {
-      toast.error(getApiError(err, "تعذّر إغلاق الوظيفة"));
+      toast.error(getApiError(err, ar ? "تعذّر إغلاق الوظيفة" : "Failed to close job"));
     }
   };
 
   const handleDelete = async () => {
-    if (!job || !confirm("هل أنت متأكد من حذف هذه الوظيفة؟ لا يمكن التراجع عن هذا الإجراء."))
-      return;
+    if (!job || !confirm(ar
+      ? "هل أنت متأكد من حذف هذه الوظيفة؟ لا يمكن التراجع عن هذا الإجراء."
+      : "Are you sure you want to delete this job? This cannot be undone."
+    )) return;
     try {
       await jobsApi.delete(job.id);
-      toast.success("تم حذف الوظيفة");
+      toast.success(ar ? "تم حذف الوظيفة" : "Job deleted");
       router.push("/dashboard");
     } catch (err: unknown) {
-      toast.error(getApiError(err, "تعذّر حذف الوظيفة"));
+      toast.error(getApiError(err, ar ? "تعذّر حذف الوظيفة" : "Failed to delete job"));
     }
   };
 
@@ -106,7 +143,7 @@ export default function JobDetailClient() {
       if (estimatedDuration.trim()) data.estimated_duration = estimatedDuration.trim();
 
       await proposalsApi.submit(job.id, data);
-      toast.success("تم تقديم عرضك بنجاح!");
+      toast.success(ar ? "تم تقديم عرضك بنجاح!" : "Proposal submitted successfully!");
       setShowProposalForm(false);
       setCoverLetter("");
       setBidAmount("");
@@ -114,7 +151,7 @@ export default function JobDetailClient() {
       const response = await jobsApi.getById(jobId);
       setJob(response.data.data);
     } catch (err: unknown) {
-      toast.error(getApiError(err, "تعذّر تقديم العرض"));
+      toast.error(getApiError(err, ar ? "تعذّر تقديم العرض" : "Failed to submit proposal"));
     } finally {
       setIsSubmitting(false);
     }
@@ -123,7 +160,7 @@ export default function JobDetailClient() {
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <p className="text-gray-500">جاري تحميل الوظيفة...</p>
+        <p className="text-gray-500">{ar ? "جاري تحميل الوظيفة..." : "Loading job..."}</p>
       </div>
     );
   }
@@ -131,10 +168,10 @@ export default function JobDetailClient() {
   if (error || !job) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="text-center" dir="rtl">
+        <div className="text-center">
           <p className="text-xl font-semibold text-gray-900">{error}</p>
           <Link href="/jobs" className="mt-4 inline-block text-brand-500 hover:text-brand-600">
-            تصفح الوظائف
+            {ar ? "تصفح الوظائف" : "Browse Jobs"}
           </Link>
         </div>
       </div>
@@ -144,7 +181,7 @@ export default function JobDetailClient() {
   const clientName = job.client.display_name || `${job.client.first_name} ${job.client.last_name}`;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8" dir="rtl">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <JobPostingJsonLd
         title={job.title}
         description={job.description}
@@ -163,7 +200,7 @@ export default function JobDetailClient() {
 
       <Breadcrumbs
         items={[
-          { name: "الوظائف", href: "/jobs" },
+          { name: ar ? "الوظائف" : "Jobs", href: "/jobs" },
           { name: job.title, href: `/jobs/${job.id}` },
         ]}
         className="mb-4"
@@ -185,7 +222,7 @@ export default function JobDetailClient() {
                       ? "bg-success-50 text-success-700 border border-green-200"
                       : "bg-gray-100 text-gray-600 border border-gray-200"
                   }`}>
-                    {JOB_STATUS_AR[job.status] ?? job.status}
+                    {ar ? (JOB_STATUS_AR[job.status] ?? job.status) : (JOB_STATUS_EN[job.status] ?? job.status)}
                   </span>
                 </div>
                 <h1 className="text-2xl font-bold text-gray-900">{job.title}</h1>
@@ -194,14 +231,14 @@ export default function JobDetailClient() {
               {isOwner && job.status === "open" && (
                 <div className="flex gap-2 shrink-0 flex-wrap">
                   <Link href={`/dashboard/jobs/${job.id}/proposals`} className="btn-primary py-2 px-4 text-sm">
-                    العروض ({job.proposal_count})
+                    {ar ? `العروض (${job.proposal_count})` : `Proposals (${job.proposal_count})`}
                   </Link>
                   <button onClick={handleClose} className="btn-secondary py-2 px-4 text-sm">
-                    إغلاق
+                    {ar ? "إغلاق" : "Close"}
                   </button>
                   {job.proposal_count === 0 && (
                     <button onClick={handleDelete} className="btn-danger py-2 px-4 text-sm">
-                      حذف
+                      {ar ? "حذف" : "Delete"}
                     </button>
                   )}
                 </div>
@@ -211,29 +248,29 @@ export default function JobDetailClient() {
             {/* Meta row */}
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
               <div>
-                <span className="text-gray-400">الميزانية:</span>{" "}
-                <span className="font-semibold text-gray-900">{formatBudget(job)}</span>
+                <span className="text-gray-400">{ar ? "الميزانية:" : "Budget:"}</span>{" "}
+                <span className="font-semibold text-gray-900">{formatBudget(job, ar)}</span>
               </div>
               <div>
-                <span className="text-gray-400">النوع:</span>{" "}
-                <span>{JOB_TYPE_AR[job.job_type] ?? job.job_type}</span>
+                <span className="text-gray-400">{ar ? "النوع:" : "Type:"}</span>{" "}
+                <span>{ar ? (JOB_TYPE_AR[job.job_type] ?? job.job_type) : (JOB_TYPE_EN[job.job_type] ?? job.job_type)}</span>
               </div>
               {job.experience_level && (
                 <div>
-                  <span className="text-gray-400">المستوى:</span>{" "}
-                  {EXPERIENCE_LABELS[job.experience_level]}
+                  <span className="text-gray-400">{ar ? "المستوى:" : "Level:"}</span>{" "}
+                  {ar ? (EXPERIENCE_LABELS_AR[job.experience_level] || job.experience_level) : (EXPERIENCE_LABELS[job.experience_level] || job.experience_level)}
                 </div>
               )}
               {job.duration && (
                 <div>
-                  <span className="text-gray-400">المدة:</span>{" "}
-                  {DURATION_LABELS[job.duration]}
+                  <span className="text-gray-400">{ar ? "المدة:" : "Duration:"}</span>{" "}
+                  {ar ? (DURATION_LABELS_AR[job.duration] || job.duration) : (DURATION_LABELS[job.duration] || job.duration)}
                 </div>
               )}
               <div>
-                <span className="text-gray-400">نُشر:</span>{" "}
+                <span className="text-gray-400">{ar ? "نُشر:" : "Posted:"}</span>{" "}
                 <time dateTime={job.published_at || job.created_at}>
-                  {new Date(job.published_at || job.created_at).toLocaleDateString("ar-IQ", {
+                  {new Date(job.published_at || job.created_at).toLocaleDateString(ar ? "ar-IQ" : "en-US", {
                     month: "short", day: "numeric", year: "numeric",
                   })}
                 </time>
@@ -243,14 +280,18 @@ export default function JobDetailClient() {
 
           {/* Description */}
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">تفاصيل الوظيفة</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">
+              {ar ? "تفاصيل الوظيفة" : "Job Details"}
+            </h2>
             <div className="text-gray-700 whitespace-pre-line leading-relaxed">{job.description}</div>
           </div>
 
           {/* Skills */}
           {job.skills_required && job.skills_required.length > 0 && (
             <div className="card p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">المهارات المطلوبة</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">
+                {ar ? "المهارات المطلوبة" : "Required Skills"}
+              </h2>
               <div className="flex flex-wrap gap-2">
                 {job.skills_required.map((skill) => (
                   <span key={skill} className="px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-700 border border-gray-200">
@@ -263,15 +304,17 @@ export default function JobDetailClient() {
 
           {/* Activity */}
           <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">النشاط</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">
+              {ar ? "النشاط" : "Activity"}
+            </h2>
             <div className="flex gap-8 text-sm">
               <div>
                 <span className="text-2xl font-bold text-gray-900">{job.proposal_count}</span>
-                <p className="text-gray-500">عرض</p>
+                <p className="text-gray-500">{ar ? "عرض" : "proposals"}</p>
               </div>
               <div>
                 <span className="text-2xl font-bold text-gray-900">{job.view_count}</span>
-                <p className="text-gray-500">مشاهدة</p>
+                <p className="text-gray-500">{ar ? "مشاهدة" : "views"}</p>
               </div>
             </div>
           </div>
@@ -287,22 +330,26 @@ export default function JobDetailClient() {
                   onClick={() => setShowProposalForm(true)}
                   className="btn-primary w-full py-3 text-lg"
                 >
-                  تقديم عرض
+                  {ar ? "تقديم عرض" : "Submit Proposal"}
                 </button>
               ) : (
                 <form onSubmit={handleSubmitProposal} className="space-y-4">
-                  <h3 className="font-semibold text-gray-900">عرضك</h3>
+                  <h3 className="font-semibold text-gray-900">
+                    {ar ? "عرضك" : "Your Proposal"}
+                  </h3>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      مبلغ العرض (USD) *
+                      {ar ? "مبلغ العرض (USD) *" : "Bid Amount (USD) *"}
                     </label>
                     <input
                       type="number"
                       value={bidAmount}
                       onChange={(e) => setBidAmount(e.target.value)}
                       className="input-field"
-                      placeholder={job.job_type === "fixed" ? "إجمالي السعر" : "سعر الساعة"}
+                      placeholder={ar
+                        ? (job.job_type === "fixed" ? "إجمالي السعر" : "سعر الساعة")
+                        : (job.job_type === "fixed" ? "Total price" : "Hourly rate")}
                       min={5}
                       step={0.5}
                       dir="ltr"
@@ -312,27 +359,29 @@ export default function JobDetailClient() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      المدة المتوقعة
+                      {ar ? "المدة المتوقعة" : "Estimated Duration"}
                     </label>
                     <input
                       type="text"
                       value={estimatedDuration}
                       onChange={(e) => setEstimatedDuration(e.target.value)}
                       className="input-field"
-                      placeholder="مثال: أسبوعان، شهر واحد"
+                      placeholder={ar ? "مثال: أسبوعان، شهر واحد" : "e.g. 2 weeks, 1 month"}
                       maxLength={50}
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      خطاب التقديم *
+                      {ar ? "خطاب التقديم *" : "Cover Letter *"}
                     </label>
                     <textarea
                       value={coverLetter}
                       onChange={(e) => setCoverLetter(e.target.value)}
                       className="input-field min-h-[150px] resize-y"
-                      placeholder="اشرح لماذا أنت مناسب لهذه الوظيفة..."
+                      placeholder={ar
+                        ? "اشرح لماذا أنت مناسب لهذه الوظيفة..."
+                        : "Explain why you are a great fit for this job..."}
                       minLength={50}
                       maxLength={5000}
                       rows={6}
@@ -345,14 +394,16 @@ export default function JobDetailClient() {
 
                   <div className="flex gap-2">
                     <button type="submit" disabled={isSubmitting} className="btn-primary flex-1 py-2.5">
-                      {isSubmitting ? "جاري الإرسال..." : "إرسال العرض"}
+                      {isSubmitting
+                        ? (ar ? "جاري الإرسال..." : "Submitting...")
+                        : (ar ? "إرسال العرض" : "Submit Proposal")}
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowProposalForm(false)}
                       className="btn-secondary py-2.5 px-4"
                     >
-                      إلغاء
+                      {ar ? "إلغاء" : "Cancel"}
                     </button>
                   </div>
                 </form>
@@ -362,7 +413,9 @@ export default function JobDetailClient() {
 
           {/* Client info */}
           <div className="card p-5">
-            <h3 className="text-sm font-semibold text-gray-500 mb-3">عن العميل</h3>
+            <h3 className="text-sm font-semibold text-gray-500 mb-3">
+              {ar ? "عن العميل" : "About the Client"}
+            </h3>
             <Link href={`/profile/${job.client.username}`} className="flex items-center gap-3 group">
               <div className="w-12 h-12 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
                 {job.client.avatar_url ? (
@@ -384,21 +437,21 @@ export default function JobDetailClient() {
 
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">إجمالي الإنفاق</span>
+                <span className="text-gray-500">{ar ? "إجمالي الإنفاق" : "Total Spent"}</span>
                 <span className="font-medium text-gray-900" dir="ltr">${job.client.total_spent.toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">التقييم</span>
+                <span className="text-gray-500">{ar ? "التقييم" : "Rating"}</span>
                 <span className="font-medium text-gray-900">
                   {job.client.avg_rating > 0
                     ? `⭐ ${job.client.avg_rating.toFixed(1)} (${job.client.total_reviews})`
-                    : "عميل جديد"}
+                    : (ar ? "عميل جديد" : "New client")}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">عضو منذ</span>
+                <span className="text-gray-500">{ar ? "عضو منذ" : "Member since"}</span>
                 <span className="font-medium text-gray-900">
-                  {new Date(job.client.created_at).toLocaleDateString("ar-IQ", { month: "short", year: "numeric" })}
+                  {new Date(job.client.created_at).toLocaleDateString(ar ? "ar-IQ" : "en-US", { month: "short", year: "numeric" })}
                 </span>
               </div>
             </div>
@@ -407,10 +460,12 @@ export default function JobDetailClient() {
           {/* Deadline */}
           {job.deadline && (
             <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-500 mb-2">الموعد النهائي</h3>
+              <h3 className="text-sm font-semibold text-gray-500 mb-2">
+                {ar ? "الموعد النهائي" : "Deadline"}
+              </h3>
               <p className="font-medium text-gray-900">
                 <time dateTime={job.deadline}>
-                  {new Date(job.deadline).toLocaleDateString("ar-IQ", { month: "long", day: "numeric", year: "numeric" })}
+                  {new Date(job.deadline).toLocaleDateString(ar ? "ar-IQ" : "en-US", { month: "long", day: "numeric", year: "numeric" })}
                 </time>
               </p>
             </div>
@@ -418,15 +473,20 @@ export default function JobDetailClient() {
 
           {/* Share buttons */}
           <div className="card p-5">
-            <h3 className="text-sm font-semibold text-gray-500 mb-3">شارك هذه الوظيفة</h3>
+            <h3 className="text-sm font-semibold text-gray-500 mb-3">
+              {ar ? "شارك هذه الوظيفة" : "Share this Job"}
+            </h3>
             <div className="flex gap-2">
               <a
-                href={`https://wa.me/?text=${encodeURIComponent(`${job.title} - قدّم عرضك على كاسب: ${canonicalUrl(`/jobs/${job.id}`)}`)}`}
+                href={`https://wa.me/?text=${encodeURIComponent(ar
+                  ? `${job.title} - قدّم عرضك على كاسب: ${canonicalUrl(`/jobs/${job.id}`)}`
+                  : `${job.title} - Submit your proposal on Kaasb: ${canonicalUrl(`/jobs/${job.id}`)}`
+                )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 py-2 px-3 text-sm text-center rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors"
               >
-                واتساب
+                {ar ? "واتساب" : "WhatsApp"}
               </a>
               <a
                 href={`https://t.me/share/url?url=${encodeURIComponent(canonicalUrl(`/jobs/${job.id}`))}&text=${encodeURIComponent(job.title)}`}
@@ -434,7 +494,7 @@ export default function JobDetailClient() {
                 rel="noopener noreferrer"
                 className="flex-1 py-2 px-3 text-sm text-center rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
               >
-                تيليغرام
+                {ar ? "تيليغرام" : "Telegram"}
               </a>
             </div>
           </div>

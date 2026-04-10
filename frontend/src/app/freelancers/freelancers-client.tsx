@@ -6,15 +6,26 @@ import { usersApi } from "@/lib/api";
 import { backendUrl } from "@/lib/utils";
 import type { UserProfile } from "@/types/user";
 import { Breadcrumbs } from "@/components/seo/breadcrumbs";
+import { useLocale } from "@/providers/locale-provider";
 
-const SORT_OPTIONS = [
+const SORT_OPTIONS_AR = [
   { value: "rating", label: "الأعلى تقييماً" },
   { value: "rate_low", label: "السعر: الأقل أولاً" },
   { value: "rate_high", label: "السعر: الأعلى أولاً" },
   { value: "newest", label: "الأحدث" },
 ];
 
+const SORT_OPTIONS_EN = [
+  { value: "rating", label: "Highest Rated" },
+  { value: "rate_low", label: "Rate: Low to High" },
+  { value: "rate_high", label: "Rate: High to Low" },
+  { value: "newest", label: "Newest" },
+];
+
 export default function FreelancersClient() {
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+
   const [freelancers, setFreelancers] = useState<UserProfile[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -25,6 +36,8 @@ export default function FreelancersClient() {
   const [experienceLevel, setExperienceLevel] = useState("");
   const [sortBy, setSortBy] = useState("rating");
   const [page, setPage] = useState(1);
+
+  const sortOptions = ar ? SORT_OPTIONS_AR : SORT_OPTIONS_EN;
 
   const fetchFreelancers = useCallback(async () => {
     setIsLoading(true);
@@ -60,17 +73,25 @@ export default function FreelancersClient() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" dir="rtl">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Breadcrumbs */}
       <Breadcrumbs
-        items={[{ name: "المستقلون", href: "/freelancers" }]}
+        items={[{ name: ar ? "المستقلون" : "Freelancers", href: "/freelancers" }]}
         className="mb-4"
       />
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">ابحث عن مستقل</h1>
+        <h1 className="text-3xl font-bold text-gray-900">
+          {ar ? "ابحث عن مستقل" : "Find Freelancers"}
+        </h1>
         <p className="mt-2 text-gray-600">
-          تصفّح{total > 0 ? ` ${total.toLocaleString("ar-IQ")} ` : " "}مستقلاً موهوباً جاهزاً للعمل على مشروعك.
+          {total > 0
+            ? ar
+              ? `تصفّح ${total.toLocaleString("ar-IQ")} مستقلاً موهوباً جاهزاً للعمل على مشروعك.`
+              : `Browse ${total.toLocaleString()} talented freelancers ready to work on your project.`
+            : ar
+            ? "تصفّح المستقلين الموهوبين"
+            : "Browse talented freelancers"}
         </p>
       </div>
 
@@ -81,15 +102,15 @@ export default function FreelancersClient() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="input-field flex-1"
-            placeholder="ابحث بالاسم أو العنوان أو المهارات..."
-            aria-label="البحث في المستقلين"
+            placeholder={ar ? "ابحث بالاسم أو العنوان أو المهارات..." : "Search by name, title, or skills..."}
+            aria-label={ar ? "البحث في المستقلين" : "Search freelancers"}
           />
           <input
             value={skills}
             onChange={(e) => setSkills(e.target.value)}
             className="input-field sm:w-48"
-            placeholder="مهارات (مثال: Python,React)"
-            aria-label="تصفية حسب المهارات"
+            placeholder={ar ? "مهارات (مثال: Python,React)" : "Skills (e.g. Python,React)"}
+            aria-label={ar ? "تصفية حسب المهارات" : "Filter by skills"}
             dir="ltr"
           />
           <select
@@ -99,12 +120,12 @@ export default function FreelancersClient() {
               setPage(1);
             }}
             className="input-field sm:w-40"
-            aria-label="تصفية حسب مستوى الخبرة"
+            aria-label={ar ? "تصفية حسب مستوى الخبرة" : "Filter by experience level"}
           >
-            <option value="">كل المستويات</option>
-            <option value="entry">مبتدئ</option>
-            <option value="intermediate">متوسط</option>
-            <option value="expert">خبير</option>
+            <option value="">{ar ? "كل المستويات" : "All Levels"}</option>
+            <option value="entry">{ar ? "مبتدئ" : "Entry Level"}</option>
+            <option value="intermediate">{ar ? "متوسط" : "Intermediate"}</option>
+            <option value="expert">{ar ? "خبير" : "Expert"}</option>
           </select>
           <select
             value={sortBy}
@@ -113,9 +134,9 @@ export default function FreelancersClient() {
               setPage(1);
             }}
             className="input-field sm:w-44"
-            aria-label="ترتيب المستقلين"
+            aria-label={ar ? "ترتيب المستقلين" : "Sort freelancers"}
           >
-            {SORT_OPTIONS.map((opt) => (
+            {sortOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -125,7 +146,7 @@ export default function FreelancersClient() {
             type="submit"
             className="btn-primary py-2.5 px-6 whitespace-nowrap"
           >
-            بحث
+            {ar ? "بحث" : "Search"}
           </button>
         </form>
       </div>
@@ -133,29 +154,31 @@ export default function FreelancersClient() {
       {/* Results */}
       {isLoading ? (
         <div className="text-center py-12 text-gray-500">
-          جاري تحميل المستقلين...
+          {ar ? "جاري تحميل المستقلين..." : "Loading freelancers..."}
         </div>
       ) : freelancers.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-lg font-medium text-gray-900">
-            لا يوجد مستقلون مطابقون
+            {ar ? "لا يوجد مستقلون مطابقون" : "No matching freelancers found"}
           </p>
           <p className="mt-2 text-gray-600">
-            جرّب تعديل معايير البحث أو الفلاتر.
+            {ar
+              ? "جرّب تعديل معايير البحث أو الفلاتر."
+              : "Try adjusting your search criteria or filters."}
           </p>
         </div>
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {freelancers.map((freelancer) => (
-              <FreelancerCard key={freelancer.id} user={freelancer} />
+              <FreelancerCard key={freelancer.id} user={freelancer} ar={ar} />
             ))}
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
             <nav
-              aria-label="ترقيم صفحات المستقلين"
+              aria-label={ar ? "ترقيم صفحات المستقلين" : "Freelancer pagination"}
               className="mt-8 flex items-center justify-center gap-2"
             >
               <button
@@ -163,17 +186,17 @@ export default function FreelancersClient() {
                 disabled={page === 1}
                 className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
               >
-                السابق
+                {ar ? "السابق" : "Previous"}
               </button>
               <span className="text-sm text-gray-600 px-4">
-                صفحة {page} من {totalPages}
+                {ar ? `صفحة ${page} من ${totalPages}` : `Page ${page} of ${totalPages}`}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
                 className="btn-secondary py-2 px-4 text-sm disabled:opacity-40"
               >
-                التالي
+                {ar ? "التالي" : "Next"}
               </button>
             </nav>
           )}
@@ -183,7 +206,7 @@ export default function FreelancersClient() {
   );
 }
 
-function FreelancerCard({ user }: { user: UserProfile }) {
+function FreelancerCard({ user, ar }: { user: UserProfile; ar: boolean }) {
   return (
     <Link
       href={`/profile/${user.username}`}
@@ -227,7 +250,7 @@ function FreelancerCard({ user }: { user: UserProfile }) {
             className={`shrink-0 w-2.5 h-2.5 rounded-full mt-1 ${
               user.is_online ? "bg-success-500" : "bg-gray-300"
             }`}
-            aria-label={user.is_online ? "متصل" : "غير متصل"}
+            aria-label={ar ? (user.is_online ? "متصل" : "غير متصل") : (user.is_online ? "Online" : "Offline")}
           />
         </div>
 
