@@ -10,7 +10,7 @@ Target market: Iraq and MENA region. Arabic is primary language (RTL).
 |-------------|--------------------------------------------------------------------------|
 | Backend     | FastAPI 0.115.6, SQLAlchemy 2.0.36 async, Alembic 1.14.0, Pydantic 2.10.3 |
 | Runtime     | Python 3.12, Uvicorn 0.34.0, Gunicorn 21.2.0                            |
-| Frontend    | Next.js 15.1.0, React 19, TypeScript 5.7.2, Tailwind CSS 3.4.17         |
+| Frontend    | Next.js 15.3.9, React 19, TypeScript 5.7.2, Tailwind CSS 3.4.17         |
 | UI          | shadcn/ui components, Lucide React 0.468.0                               |
 | State       | Zustand 5.0.2, React Hook Form 7.54.2, Zod 3.24.1                       |
 | i18n        | Cookie-based locale + LocaleProvider context (Arabic primary, English secondary) |
@@ -461,8 +461,12 @@ docker compose up -d
 # Docker production
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
-# Admin user
+# Admin user (create or promote)
 cd backend && python scripts/create_admin.py
+# Admin password reset
+cd backend && python scripts/create_admin.py --reset
+# Or on production server:
+docker compose -f docker-compose.prod.yml exec -it backend python -m scripts.create_admin --reset
 
 # Seed categories
 cd backend && python scripts/seed_categories.py
@@ -477,7 +481,7 @@ cd backend && python scripts/seed_categories.py
 | **Host** | Hetzner CPX22 — 3 vCPU / 4 GB RAM / 80 GB NVMe / Ubuntu 24.04 |
 | **IP** | 116.203.140.27 |
 | **Domain** | kaasb.com |
-| **SSH** | `ssh deploy@116.203.140.27 -p 2222` |
+| **SSH** | `ssh -i "~/.ssh/id_ed25519" deploy@116.203.140.27 -p 2222` (also port 22) |
 | **App directory** | `/opt/kaasb` |
 | **Backups** | `/opt/kaasb/backups/` · daily 03:00 UTC · 7-day retention |
 | **SSL** | Let's Encrypt · auto-renew · check: `docker exec nginx certbot certificates` |
@@ -503,8 +507,14 @@ cd backend && python scripts/seed_categories.py
 10. **Escrow for gig orders** — Escrow model linked to `milestones` (job marketplace). Needs wiring for gig-order flow.
 11. **USD_TO_IQD rate** — Hardcoded as `1310.0` in `qi_card_client.py`. Needs live rate API or manual update.
 12. ~~**`users` missing `google_id`/`facebook_id`**~~ — **FIXED** (migration `e5f6a7b8c9d0`). Social login now stores provider IDs and looks up by social ID first, email second.
+13. ~~**CVE-2025-66478 (Next.js RCE)**~~ — **FIXED** (2026-04-10). Upgraded Next.js 15.1.0 → 15.3.9. Server was flagged by BSI/CERT-Bund.
+14. ~~**Auth store `response.data.data`**~~ — **FIXED** (2026-04-10). `login`, `socialLogin`, `register` in `auth-store.ts` were double-unwrapping the response causing "undefined undefined" profile and empty dashboard.
+15. ~~**401 interceptor clearing login form**~~ — **FIXED** (2026-04-10). Axios interceptor in `api.ts` was redirecting on 401 from login/register/social endpoints, wiping form fields. Auth endpoints now excluded from redirect.
+16. ~~**Admin panel: deactivated users not reactivatable**~~ — **FIXED** (2026-04-10). `admin_service.py` blocked status changes for all superusers. Restriction removed — `toggle_superuser` already guards last-admin safety.
+17. ~~**Admin tab resets on refresh**~~ — **FIXED** (2026-04-10). Active tab now stored in URL (`/admin?tab=users`) via `useSearchParams` + `router.replace`.
 
 > Security and code quality audits were completed 2026-03-24/25. All 29 security issues and 20 code quality issues are resolved. See `SECURITY_AUDIT_REPORT.md` and `CODE_QUALITY_AUDIT_REPORT.md`.
+> Post-launch fixes applied 2026-04-10: CVE patch, auth bugs, admin UX. See git log for details.
 
 ---
 
@@ -528,9 +538,10 @@ cd backend && python scripts/seed_categories.py
 | 13 | Git, GitHub & CI/CD Pipeline | COMPLETE | 2026-04-05 |
 | 14 | Hetzner CPX22 Production Deployment | COMPLETE | 2026-04-05 |
 | 15 | Monitoring, Alerts & Backups | COMPLETE | 2026-04-05 |
-| 16 | End-to-End Testing (Every Feature) | PENDING — execute against live kaasb.com | — |
-| 17 | Final Scan, Go/No-Go, Repo & CLAUDE.md Update | COMPLETE (security scans pending live server) | 2026-04-05 |
+| 16 | End-to-End Testing (Every Feature) | COMPLETE — live fixes applied 2026-04-10 | 2026-04-10 |
+| 17 | Final Scan, Go/No-Go, Repo & CLAUDE.md Update | COMPLETE | 2026-04-10 |
 | 18 | Post-Deployment: Dev Workflow & Maintenance | COMPLETE | 2026-04-05 |
+| 19 | Post-Launch Bug Fixes & Security Patches | COMPLETE — CVE-2025-66478, auth bugs, admin UX | 2026-04-10 |
 
 ---
 
