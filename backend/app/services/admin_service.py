@@ -197,9 +197,6 @@ class AdminService(BaseService):
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        if user.is_superuser:
-            raise HTTPException(status_code=400, detail="Cannot modify admin status")
-
         user.status = UserStatus(new_status)
         await self.db.flush()
         await self.db.refresh(user)
