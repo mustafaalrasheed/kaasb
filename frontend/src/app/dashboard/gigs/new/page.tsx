@@ -422,23 +422,38 @@ export default function NewGigPage() {
   };
 
   const validateStep2 = () => {
-    const basic = packages.basic;
-    if (!basic.name.trim() || !basic.description.trim() || !basic.price || !basic.delivery_days) {
-      toast.error(locale === "ar" ? "يرجى إكمال معلومات باقة الأساسي" : "Please complete the Basic package details");
-      return false;
-    }
-    for (const tier of ["standard", "premium"] as Tier[]) {
-      const pkg = packages[tier];
-      if (pkg.enabled) {
-        if (!pkg.name.trim() || !pkg.description.trim() || !pkg.price || !pkg.delivery_days) {
-          toast.error(
-            locale === "ar"
-              ? `يرجى إكمال معلومات باقة ${tier === "standard" ? "القياسي" : "المميز"}`
-              : `Please complete the ${tier.charAt(0).toUpperCase() + tier.slice(1)} package details`
-          );
-          return false;
-        }
+    const validatePkg = (pkg: PackageForm, tierLabel: string): boolean => {
+      if (!pkg.name.trim()) {
+        toast.error(locale === "ar" ? `يرجى إدخال اسم باقة ${tierLabel}` : `Please enter a name for the ${tierLabel} package`);
+        return false;
       }
+      if (pkg.name.trim().length < 3) {
+        toast.error(locale === "ar" ? `اسم باقة ${tierLabel} يجب أن يكون 3 أحرف على الأقل` : `${tierLabel} package name must be at least 3 characters`);
+        return false;
+      }
+      if (!pkg.description.trim()) {
+        toast.error(locale === "ar" ? `يرجى إدخال وصف باقة ${tierLabel}` : `Please enter a description for the ${tierLabel} package`);
+        return false;
+      }
+      if (pkg.description.trim().length < 10) {
+        toast.error(locale === "ar" ? `وصف باقة ${tierLabel} يجب أن يكون 10 أحرف على الأقل` : `${tierLabel} package description must be at least 10 characters`);
+        return false;
+      }
+      if (!pkg.price) {
+        toast.error(locale === "ar" ? `يرجى إدخال سعر باقة ${tierLabel}` : `Please enter a price for the ${tierLabel} package`);
+        return false;
+      }
+      if (!pkg.delivery_days) {
+        toast.error(locale === "ar" ? `يرجى إدخال مدة التسليم لباقة ${tierLabel}` : `Please enter delivery days for the ${tierLabel} package`);
+        return false;
+      }
+      return true;
+    };
+
+    const str = t[locale];
+    if (!validatePkg(packages.basic, str.basic)) return false;
+    for (const tier of ["standard", "premium"] as Tier[]) {
+      if (packages[tier].enabled && !validatePkg(packages[tier], tier === "standard" ? str.standard : str.premium)) return false;
     }
     return true;
   };
@@ -485,7 +500,25 @@ export default function NewGigPage() {
       const axiosErr = err as { response?: { data?: { detail?: unknown } } };
       const detail = axiosErr?.response?.data?.detail;
       if (Array.isArray(detail)) {
-        toast.error(detail.map((d: { msg?: string }) => d.msg).join(", "));
+        // Translate common Pydantic v2 validation messages to the active locale
+        const translated = detail.map((d: { msg?: string; loc?: string[]; ctx?: { min_length?: number; max_length?: number } }) => {
+          const msg = d.msg || "";
+          const field = d.loc?.slice(-1)[0] ?? "";
+          if (locale === "ar") {
+            if (msg.includes("at least") && d.ctx?.min_length) {
+              return `الحقل "${field}" يجب أن يكون ${d.ctx.min_length} أحرف على الأقل`;
+            }
+            if (msg.includes("at most") && d.ctx?.max_length) {
+              return `الحقل "${field}" يجب ألا يتجاوز ${d.ctx.max_length} حرفاً`;
+            }
+            if (msg.includes("required") || msg.includes("missing")) {
+              return `الحقل "${field}" مطلوب`;
+            }
+            return msg;
+          }
+          return msg;
+        });
+        toast.error(translated.join(" | "));
       } else {
         toast.error((detail as string) || str.submitError);
       }

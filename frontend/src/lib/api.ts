@@ -99,6 +99,9 @@ export const authApi = {
 
   getWsTicket: () =>
     api.post<{ ticket: string; expires_in: number }>("/auth/ws-ticket"),
+
+  clearSession: () =>
+    api.post("/auth/clear-session", {}),
 };
 
 // === Users API ===

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import { useLocale } from "@/providers/locale-provider";
 import { useEffect } from "react";
@@ -32,14 +32,17 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, isAuthenticated, isLoading } = useAuthStore();
   const { locale } = useLocale();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      window.location.href = "/auth/login";
+      // Use client-side navigation — by the time initialize() fails it has
+      // already called clear-session, so the middleware won't bounce us back.
+      router.replace("/auth/login");
     }
-  }, [isLoading, isAuthenticated]);
+  }, [isLoading, isAuthenticated, router]);
 
   if (isLoading) {
     return (

@@ -75,6 +75,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       const response = await authApi.getMe();
       set({ user: response.data, isAuthenticated: true, isLoading: false });
     } catch {
+      // Clear stale cookies so the middleware doesn't redirect the user back to
+      // a protected route while the server has already invalidated their token
+      // (e.g. token_version changed after logout-all).
+      await authApi.clearSession().catch(() => {});
       set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
