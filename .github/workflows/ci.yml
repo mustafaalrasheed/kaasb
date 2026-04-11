@@ -11,6 +11,8 @@ env:
   NODE_VERSION: "20"
   REGISTRY: ghcr.io
   IMAGE_BASE: ghcr.io/${{ github.repository }}
+  # Opt into Node.js 24 runtime now to silence Node 20 deprecation warnings
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Cancel in-progress runs on the same branch (saves CI minutes)
 concurrency:
@@ -24,6 +26,7 @@ jobs:
   backend:
     name: Backend CI
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -175,6 +178,7 @@ jobs:
   frontend:
     name: Frontend CI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -183,11 +187,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: |
           cd frontend
-          npm install
+          npm ci --legacy-peer-deps
 
       - name: Lint (ESLint)
         run: |
@@ -216,12 +222,12 @@ jobs:
           npm run build
 
       - name: Upload build artifacts
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build
-          path: frontend/.next/
-          if-no-files-found: warn
+          path: frontend/.next
+          if-no-files-found: ignore
           retention-days: 1
 
   # ===========================================================================
@@ -232,6 +238,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [backend, frontend]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 20
 
     permissions:
       contents: read

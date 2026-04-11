@@ -58,7 +58,26 @@ interface AdminTransaction {
   created_at: string;
 }
 
-type Tab = "stats" | "users" | "jobs" | "transactions";
+interface AdminEscrow {
+  escrow_id: string;
+  contract_id: string;
+  milestone_id: string;
+  milestone_title: string;
+  amount: number;
+  platform_fee: number;
+  freelancer_amount: number;
+  currency: string;
+  funded_at: string | null;
+  freelancer: {
+    id: string;
+    username: string;
+    email: string;
+    phone: string | null;
+    qi_card_phone: string | null;
+  };
+}
+
+type Tab = "stats" | "users" | "jobs" | "transactions" | "payouts";
 
 export default function AdminPage() {
   const { user, isLoading: authLoading } = useAuthStore();
@@ -87,6 +106,8 @@ export default function AdminPage() {
   const [txTotal, setTxTotal] = useState(0);
   const [txTypeFilter, setTxTypeFilter] = useState("");
   const [txStatusFilter, setTxStatusFilter] = useState("");
+  const [escrows, setEscrows] = useState<AdminEscrow[]>([]);
+  const [escrowActionLoading, setEscrowActionLoading] = useState<string | null>(null);
 
   const ROLE_LABELS: Record<string, string> = ar
     ? { client: "عميل", freelancer: "مستقل", admin: "مدير" }
@@ -113,6 +134,7 @@ export default function AdminPage() {
     { value: "users" as Tab, label: ar ? "👥 المستخدمون" : "👥 Users" },
     { value: "jobs" as Tab, label: ar ? "📋 الوظائف" : "📋 Jobs" },
     { value: "transactions" as Tab, label: ar ? "💳 المعاملات" : "💳 Transactions" },
+    { value: "payouts" as Tab, label: ar ? "💸 المدفوعات المعلقة" : "💸 Pending Payouts" },
   ];
 
   const dateLocale = ar ? "ar-IQ" : "en-GB";
@@ -178,12 +200,49 @@ export default function AdminPage() {
     } finally { setLoading(false); }
   }, [txTypeFilter, txStatusFilter, ar]);
 
+  const fetchEscrows = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await adminApi.getEscrows();
+      setEscrows(res.data);
+    } catch {
+      toast.error(ar ? "تعذّر تحميل المدفوعات المعلقة" : "Failed to load pending payouts");
+    } finally { setLoading(false); }
+  }, [ar]);
+
+  const handleReleaseEscrow = async (escrow: AdminEscrow) => {
+    const freelancerName = escrow.freelancer.username;
+    const amount = `${escrow.freelancer_amount.toLocaleString(ar ? "ar-IQ" : "en-US")} ${escrow.currency}`;
+    const confirmed = confirm(
+      ar
+        ? `هل أرسلت الدفعة (${amount}) إلى ${freelancerName} عبر بطاقة Qi Card؟ سيتم تحديث السجل فوراً.`
+        : `Confirm: Did you send ${amount} to ${freelancerName} via Qi Card? This will update the ledger immediately.`
+    );
+    if (!confirmed) return;
+
+    setEscrowActionLoading(escrow.escrow_id);
+    try {
+      await adminApi.releaseEscrow(escrow.escrow_id);
+      toast.success(
+        ar
+          ? `تم تسجيل الدفعة إلى ${freelancerName} بنجاح`
+          : `Payout to ${freelancerName} recorded successfully`
+      );
+      fetchEscrows();
+    } catch {
+      toast.error(ar ? "تعذّر تسجيل الدفعة" : "Failed to record payout");
+    } finally {
+      setEscrowActionLoading(null);
+    }
+  };
+
   useEffect(() => {
     if (tab === "stats") fetchStats();
     if (tab === "users") fetchUsers();
     if (tab === "jobs") fetchJobs();
     if (tab === "transactions") fetchTransactions();
-  }, [tab, fetchStats, fetchUsers, fetchJobs, fetchTransactions]);
+    if (tab === "payouts") fetchEscrows();
+  }, [tab, fetchStats, fetchUsers, fetchJobs, fetchTransactions, fetchEscrows]);
 
   const handleStatusUpdate = async (userId: string, status: string) => {
     try {
@@ -582,6 +641,96 @@ export default function AdminPage() {
             </div>
             <p className="text-sm text-gray-500">
               {ar ? `${txTotal} معاملة إجمالاً` : `${txTotal} transaction(s) total`}
+            </p>
+          </div>
+        )}
+
+        {/* Payouts Tab */}
+        {tab === "payouts" && (
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+              <strong>{ar ? "تعليمات:" : "Instructions:"}</strong>{" "}
+              {ar
+                ? "لكل صف أدناه، انتقل إلى لوحة Qi Card وأرسل المبلغ المُحدد إلى رقم هاتف Qi Card للمستقل. بعد إرسال الدفعة، اضغط «تأكيد الدفع» لتحديث السجل."
+                : "For each row below, go to your Qi Card merchant portal and send the listed amount to the freelancer's Qi Card phone. After sending, click \"Confirm Payout\" to update the ledger."}
+            </div>
+
+            {escrows.length === 0 && !loading ? (
+              <div className="bg-white rounded-lg border p-12 text-center text-gray-400">
+                {ar ? "لا توجد مدفوعات معلقة — كل العقود تمت تسويتها." : "No pending payouts — all contracts are settled."}
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg border overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-start p-3 font-medium text-gray-600">{ar ? "المستقل" : "Freelancer"}</th>
+                      <th className="text-start p-3 font-medium text-gray-600">{ar ? "رقم Qi Card" : "Qi Card Phone"}</th>
+                      <th className="text-start p-3 font-medium text-gray-600">{ar ? "المرحلة" : "Milestone"}</th>
+                      <th className="text-start p-3 font-medium text-gray-600">{ar ? "المبلغ الكلي" : "Total"}</th>
+                      <th className="text-start p-3 font-medium text-gray-600">{ar ? "عمولة المنصة" : "Platform Fee"}</th>
+                      <th className="text-start p-3 font-medium text-gray-600">{ar ? "صافي للمستقل" : "Net to Freelancer"}</th>
+                      <th className="text-start p-3 font-medium text-gray-600">{ar ? "تاريخ التمويل" : "Funded"}</th>
+                      <th className="text-end p-3 font-medium text-gray-600">{ar ? "إجراء" : "Action"}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {escrows.map((escrow) => {
+                      const isBusy = escrowActionLoading === escrow.escrow_id;
+                      const qiPhone = escrow.freelancer.qi_card_phone || escrow.freelancer.phone;
+                      return (
+                        <tr key={escrow.escrow_id} className="hover:bg-gray-50">
+                          <td className="p-3">
+                            <div className="font-medium text-gray-900">{escrow.freelancer.username}</div>
+                            <div className="text-xs text-gray-500">{escrow.freelancer.email}</div>
+                          </td>
+                          <td className="p-3">
+                            {qiPhone ? (
+                              <span className="font-mono text-gray-900 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded text-xs" dir="ltr">
+                                {qiPhone}
+                              </span>
+                            ) : (
+                              <span className="text-red-500 text-xs">{ar ? "غير مسجل" : "Not registered"}</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-gray-700 max-w-[180px] truncate">{escrow.milestone_title}</td>
+                          <td className="p-3 font-medium text-gray-900" dir="ltr">
+                            {escrow.amount.toLocaleString(ar ? "ar-IQ" : "en-US")} {escrow.currency}
+                          </td>
+                          <td className="p-3 text-red-600" dir="ltr">
+                            -{escrow.platform_fee.toLocaleString(ar ? "ar-IQ" : "en-US")} {escrow.currency}
+                          </td>
+                          <td className="p-3 font-bold text-green-700" dir="ltr">
+                            {escrow.freelancer_amount.toLocaleString(ar ? "ar-IQ" : "en-US")} {escrow.currency}
+                          </td>
+                          <td className="p-3 text-gray-500 text-xs">
+                            {escrow.funded_at
+                              ? new Date(escrow.funded_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" })
+                              : "—"}
+                          </td>
+                          <td className="p-3">
+                            <div className="flex justify-end">
+                              <button
+                                onClick={() => handleReleaseEscrow(escrow)}
+                                disabled={isBusy}
+                                className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
+                              >
+                                {isBusy ? "..." : (ar ? "تأكيد الدفع" : "Confirm Payout")}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <p className="text-sm text-gray-500">
+              {ar
+                ? `${escrows.length} دفعة معلقة — إجمالي الصافي: ${escrows.reduce((s, e) => s + e.freelancer_amount, 0).toLocaleString("ar-IQ")} IQD`
+                : `${escrows.length} pending payout(s) — total net: ${escrows.reduce((s, e) => s + e.freelancer_amount, 0).toLocaleString("en-US")} IQD`}
             </p>
           </div>
         )}

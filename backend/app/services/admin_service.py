@@ -12,14 +12,23 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.contract import Contract, ContractStatus
+from app.models.contract import Contract, ContractStatus, Milestone
 from app.models.job import Job, JobStatus
 from app.models.message import Message
-from app.models.payment import Escrow, EscrowStatus, Transaction, TransactionStatus, TransactionType
+from app.models.payment import (
+    Escrow,
+    EscrowStatus,
+    PaymentAccount,
+    PaymentProvider,
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+)
 from app.models.proposal import Proposal
 from app.models.review import Review
 from app.models.user import User, UserRole, UserStatus
 from app.services.base import BaseService
+from app.services.payment_service import PaymentService
 from app.utils.sanitize import escape_like
 
 logger = logging.getLogger(__name__)
@@ -292,6 +301,79 @@ class AdminService(BaseService):
         await self.db.flush()
         await self.db.refresh(job)
         return job
+
+    # === Escrow Payout Management ===
+
+    async def list_funded_escrows(self) -> list[dict]:
+        """List all funded escrows awaiting admin manual payout via Qi Card."""
+        stmt = (
+            select(Escrow, User, Milestone)
+            .join(User, User.id == Escrow.freelancer_id)
+            .join(Milestone, Milestone.id == Escrow.milestone_id)
+            .where(Escrow.status == EscrowStatus.FUNDED)
+            .order_by(Escrow.funded_at.asc())
+        )
+        result = await self.db.execute(stmt)
+        rows = result.all()
+
+        # Fetch Qi Card phones for all freelancers in one query
+        freelancer_ids = [row[1].id for row in rows]
+        qi_phones: dict[uuid.UUID, str | None] = {}
+        if freelancer_ids:
+            accounts_result = await self.db.execute(
+                select(PaymentAccount.user_id, PaymentAccount.qi_card_phone).where(
+                    PaymentAccount.user_id.in_(freelancer_ids),
+                    PaymentAccount.provider == PaymentProvider.QI_CARD,
+                )
+            )
+            for user_id, phone in accounts_result.all():
+                qi_phones[user_id] = phone
+
+        escrows = []
+        for escrow, freelancer, milestone in rows:
+            escrows.append({
+                "escrow_id": escrow.id,
+                "contract_id": escrow.contract_id,
+                "milestone_id": escrow.milestone_id,
+                "milestone_title": milestone.title,
+                "amount": float(escrow.amount),
+                "platform_fee": float(escrow.platform_fee),
+                "freelancer_amount": float(escrow.freelancer_amount),
+                "currency": escrow.currency,
+                "funded_at": escrow.funded_at,
+                "freelancer": {
+                    "id": freelancer.id,
+                    "username": freelancer.username,
+                    "email": freelancer.email,
+                    "phone": freelancer.phone,
+                    "qi_card_phone": qi_phones.get(freelancer.id),
+                },
+            })
+        return escrows
+
+    async def release_escrow_admin(self, escrow_id: uuid.UUID) -> dict:
+        """Admin marks a funded escrow as released after sending manual Qi Card payout."""
+        result = await self.db.execute(
+            select(Escrow).where(
+                Escrow.id == escrow_id,
+                Escrow.status == EscrowStatus.FUNDED,
+            )
+        )
+        escrow = result.scalar_one_or_none()
+        if not escrow:
+            raise HTTPException(status_code=404, detail="Funded escrow not found")
+
+        payment_service = PaymentService(self.db)
+        release_result = await payment_service.release_escrow(escrow.milestone_id)
+        if not release_result:
+            raise HTTPException(status_code=500, detail="Failed to release escrow")
+
+        return {
+            "escrow_id": str(escrow_id),
+            "status": "released",
+            "freelancer_amount": float(escrow.freelancer_amount),
+            "currency": escrow.currency,
+        }
 
     # === Transaction Overview ===
 

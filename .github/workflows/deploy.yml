@@ -25,11 +25,20 @@ on:
 env:
   REGISTRY:   ghcr.io
   IMAGE_BASE: ghcr.io/${{ github.repository }}
+  # Opt into Node.js 24 runtime to silence Node 20 deprecation warnings
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Prevent concurrent deploys to the same environment.
+# cancel-in-progress: false ensures a running deploy is never aborted mid-flight.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
     name: Deploy to Hetzner CPX22
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     # Only run if CI passed (for workflow_run trigger)
     if: >

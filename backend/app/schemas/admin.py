@@ -96,3 +96,24 @@ class AdminTransactionListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class AdminEscrowFreelancerInfo(BaseModel):
+    id: uuid.UUID
+    username: str
+    email: str
+    phone: str | None = None
+    qi_card_phone: str | None = None
+
+
+class AdminEscrowInfo(BaseModel):
+    escrow_id: uuid.UUID
+    contract_id: uuid.UUID
+    milestone_id: uuid.UUID
+    milestone_title: str
+    amount: float
+    platform_fee: float
+    freelancer_amount: float
+    currency: str
+    funded_at: datetime | None = None
+    freelancer: AdminEscrowFreelancerInfo

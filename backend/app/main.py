@@ -124,7 +124,7 @@ _SENTRY_SCRUB_KEYS = frozenset({
 })
 
 
-def _sentry_scrub_event(event: dict, hint: dict) -> dict | None:
+def _sentry_scrub_event(event: dict[str, object], hint: dict[str, object]) -> dict[str, object] | None:
     """Strip sensitive fields from Sentry events before they leave the server."""
     def _scrub(obj):
         if isinstance(obj, dict):

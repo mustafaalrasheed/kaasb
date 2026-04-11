@@ -380,6 +380,11 @@ export const adminApi = {
 
   getTransactions: (params?: Record<string, string | number>) =>
     api.get("/admin/transactions", { params }),
+
+  getEscrows: () => api.get("/admin/escrows"),
+
+  releaseEscrow: (escrowId: string) =>
+    api.post(`/admin/escrows/${escrowId}/release`),
 };
 
 // === Gigs API ===

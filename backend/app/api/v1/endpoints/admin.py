@@ -12,6 +12,7 @@ from app.api.dependencies import get_current_admin
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.admin import (
+    AdminEscrowInfo,
     AdminJobListResponse,
     AdminJobStatusUpdate,
     AdminTransactionListResponse,
@@ -127,6 +128,36 @@ async def update_job_status(
     service = AdminService(db)
     job = await service.update_job_status(job_id, data.status)
     return {"id": str(job.id), "status": job.status.value, "message": f"Job status updated to {data.status}"}
+
+
+# === Escrow Payout Management ===
+
+@router.get(
+    "/escrows",
+    response_model=list[AdminEscrowInfo],
+    summary="List funded escrows awaiting payout",
+)
+async def list_funded_escrows(
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all FUNDED escrows with freelancer Qi Card details for manual payout."""
+    service = AdminService(db)
+    return await service.list_funded_escrows()
+
+
+@router.post(
+    "/escrows/{escrow_id}/release",
+    summary="Mark escrow as released",
+)
+async def release_escrow(
+    escrow_id: uuid.UUID,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a funded escrow as released after sending the Qi Card payout manually."""
+    service = AdminService(db)
+    return await service.release_escrow_admin(escrow_id)
 
 
 # === Transaction Overview ===
