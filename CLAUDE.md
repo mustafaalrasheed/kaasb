@@ -515,10 +515,11 @@ cd backend && python scripts/seed_categories.py
 18. ~~**Admin missing Pending Payouts tab**~~ — **FIXED** (2026-04-11). Added `GET /admin/escrows` + `POST /admin/escrows/{id}/release` endpoints. Admin panel has a new "Payouts" tab listing all FUNDED escrows with freelancer Qi Card phone numbers; "Confirm Payout" records the release after admin sends money via Qi Card merchant portal.
 19. ~~**CI: mypy ❌ annotations on `continue-on-error` steps**~~ — **FIXED** (2026-04-11). Added `backend/mypy.ini` with per-module `disable_error_codes` for forward-ref errors in models, `.rowcount` on `CursorResult` in tasks, and `pool.size()`/`pool.overflow()` in database.py. Fixed `_sentry_scrub_event` type signature in `main.py` to match sentry-sdk 2.x `Event = dict[str, object]`.
 20. ~~**CI: `npm ci` fails when lock file out of sync**~~ — **FIXED** (2026-04-12). Switched to `npm install --legacy-peer-deps` in ci.yml. `package.json` pins exact versions (next@15.3.9, react@19.0.0) but the committed lock file had newer resolved versions; `npm ci` rejects this mismatch by design.
+21. ~~**Release: Docker build fails on every tag push**~~ — **FIXED** (2026-04-12). Root cause: `release.yml` used raw `docker buildx build --cache-from type=gha` but the GHA cache was written by `docker/build-push-action@v5` (CI) in an incompatible internal format. Error: `checksum of ref: /backend/requirements.txt not found`. Fix: switched release to use `docker/build-push-action@v5` with no cache (releases are tag-triggered and rare — clean reproducible builds are more important than speed).
 
 > Security and code quality audits were completed 2026-03-24/25. All 29 security issues and 20 code quality issues are resolved. See `SECURITY_AUDIT_REPORT.md` and `CODE_QUALITY_AUDIT_REPORT.md`.
 > Post-launch fixes applied 2026-04-10: CVE patch, auth bugs, admin UX. See git log for details.
-> CI/CD fixes applied 2026-04-11/12: pending payouts tab, mypy.ini, npm install fix. All 3 workflows green.
+> CI/CD fixes applied 2026-04-11/12: all 3 workflows green. See items 19–21 above.
 
 ---
 
@@ -546,7 +547,7 @@ cd backend && python scripts/seed_categories.py
 | 17 | Final Scan, Go/No-Go, Repo & CLAUDE.md Update | COMPLETE | 2026-04-10 |
 | 18 | Post-Deployment: Dev Workflow & Maintenance | COMPLETE | 2026-04-05 |
 | 19 | Post-Launch Bug Fixes & Security Patches | COMPLETE — CVE-2025-66478, auth bugs, admin UX | 2026-04-10 |
-| 20 | CI/CD Pipeline Fixes — All Workflows Green | COMPLETE — mypy.ini, sentry types, npm install, pending payouts tab | 2026-04-12 |
+| 20 | CI/CD Pipeline Fixes — All Workflows Green | COMPLETE — mypy.ini, sentry types, npm install, release Docker fix | 2026-04-12 |
 
 ---
 

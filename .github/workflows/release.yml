@@ -19,6 +19,7 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     permissions:
       contents: write
@@ -54,36 +55,40 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push versioned images
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          VERSION="${{ steps.version.outputs.version }}"
+      # Release builds use docker/build-push-action for consistency with CI.
+      # No --cache-from here: release tags are rare and the GHA cache (written by
+      # CI's build-push-action) uses a different internal format than raw buildx,
+      # causing "checksum of ref: /backend/requirements.txt not found" errors.
+      - name: Build & push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/backend/Dockerfile
+          target: production
+          push: true
+          tags: |
+            ${{ env.IMAGE_BASE }}/backend:${{ steps.version.outputs.tag }}
+            ${{ env.IMAGE_BASE }}/backend:latest
+          # No cache: release builds must be clean and reproducible
 
-          # Backend (context is repo root because Dockerfile uses COPY backend/...)
-          docker buildx build \
-            --file docker/backend/Dockerfile \
-            --target production \
-            --push \
-            --tag "${{ env.IMAGE_BASE }}/backend:${TAG}" \
-            --tag "${{ env.IMAGE_BASE }}/backend:latest" \
-            --cache-from type=gha \
-            .
-
-          # Frontend
-          docker buildx build \
-            --file docker/frontend/Dockerfile \
-            --target production \
-            --push \
-            --build-arg NEXT_PUBLIC_API_URL=https://kaasb.com/api/v1 \
-            --build-arg NEXT_PUBLIC_APP_NAME=Kaasb \
-            --build-arg NEXT_PUBLIC_APP_VERSION="${VERSION}" \
-            --build-arg NEXT_PUBLIC_ENVIRONMENT=production \
-            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }} \
-            --build-arg NEXT_PUBLIC_FACEBOOK_APP_ID=${{ secrets.NEXT_PUBLIC_FACEBOOK_APP_ID }} \
-            --tag "${{ env.IMAGE_BASE }}/frontend:${TAG}" \
-            --tag "${{ env.IMAGE_BASE }}/frontend:latest" \
-            --cache-from type=gha \
-            ./frontend
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./docker/frontend/Dockerfile
+          target: production
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://kaasb.com/api/v1
+            NEXT_PUBLIC_APP_NAME=Kaasb
+            NEXT_PUBLIC_APP_VERSION=${{ steps.version.outputs.version }}
+            NEXT_PUBLIC_ENVIRONMENT=production
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+            NEXT_PUBLIC_FACEBOOK_APP_ID=${{ secrets.NEXT_PUBLIC_FACEBOOK_APP_ID }}
+          tags: |
+            ${{ env.IMAGE_BASE }}/frontend:${{ steps.version.outputs.tag }}
+            ${{ env.IMAGE_BASE }}/frontend:latest
+          # No cache: release builds must be clean and reproducible
 
       # ---- Generate changelog from conventional commits ----
       - name: Generate changelog
@@ -92,7 +97,7 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
 
           # Find previous tag
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "${TAG}" | head -1 || echo "")
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1 || echo "")
 
           if [ -n "${PREV_TAG}" ]; then
             RANGE="${PREV_TAG}..${TAG}"
@@ -182,5 +187,5 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d parse_mode="HTML" \
-            -d text="🚀 <b>Kaasb ${{ steps.version.outputs.tag }} released</b>
+            -d text="<b>Kaasb ${{ steps.version.outputs.tag }} released</b>
           <a href='https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}'>View release notes</a>" > /dev/null
