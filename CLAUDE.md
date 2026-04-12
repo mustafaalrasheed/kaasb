@@ -397,6 +397,7 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 
 | Date | Change |
 |------|--------|
+| 2026-04-12 | CI/CD audit: fixed mypy.ini option typo (disable_error_codes→disable_error_code), added `from __future__ import annotations` + unquoted Mapped types in review.py, bumped Node 20→22, added release concurrency block |
 | 2026-04-12 | Cleanup and token optimization complete — new CLAUDE.md navigation map, skills.md patterns, .claudeignore |
 | 2026-04-12 | CI/CD fully green — mypy.ini, npm install fix, release Docker fix |
 | 2026-04-10 | Post-launch fixes — CVE-2025-66478 (Next.js), auth store double-unwrap, admin UX |
