@@ -469,24 +469,78 @@ me-4 (not mr-4)   pe-6 (not pr-6)   border-s (not border-l)
 ```python
 # 1. If adding a new notification TYPE, extend the enum in:
 #    backend/app/models/notification.py — NotificationType enum
-#    Also add a new Alembic migration to extend the DB enum type.
+#    Then add a migration using ALTER TYPE ... ADD VALUE IF NOT EXISTS:
+#
+#    op.execute("ALTER TYPE notificationtype ADD VALUE IF NOT EXISTS 'your_type'")
+#
+#    Note: PostgreSQL enum values cannot be removed — downgrade is a no-op.
 
-# 2. In the service where the event occurs:
-from app.services.notification_service import NotificationService
+# 2. In the service where the event occurs, use the convenience function:
+import asyncio
+from app.services.notification_service import notify
 from app.models.notification import NotificationType
 
-await NotificationService(self.db).create(
+# Fire-and-forget (never block the request on notification delivery):
+asyncio.create_task(notify(
+    self.db,
     user_id=target_user.id,
-    notification_type=NotificationType.YOUR_NEW_TYPE,
+    type=NotificationType.YOUR_NEW_TYPE,
     title="العنوان",                     # Arabic first
     message="رسالة تفصيلية للمستخدم",
-    link_type="contract",               # "contract"|"job"|"proposal"|"message"|None
-    link_id=related_entity.id,          # UUID or None
-    actor_id=triggering_user.id,        # UUID or None
-)
+    link_type="gig",                     # "contract"|"job"|"proposal"|"gig"|"message"|None
+    link_id=str(related_entity.id),      # str(UUID) or None
+    actor_id=str(triggering_user.id),    # str(UUID) or None
+))
 ```
 
+**Current NotificationType values:**
+`proposal_received`, `proposal_accepted`, `proposal_rejected`, `proposal_shortlisted`,
+`contract_created`, `contract_completed`,
+`milestone_funded`, `milestone_submitted`, `milestone_approved`, `milestone_revision`,
+`payment_received`, `payout_completed`,
+`review_received`, `new_message`,
+`gig_approved`, `gig_rejected`, `gig_submitted`,
+`system_alert`
+
 Frontend bell auto-updates (polls `GET /notifications/unread-count` every 30s). No frontend changes needed.
+
+---
+
+### Gig Lifecycle Recipe
+
+Full flow: `pending_review` → (approve) → `active` | (reject) → `rejected` → (edit+resubmit) → `pending_review`
+
+```python
+# ── Service method signatures (gig_service.py) ──────────────────────────
+async def approve_gig(self, gig_id: uuid.UUID, admin: User) -> Gig:
+    # Validates: status must be pending_review
+    # Sets: status=active, reviewed_by_id=admin.id, reviewed_at=now()
+    # Fires: GIG_APPROVED notification → freelancer
+
+async def reject_gig(self, gig_id: uuid.UUID, reason: str, admin: User) -> Gig:
+    # Validates: status must be pending_review or active (active = takedown)
+    # Sets: status=rejected, rejection_reason=reason, reviewed_by_id, reviewed_at
+    # Fires: GIG_REJECTED notification → freelancer
+
+async def create_gig(self, freelancer: User, data: GigCreate) -> Gig:
+    # Sets status=pending_review
+    # Fires: GIG_SUBMITTED notification → all active admins
+
+# ── Endpoint signatures (gigs.py) ───────────────────────────────────────
+# POST /gigs/admin/{gig_id}/approve  — pass admin from Depends(get_current_admin)
+# POST /gigs/admin/{gig_id}/reject?reason=...  — requires min_length=10
+# GET  /gigs/admin/pending           — returns list of pending_review gigs
+```
+
+**Gig model audit columns** (added migration `a1b2c3d4e5f6`):
+- `reviewed_by_id` — UUID FK → users.id (SET NULL on delete)
+- `reviewed_at` — TIMESTAMPTZ
+- `rejection_reason` — Text (already existed)
+
+**Admin UI** (`src/app/admin/page.tsx`):
+- "Make Admin" (blue) — for non-admin users, excluding self
+- "Revoke Admin" (orange) — for existing admins, excluding self
+- On revoke: backend resets `primary_role → CLIENT` (prevents role label staying as "admin")
 
 ---
 

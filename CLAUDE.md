@@ -71,10 +71,10 @@ Before reading any file, follow these rules:
 | `backend/app/models/job.py` | `jobs` | `title`, `category`, `job_type`, `status`, `client_id`, `freelancer_id`, `proposal_count` |
 | `backend/app/models/proposal.py` | `proposals` | `job_id`, `freelancer_id`, `bid_amount`, `status`, `cover_letter` |
 | `backend/app/models/contract.py` | `contracts`, `milestones` | `client_id`, `freelancer_id`, `status`, `total_amount` |
-| `backend/app/models/gig.py` | `gigs`, `gig_packages`, `gig_orders`, `gig_categories`, `gig_subcategories` | `slug`, `status`, `freelancer_id`, `category_id` |
+| `backend/app/models/gig.py` | `gigs`, `gig_packages`, `gig_orders`, `gig_categories`, `gig_subcategories` | `slug`, `status` (pending_review/active/rejected/paused/draft), `freelancer_id`, `category_id`, `rejection_reason`, `reviewed_by_id` (FK→users), `reviewed_at` |
 | `backend/app/models/payment.py` | `transactions`, `escrows`, `payment_accounts` | `escrow.status` (pending/funded/released/refunded/disputed), `currency="IQD"` |
 | `backend/app/models/message.py` | `conversations`, `messages` | `participant_one_id`, `participant_two_id`, `last_message_at` |
-| `backend/app/models/notification.py` | `notifications` | `user_id`, `type` (enum), `is_read`, `link_type`, `link_id`, `actor_id` |
+| `backend/app/models/notification.py` | `notifications` | `user_id`, `type` (enum), `is_read`, `link_type`, `link_id`, `actor_id`. Types include: proposal_*, contract_*, milestone_*, payment_*, review_received, new_message, **gig_approved, gig_rejected, gig_submitted**, system_alert |
 | `backend/app/models/review.py` | `reviews` | `contract_id`, `reviewer_id`, `reviewee_id`, `rating` (1–5), UNIQUE per contract per party |
 | `backend/app/models/report.py` | `reports` | `reporter_id`, `report_type`, `target_id`, `reason`, `status` |
 
@@ -87,9 +87,9 @@ Before reading any file, follow these rules:
 | `backend/app/services/job_service.py` | Job CRUD, search | `create_job`, `update_job`, `search_jobs`, `get_job` |
 | `backend/app/services/proposal_service.py` | Proposal lifecycle | `submit_proposal`, `accept_proposal`, `reject_proposal`, `withdraw_proposal` |
 | `backend/app/services/contract_service.py` | Contract + milestone lifecycle | `create_contract`, `submit_milestone`, `approve_milestone`, `complete_contract` |
-| `backend/app/services/gig_service.py` | Gig CRUD + order lifecycle | `create_gig`, `update_gig`, `search_gigs`, `approve_gig`, `reject_gig`, `place_order`, `deliver_order`, `complete_order` |
+| `backend/app/services/gig_service.py` | Gig CRUD + order lifecycle | `create_gig` (notifies admins), `update_gig`, `search_gigs`, `approve_gig(gig_id, admin)` (validates pending_review, sets audit trail, notifies freelancer), `reject_gig(gig_id, reason, admin)` (same), `place_order`, `deliver_order`, `complete_order` |
 | `backend/app/services/payment_service.py` | Escrow, transactions, payouts | `fund_escrow`, `release_escrow`, `get_summary`, `list_transactions`, `list_pending_payouts` |
-| `backend/app/services/admin_service.py` | Admin stats, user/job management | `get_stats`, `list_users`, `update_user_status`, `list_pending_escrows`, `release_escrow` |
+| `backend/app/services/admin_service.py` | Admin stats, user/job management | `get_stats`, `list_users`, `update_user_status`, `toggle_superuser(user_id, acting_admin)` (promote/demote; resets primary_role to CLIENT on demote; prevents last-admin removal), `list_pending_escrows`, `release_escrow` |
 | `backend/app/services/message_service.py` | Conversations, messages | `get_or_create_conversation`, `send_message`, `list_conversations`, `mark_read` |
 | `backend/app/services/notification_service.py` | Notification CRUD | `create`, `list_for_user`, `mark_read`, `get_unread_count` |
 | `backend/app/services/review_service.py` | Review CRUD | `create_review`, `list_for_user` |
@@ -234,14 +234,14 @@ Before reading any file, follow these rules:
 | `docker-compose.prod.yml` | Production: adds monitoring stack |
 | `docker/backend/Dockerfile` | Backend image (Python 3.12 slim) |
 | `docker/frontend/Dockerfile` | Frontend image (Next.js standalone) |
-| `docker/nginx/nginx.conf` | SSL termination, reverse proxy, rate limiting |
+| `docker/nginx/nginx.conf` | SSL termination, reverse proxy, rate limiting. `location ^~ /api/og` routes to Next.js frontend (before the `/api/` → backend catch-all). |
 | `docker/prometheus/prometheus.yml` | Metrics scrape config |
 | `docker/grafana/` | Dashboard provisioning |
 | `.github/workflows/ci.yml` | Lint + test + build on push to main / PRs |
 | `.github/workflows/deploy.yml` | SSH deploy to production (after CI on main) |
 | `.github/workflows/release.yml` | Versioned Docker images + GitHub Release (v* tags) |
 | `deploy.sh` | `./deploy.sh full|--pull|--migrate|--rollback|--backup|--ssl|--status|--logs` |
-| `backend/alembic/` | Database migrations (15 migrations, linear chain) |
+| `backend/alembic/` | Database migrations (16 migrations, linear chain) |
 | `backend/scripts/create_admin.py` | Create/promote admin user |
 | `backend/scripts/seed_categories.py` | Seed 8 Iraqi-market gig categories (idempotent) |
 | `backend/mypy.ini` | mypy config with per-module error suppressions |
@@ -281,8 +281,8 @@ alembic upgrade head
 alembic check   # must show "No new upgrade operations detected"
 ```
 
-**Migration chain** (15 migrations, linear):
-`25c8a4c` → `1f80b6c` → `40dda09` → `8708878` → `ae6a5c3` → `b3f9e2a` → `c7d4e8f` → `d1a2b3c` → `e2b3c4d` → `f3a4b5c` → `a1b2c3d` (gig_marketplace) → `b2c3d4e` (qi_card_only) → `c3d4e5f` (phone_otp) → `d4e5f6a` (schema_drift_fix) → `e5f6a7b` (social_ids_nullable_password_iqd)
+**Migration chain** (16 migrations, linear):
+`25c8a4c` → `1f80b6c` → `40dda09` → `8708878` → `ae6a5c3` → `b3f9e2a` → `c7d4e8f` → `d1a2b3c` → `e2b3c4d` → `f3a4b5c` → `a1b2c3d` (gig_marketplace) → `b2c3d4e` (qi_card_only) → `c3d4e5f` (phone_otp) → `d4e5f6a` (schema_drift_fix) → `e5f6a7b` (social_ids_nullable_password_iqd) → `f3a4b5c6d7e8` (legal_compliance) → `a1b2c3d4e5f6` (gig_review_audit + notification_types)
 
 **Enum creation** (idempotent pattern):
 ```python
@@ -397,6 +397,9 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 
 | Date | Change |
 |------|--------|
+| 2026-04-12 | Admin promote/demote: added "Revoke Admin" button (orange) in admin UI; fixed toggle_superuser to reset primary_role→CLIENT on demotion |
+| 2026-04-12 | Gig lifecycle hardened: added reviewed_by_id+reviewed_at audit columns, status-transition validation, GIG_APPROVED/GIG_REJECTED/GIG_SUBMITTED notifications; migration a1b2c3d4e5f6 |
+| 2026-04-12 | Pre-beta verification: fixed 6 issues (missing OG image, favicon, icon.svg, apple-touch-icon, nginx /api/og routing, manifest.json RTL); report at tests/pre-beta-report.md — GO with conditions |
 | 2026-04-12 | CI/CD audit: fixed mypy.ini option typo (disable_error_codes→disable_error_code), added `from __future__ import annotations` + unquoted Mapped types in review.py, bumped Node 20→22, added release concurrency block |
 | 2026-04-12 | Cleanup and token optimization complete — new CLAUDE.md navigation map, skills.md patterns, .claudeignore |
 | 2026-04-12 | CI/CD fully green — mypy.ini, npm install fix, release Docker fix |
