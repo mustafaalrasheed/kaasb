@@ -452,10 +452,16 @@ export default function AdminPage() {
                               {ar ? "تفعيل" : "Activate"}
                             </button>
                           )}
-                          {!u.is_superuser && (
+                          {u.id !== user?.id && !u.is_superuser && (
                             <button onClick={() => handleToggleAdmin(u.id)}
                               className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100">
-                              {ar ? "صلاحية مدير" : "Toggle Admin"}
+                              {ar ? "ترقية لمدير" : "Make Admin"}
+                            </button>
+                          )}
+                          {u.id !== user?.id && u.is_superuser && (
+                            <button onClick={() => handleToggleAdmin(u.id)}
+                              className="px-2 py-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100">
+                              {ar ? "إلغاء صلاحية المدير" : "Revoke Admin"}
                             </button>
                           )}
                         </div>

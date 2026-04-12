@@ -244,6 +244,9 @@ class AdminService(BaseService):
         user.is_superuser = not user.is_superuser
         if user.is_superuser:
             user.primary_role = UserRole.ADMIN
+        else:
+            # Demoted — fall back to client (safest default; admin can update further)
+            user.primary_role = UserRole.CLIENT
         logger.info(
             "Admin privilege %s user=%s by admin=%s",
             "granted to" if user.is_superuser else "revoked from",
