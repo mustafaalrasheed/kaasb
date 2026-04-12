@@ -3,6 +3,7 @@ Kaasb Platform - Review Model
 Both client and freelancer can leave reviews after a contract is completed.
 Each party can only review the other once per contract.
 """
+from __future__ import annotations
 
 import uuid
 
