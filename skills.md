@@ -1,17 +1,26 @@
-# Kaasb Platform — Skills Reference
-Token-efficient pattern guide. Read this instead of re-reading the whole codebase.
+# Kaasb Code Patterns
+
+Copy-paste templates for every common task. Use these instead of reading example files.
 
 ---
 
-## How to Add a New API Endpoint
+## Backend Patterns
 
-**Step 1 — Add schema** in `backend/app/schemas/<domain>.py`:
+### Adding a New Endpoint (full recipe)
+
+**Step 1 — Schema** in `backend/app/schemas/<domain>.py`:
 ```python
-class MyThingCreate(BaseModel):
+from __future__ import annotations
+import uuid
+from decimal import Decimal
+from datetime import datetime
+from pydantic import BaseModel, ConfigDict
+
+class ThingCreate(BaseModel):
     name: str
     amount: Decimal
 
-class MyThingOut(BaseModel):
+class ThingOut(BaseModel):
     id: uuid.UUID
     name: str
     amount: Decimal
@@ -19,348 +28,591 @@ class MyThingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 ```
 
-**Step 2 — Add service method** in `backend/app/services/<domain>_service.py`:
+**Step 2 — Service method** in `backend/app/services/<domain>_service.py`:
 ```python
-async def create_thing(self, user: User, data: MyThingCreate) -> MyThing:
-    thing = MyThing(owner_id=user.id, **data.model_dump())
-    self.db.add(thing)
-    await self.db.commit()
-    await self.db.refresh(thing)
-    return thing
-```
-- Raise `NotFoundError`, `ForbiddenError`, `ConflictError`, `BadRequestError` from `app.core.exceptions`.
-- Use `selectinload()` on relationships (never `lazy="raise"` at query time).
-- All DB operations are `async` — `await` every SQLAlchemy call.
+from app.services.base import BaseService
+from app.models.thing import Thing
+from app.schemas.thing import ThingCreate, ThingOut
+from app.core.exceptions import NotFoundError, ForbiddenError
 
-**Step 3 — Add router handler** in `backend/app/api/v1/endpoints/<domain>.py`:
+class ThingService(BaseService):
+    async def create_thing(self, user: User, data: ThingCreate) -> Thing:
+        thing = Thing(owner_id=user.id, **data.model_dump())
+        self.db.add(thing)
+        await self.db.commit()
+        await self.db.refresh(thing)
+        return thing
+
+    async def get_thing(self, thing_id: uuid.UUID, user: User) -> Thing:
+        result = await self.db.execute(
+            select(Thing).where(Thing.id == thing_id)
+        )
+        thing = result.scalar_one_or_none()
+        if not thing:
+            raise NotFoundError("Thing not found")
+        if thing.owner_id != user.id:
+            raise ForbiddenError("Access denied")
+        return thing
+```
+
+**Step 3 — Router handler** in `backend/app/api/v1/endpoints/<domain>.py`:
 ```python
-@router.post("", response_model=MyThingOut, status_code=status.HTTP_201_CREATED)
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.api.dependencies import get_current_user, get_current_admin, get_db
+from app.models.user import User
+from app.schemas.thing import ThingCreate, ThingOut
+from app.services.thing_service import ThingService
+
+router = APIRouter(prefix="/things", tags=["things"])
+
+@router.post("", response_model=ThingOut, status_code=status.HTTP_201_CREATED)
 async def create_thing(
-    data: MyThingCreate,
+    data: ThingCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-):
-    svc = MyThingService(db)
-    return await svc.create_thing(current_user, data)
-```
-- Import your service. No SQL logic here.
-- Use `Depends(get_current_admin)` for admin-only routes.
-- Use `Depends(get_current_freelancer)` or `Depends(get_current_client)` when role matters.
+) -> ThingOut:
+    return await ThingService(db).create_thing(current_user, data)
 
-**Step 4 — Register router** in `backend/app/api/v1/router.py`:
+@router.get("/{thing_id}", response_model=ThingOut)
+async def get_thing(
+    thing_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ThingOut:
+    return await ThingService(db).get_thing(thing_id, current_user)
+```
+
+**Step 4 — Register** in `backend/app/api/v1/router.py`:
 ```python
-from app.api.v1.endpoints.my_thing import router as my_thing_router
-api_router.include_router(my_thing_router, prefix="/my-things")
+from app.api.v1.endpoints.thing import router as thing_router
+api_router.include_router(thing_router)
 ```
 
-**Step 5 — Add API call** in `frontend/src/lib/api.ts`:
+**Step 5 — API client** in `frontend/src/lib/api.ts`:
 ```typescript
-export const createThing = (data: MyThingCreate) =>
-  api.post<MyThingOut>('/my-things', data).then(r => r.data);
+export const createThing = (data: ThingCreate): Promise<ThingOut> =>
+  api.post<ThingOut>('/things', data).then(r => r.data);
+
+export const getThing = (id: string): Promise<ThingOut> =>
+  api.get<ThingOut>(`/things/${id}`).then(r => r.data);
 ```
 
 ---
 
-## How to Add a New Database Model + Migration
+### Adding a New Database Model + Migration
 
-**Step 1 — Create model** in `backend/app/models/<name>.py`:
+**Step 1 — Model** in `backend/app/models/<name>.py`:
 ```python
-from app.models.base import BaseModel
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from __future__ import annotations
 import uuid
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import String, ForeignKey, Numeric
+from sqlalchemy.dialects.postgresql import UUID
+from app.models.base import BaseModel
 
-class MyThing(BaseModel):
-    __tablename__ = "my_things"
+class Thing(BaseModel):
+    __tablename__ = "things"
 
     owner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    owner: Mapped["User"] = relationship("User", lazy="raise")
 ```
 
-**Step 2 — Import model** in `backend/app/models/base.py` or wherever models are loaded:
-Ensure it's imported before `alembic` autogenerate runs.
+**Step 2 — Import** in `backend/app/models/__init__.py`:
+```python
+from app.models.thing import Thing  # noqa: F401
+```
 
-**Step 3 — Generate migration**:
+**Step 3 — Generate + apply**:
 ```bash
 cd backend
-alembic revision --autogenerate -m "add_my_things_table"
-# Review the generated file in alembic/versions/
+alembic revision --autogenerate -m "add_things_table"
+# Review generated file, then:
 alembic upgrade head
-alembic check   # must show "No new upgrade operations detected"
+alembic check   # must return "No new upgrade operations detected"
 ```
 
-**Enum type pattern** (idempotent):
+**Enum pattern** (idempotent — always use this for new enums):
 ```python
-def upgrade():
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+def upgrade() -> None:
     op.execute("""
         DO $$ BEGIN
-            CREATE TYPE mythingstatus AS ENUM ('active', 'inactive');
+            CREATE TYPE thingstatus AS ENUM ('active', 'inactive', 'archived');
         EXCEPTION WHEN duplicate_object THEN NULL;
         END $$;
     """)
-    op.create_table('my_things',
-        sa.Column('status', postgresql.ENUM('active', 'inactive',
-            name='mythingstatus', create_type=False), nullable=False),
-        ...
+    op.create_table('things',
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('status', postgresql.ENUM(
+            'active', 'inactive', 'archived',
+            name='thingstatus', create_type=False
+        ), nullable=False),
+        sa.PrimaryKeyConstraint('id'),
     )
+
+def downgrade() -> None:
+    op.drop_table('things')
+    op.execute("DROP TYPE IF EXISTS thingstatus")
 ```
 
 ---
 
-## How to Add a New Frontend Page
+### Error Handling Pattern
 
-**Step 1 — Create page file**:
+```python
+from app.core.exceptions import (
+    NotFoundError,      # 404 — resource not found
+    ForbiddenError,     # 403 — user lacks permission
+    UnauthorizedError,  # 401 — not authenticated
+    ConflictError,      # 409 — duplicate or state conflict
+    BadRequestError,    # 400 — invalid input not caught by Pydantic
+    RateLimitError,     # 429 — too many requests
+    ExternalServiceError,  # 502 — QiCard/email/external API failed
+)
+
+# Standard usage:
+if not resource:
+    raise NotFoundError("Gig not found")
+if resource.owner_id != user.id:
+    raise ForbiddenError("You do not own this resource")
+if await self._already_exists(user.id, job_id):
+    raise ConflictError("You already submitted a proposal for this job")
 ```
-frontend/src/app/my-section/page.tsx         # /my-section
-frontend/src/app/my-section/[id]/page.tsx    # /my-section/[id]
+
+Never raise `HTTPException` in services — only in routers (and even then, prefer domain exceptions).
+
+---
+
+### Querying with Relationships (never trigger lazy="raise")
+
+```python
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload, joinedload
+
+# Single related object
+stmt = select(Contract).options(
+    selectinload(Contract.milestones),
+    joinedload(Contract.client),
+    joinedload(Contract.freelancer),
+).where(Contract.id == contract_id)
+result = await self.db.execute(stmt)
+contract = result.unique().scalar_one_or_none()
+
+# List with pagination
+stmt = (
+    select(Job)
+    .options(selectinload(Job.proposals))
+    .where(Job.status == JobStatus.OPEN)
+    .order_by(Job.created_at.desc())
+    .offset((page - 1) * page_size)
+    .limit(page_size)
+)
+result = await self.db.execute(stmt)
+jobs = result.scalars().all()
 ```
 
-**Step 2 — Choose rendering strategy**:
-- Public/SEO pages: use `async` server component (SSR)
-- Dashboard/user-specific: use `"use client"` + CSR
-- Semi-static catalog: add `export const revalidate = 3600` for ISR
+---
 
-**Step 3 — SSR page pattern**:
+### Notification + Email Pattern
+
+```python
+from app.services.notification_service import NotificationService
+from app.services.email_service import EmailService
+from app.models.notification import NotificationType
+import asyncio
+
+# In any service method, after the main action:
+notif_svc = NotificationService(self.db)
+await notif_svc.create(
+    user_id=recipient.id,
+    notification_type=NotificationType.PAYMENT_RECEIVED,
+    title="دفعة جديدة",
+    message=f"استلمت دفعة بقيمة {amount} دينار",
+    link_type="contract",
+    link_id=contract.id,
+    actor_id=sender.id,
+)
+
+# Email is fire-and-forget — never await in request handler
+email_svc = EmailService()
+asyncio.create_task(
+    email_svc.send_notification_email(
+        to_email=recipient.email,
+        subject="دفعة جديدة على Kaasb",
+        template="payment_received",
+        context={"user_name": recipient.first_name, "amount": str(amount)},
+    )
+)
+```
+
+---
+
+### Background Task Pattern
+
+```python
+import asyncio
+from app.services.email_service import EmailService
+
+@router.post("/my-endpoint")
+async def my_endpoint(
+    data: MyCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MyOut:
+    result = await MyService(db).do_thing(current_user, data)
+    # Fire-and-forget side effect
+    asyncio.create_task(send_side_effect_email(result))
+    return result
+
+async def send_side_effect_email(result: MyThing) -> None:
+    await EmailService().send_notification_email(...)
+```
+
+---
+
+## Frontend Patterns
+
+### Adding a New Page
+
+**SSR page** (public, SEO-important):
 ```typescript
-// app/my-section/page.tsx — server component
-export default async function MyPage() {
-  const data = await fetchData();  // direct fetch or server-side API call
-  return <MyComponent data={data} />;
+// frontend/src/app/my-section/page.tsx
+import { cookies } from 'next/headers';
+import type { Metadata } from 'next';
+
+export async function generateMetadata(): Promise<Metadata> {
+  const cookieStore = await cookies();
+  const ar = cookieStore.get('locale')?.value !== 'en';
+  return {
+    title: ar ? 'قسمي | كاسب' : 'My Section | Kaasb',
+    description: ar ? 'وصف بالعربية' : 'English description',
+  };
 }
-export const metadata = { title: 'My Page | Kaasb', description: '...' };
+
+export default async function MyPage() {
+  const cookieStore = await cookies();
+  const ar = cookieStore.get('locale')?.value !== 'en';
+  // Fetch data server-side if needed
+  return (
+    <main>
+      <h1>{ar ? 'قسمي' : 'My Section'}</h1>
+    </main>
+  );
+}
+
+export const revalidate = 3600; // ISR — omit for pure SSR
 ```
 
-**Step 4 — CSR page pattern**:
+**CSR dashboard page**:
 ```typescript
+// frontend/src/app/dashboard/my-feature/page.tsx
 "use client";
 import { useEffect, useState } from 'react';
-import { fetchMyThings } from '@/lib/api';
+import { useLocale } from '@/providers/locale-provider';
+import { getMyThings } from '@/lib/api';
+import type { ThingOut } from '@/types/thing';
 
-export default function MyDashboardPage() {
-  const [data, setData] = useState([]);
-  useEffect(() => { fetchMyThings().then(setData); }, []);
-  return <div>{/* render */}</div>;
+export default function MyFeaturePage() {
+  const { locale } = useLocale();
+  const ar = locale === 'ar';
+  const [items, setItems] = useState<ThingOut[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getMyThings()
+      .then(setItems)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div>{ar ? 'جاري التحميل...' : 'Loading...'}</div>;
+
+  return (
+    <div dir={ar ? 'rtl' : 'ltr'}>
+      <h1 className="text-2xl font-bold mb-6">
+        {ar ? 'خدماتي' : 'My Things'}
+      </h1>
+      {/* render items */}
+    </div>
+  );
 }
 ```
 
-**Step 5 — Protect dashboard pages**: Already handled by `src/middleware.ts`.
-Any path under `/dashboard/` is auto-protected. No per-page auth check needed.
+---
+
+### API Client Pattern
+
+All calls go in `frontend/src/lib/api.ts`. The axios instance is already configured with interceptors.
+
+```typescript
+// Add at the bottom of src/lib/api.ts
+
+// List with pagination
+export const listThings = (params?: { page?: number; search?: string }) =>
+  api.get<{ items: ThingOut[]; total: number }>('/things', { params }).then(r => r.data);
+
+// Create
+export const createThing = (data: ThingCreate) =>
+  api.post<ThingOut>('/things', data).then(r => r.data);
+
+// Get by ID
+export const getThing = (id: string) =>
+  api.get<ThingOut>(`/things/${id}`).then(r => r.data);
+
+// Update
+export const updateThing = (id: string, data: Partial<ThingCreate>) =>
+  api.put<ThingOut>(`/things/${id}`, data).then(r => r.data);
+
+// Delete
+export const deleteThing = (id: string) =>
+  api.delete(`/things/${id}`).then(r => r.data);
+
+// Action endpoint
+export const activateThing = (id: string) =>
+  api.post<ThingOut>(`/things/${id}/activate`).then(r => r.data);
+```
 
 ---
 
-## How to Add Translations (Arabic + English)
+### Form Handling Pattern (React Hook Form + Zod)
 
-**i18n approach**: Cookie-based locale (`ar` default, `en` secondary). No `next-intl` — locale
-is read server-side via `cookies()` and exposed to client components via `LocaleProvider` context.
+```typescript
+"use client";
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useLocale } from '@/providers/locale-provider';
+import { createThing } from '@/lib/api';
 
-**Client components** — use the `useLocale()` hook:
+const schema = z.object({
+  name: z.string().min(3).max(200),
+  amount: z.number().positive(),
+});
+type FormData = z.infer<typeof schema>;
+
+export function CreateThingForm() {
+  const { locale } = useLocale();
+  const ar = locale === 'ar';
+
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+  });
+
+  const onSubmit = async (data: FormData) => {
+    await createThing(data);
+    // handle success
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} dir={ar ? 'rtl' : 'ltr'}>
+      <input {...register('name')} placeholder={ar ? 'الاسم' : 'Name'} />
+      {errors.name && <p className="text-red-500 text-sm">{errors.name.message}</p>}
+
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? (ar ? 'جاري الحفظ...' : 'Saving...') : (ar ? 'حفظ' : 'Save')}
+      </button>
+    </form>
+  );
+}
+```
+
+---
+
+### i18n Pattern
+
+**Client component** — use `useLocale()`:
 ```typescript
 import { useLocale } from '@/providers/locale-provider';
 
 export function MyComponent() {
   const { locale } = useLocale();
   const ar = locale === 'ar';
-  return <button>{ar ? 'إنشاء خدمة جديدة' : 'Create New Gig'}</button>;
+  return (
+    <div dir={ar ? 'rtl' : 'ltr'} className={ar ? 'font-arabic' : ''}>
+      <h1>{ar ? 'العنوان' : 'Title'}</h1>
+      <p className="text-start">{ar ? 'النص' : 'Text'}</p>
+    </div>
+  );
 }
 ```
 
-**Server components** — read the cookie directly:
+**Server component** — read cookie directly:
 ```typescript
 import { cookies } from 'next/headers';
 
 export default async function MyPage() {
   const cookieStore = await cookies();
-  const locale = cookieStore.get('locale')?.value === 'en' ? 'en' : 'ar';
-  const ar = locale === 'ar';
+  const ar = cookieStore.get('locale')?.value !== 'en';
   return <h1>{ar ? 'مرحباً' : 'Hello'}</h1>;
 }
 ```
 
-**Bilingual metadata** — use `generateMetadata()` instead of `export const metadata`:
-```typescript
-export async function generateMetadata() {
-  const cookieStore = await cookies();
-  const locale = cookieStore.get('locale')?.value === 'en' ? 'en' : 'ar';
-  const ar = locale === 'ar';
-  return { title: ar ? 'العنوان بالعربية' : 'English Title' };
-}
+**RTL Tailwind** — always use logical properties:
 ```
-
-**RTL layout**: Arabic is RTL. Use Tailwind logical properties:
-- Use `start`/`end` instead of `left`/`right`: `ms-4` not `ml-4`, `ps-6` not `pl-6`
-- Use `text-start` not `text-left`
-- Use `border-s` not `border-l`
-- `dir="rtl"` is set at root layout level — components inherit it automatically.
-
-**Arabic font**: Tajawal is primary. Applied via `font-arabic` class in Tailwind config.
-
-**Translation files**: `frontend/src/messages/ar.json` and `en.json` exist as a reference
-dictionary but are not imported at runtime. All translations are inline ternaries.
+ms-4 (not ml-4)   ps-6 (not pl-6)   text-start (not text-left)
+me-4 (not mr-4)   pe-6 (not pr-6)   border-s (not border-l)
+```
 
 ---
 
-## How to Add a New Notification Event
+### Adding a New Notification Event
 
-**Step 1 — Add notification in service** where the event happens:
 ```python
+# 1. If adding a new notification TYPE, extend the enum in:
+#    backend/app/models/notification.py — NotificationType enum
+#    Also add a new Alembic migration to extend the DB enum type.
+
+# 2. In the service where the event occurs:
 from app.services.notification_service import NotificationService
 from app.models.notification import NotificationType
 
-# Inside your service method, after the main action:
-notif_svc = NotificationService(self.db)
-await notif_svc.create(
-    user_id=freelancer.id,
-    notification_type=NotificationType.PAYMENT_RECEIVED,
-    title="طلب جديد",
-    message=f"لديك طلب جديد على خدمتك: {gig.title}",
-    link_type="contract",        # optional: "contract"/"job"/"proposal"/"message"
-    link_id=order.id,            # optional: UUID of linked entity
-    actor_id=client.id,          # optional: who triggered it
+await NotificationService(self.db).create(
+    user_id=target_user.id,
+    notification_type=NotificationType.YOUR_NEW_TYPE,
+    title="العنوان",                     # Arabic first
+    message="رسالة تفصيلية للمستخدم",
+    link_type="contract",               # "contract"|"job"|"proposal"|"message"|None
+    link_id=related_entity.id,          # UUID or None
+    actor_id=triggering_user.id,        # UUID or None
 )
 ```
 
-**Step 2 — Frontend bell updates automatically**: `NotificationBell` component polls
-`GET /api/v1/notifications/unread-count` every 30 seconds. New notifications appear immediately.
-
-**Step 3 — Email notification** (if needed): Use `EmailService` in a background task:
-```python
-import asyncio
-email_svc = EmailService()
-asyncio.create_task(
-    email_svc.send_notification_email(
-        to_email=user.email,
-        subject="طلب جديد على Kaasb",
-        template="order_placed",
-        context={"user_name": user.first_name, "order_id": str(order.id)},
-    )
-)
-```
-Never `await` email sends in request handlers — always fire-and-forget.
+Frontend bell auto-updates (polls `GET /notifications/unread-count` every 30s). No frontend changes needed.
 
 ---
 
-## How to Add a QiCard Payment Flow
+### QiCard Payment Flow
 
-QiCard is the ONLY payment provider. All payments are in IQD (Iraqi Dinar).
-1 USD ≈ 1,310 IQD. `usd_to_iqd()` helper in `qi_card_client.py` converts.
-
-**QiCard flow is redirect-based (no real-time webhook):**
-```
-POST /api/v0/transactions/business/token → get redirect link
-→ redirect user to link → user pays on QiCard portal
-→ QiCard redirects to successUrl?CartID=<orderId> (or failureUrl/cancelUrl)
-→ your handler at successUrl confirms in DB
-```
-
-**Step 1 — Initiate payment**:
 ```python
+# Initiate (in a service method):
 from app.services.qi_card_client import QiCardClient, QiCardError
+from app.core.exceptions import ExternalServiceError
 
 qi = QiCardClient()
 try:
     result = await qi.create_payment(
-        amount_usd=float(order.price_paid),  # converts to IQD internally
+        amount_usd=float(order.price_paid),   # converts IQD internally (1 USD ≈ 1310 IQD)
         order_id=f"order-{order.id}",
         success_url=f"{settings.FRONTEND_URL}/payment/result?status=success",
         failure_url=f"{settings.FRONTEND_URL}/payment/result?status=failure",
         cancel_url=f"{settings.FRONTEND_URL}/payment/result?status=cancel",
     )
-    # result["link"] = redirect user here
-    # result["amount_iqd"] = actual IQD amount charged
+    redirect_url = result["link"]
+    amount_iqd = result["amount_iqd"]
 except QiCardError as e:
     raise ExternalServiceError(str(e))
+
+# When QI_CARD_API_KEY is not set → returns mock link (dev mode, no error).
 ```
-When `QI_CARD_API_KEY` is not set, the client returns a mock link automatically (dev mode).
 
-**Step 2 — Handle callback** at `/payment/result` (frontend page):
-- Read `?status=success&CartID=<order_id>` query params
-- Call backend to confirm: `POST /api/v1/payments/qi-card/confirm` with `order_id`
-- Backend updates order status, creates Escrow record, notifies freelancer
+Frontend `payment/result` page reads `?status=success&CartID=<order_id>`, calls backend to confirm, backend updates order + creates Escrow.
 
-**Step 3 — Escrow record** (after confirmed payment):
+**Escrow after confirmed payment**:
 ```python
+from app.models.payment import Escrow, EscrowStatus
+from datetime import datetime, UTC
+
 escrow = Escrow(
     amount=order.price_paid,
-    platform_fee=order.price_paid * 0.10,
-    freelancer_amount=order.price_paid * 0.90,
+    platform_fee=order.price_paid * Decimal("0.10"),
+    freelancer_amount=order.price_paid * Decimal("0.90"),
     currency="IQD",
     status=EscrowStatus.FUNDED,
     funded_at=datetime.now(UTC),
-    ...
+    client_id=order.client_id,
+    freelancer_id=order.freelancer_id,
 )
+self.db.add(escrow)
+await self.db.commit()
 ```
-
-**Payout flow (manual — QiCard has no payout API):**
-Admin sees funded+completed orders in payout queue.
-Admin pays freelancer via QiCard merchant dashboard, then clicks "Mark Paid" in Kaasb admin.
-This sets `escrow.status = EscrowStatus.RELEASED` and creates a `PAYOUT` transaction record.
-
-**Refunds**: QiCard v0 API has no refund endpoint. All refunds are manual via merchant portal.
-`qi.refund_payment()` always raises `QiCardError` — use it to detect and trigger admin manual flow.
 
 ---
 
-## How to Write a Test
+### Writing Tests
 
-**Unit test** (no DB, no Redis) in `tests/unit/`:
+**Unit test** — `backend/tests/unit/test_<feature>.py`:
 ```python
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+from app.services.thing_service import ThingService
+from app.core.exceptions import NotFoundError
 
 @pytest.mark.asyncio
-async def test_something():
+async def test_get_thing_not_found():
     mock_db = AsyncMock()
-    service = MyService(mock_db)
-    result = await service.do_something(...)
-    assert result.name == "expected"
+    mock_db.execute.return_value.scalar_one_or_none.return_value = None
+    svc = ThingService(mock_db)
+    with pytest.raises(NotFoundError):
+        await svc.get_thing(uuid.uuid4(), mock_user)
 ```
 
-**Integration test** (real DB) in `tests/integration/`:
+**Integration test** — `backend/tests/integration/test_<feature>.py`:
 ```python
 import pytest
 from httpx import AsyncClient
 
 @pytest.mark.asyncio
-async def test_endpoint(client: AsyncClient, auth_headers: dict):
-    response = await client.post("/api/v1/my-things", json={...}, headers=auth_headers)
+async def test_create_thing(client: AsyncClient, auth_headers: dict):
+    response = await client.post(
+        "/api/v1/things",
+        json={"name": "Test", "amount": 5000},
+        headers=auth_headers,
+    )
     assert response.status_code == 201
+    assert response.json()["name"] == "Test"
 ```
-Integration tests use fixtures in `tests/conftest.py` — see existing tests for patterns.
+
+Run: `cd backend && pytest tests/unit/ -v` (fast, no DB)
+Run: `cd backend && pytest tests/integration/ -v` (requires DB + Redis)
 
 ---
 
 ## Domain Exception Reference
 
-Raise these from services. `main.py` maps them to HTTP codes automatically.
-
-| Exception | HTTP | When to use |
-|-----------|------|-------------|
-| `NotFoundError` | 404 | Resource not found |
-| `ForbiddenError` | 403 | User lacks permission |
-| `UnauthorizedError` | 401 | Not authenticated |
-| `ConflictError` | 409 | Duplicate / state conflict |
-| `BadRequestError` | 400 | Invalid input not caught by Pydantic |
-| `RateLimitError` | 429 | Too many requests |
-| `ExternalServiceError` | 502 | QiCard/email/external API failed |
-
-```python
-from app.core.exceptions import NotFoundError, ForbiddenError
-
-if not gig:
-    raise NotFoundError("Gig not found")
-if gig.freelancer_id != current_user.id:
-    raise ForbiddenError("You do not own this gig")
-```
+| Exception | HTTP | Raise when |
+|-----------|------|-----------|
+| `NotFoundError` | 404 | Resource doesn't exist |
+| `ForbiddenError` | 403 | User doesn't own / lacks role |
+| `UnauthorizedError` | 401 | Not logged in |
+| `ConflictError` | 409 | Duplicate key or invalid state transition |
+| `BadRequestError` | 400 | Business rule violation not caught by Pydantic |
+| `RateLimitError` | 429 | Exceeded per-IP/user limit |
+| `ExternalServiceError` | 502 | QiCard / email / SMS call failed |
 
 ---
 
-## Rate Limits (configured in `middleware/security.py`)
-- Login: 5 req / 5 min
-- Register: 3 req / 10 min
-- Standard API: 120 req / min
-- Payment: 10 req / min
-- OTP: 3 req / hour per phone/email
+## Rate Limits (configured in `backend/app/middleware/security.py`)
+
+| Endpoint group | Limit |
+|----------------|-------|
+| Login | 5 req / 5 min |
+| Register | 3 req / 10 min |
+| Standard API | 120 req / min |
+| Payment | 10 req / min |
+| OTP | 3 req / hour per phone/email |
+
+---
+
+## Auth Dependencies Reference
+
+```python
+from app.api.dependencies import (
+    get_current_user,          # any authenticated user
+    get_current_admin,         # must have primary_role == admin
+    get_current_freelancer,    # must have primary_role == freelancer
+    get_current_client,        # must have primary_role == client
+    get_db,                    # AsyncSession
+)
+```
+
+Social login: `POST /auth/social` with `{"provider": "google"|"facebook", "token": "<access_token>"}`.
+Backend calls provider's userinfo endpoint. Looks up by `google_id`/`facebook_id` first, email second.

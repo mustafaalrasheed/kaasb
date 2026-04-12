@@ -1,0 +1,75 @@
+# Claude Code — files to never read
+# Derived artifacts, caches, generated output
+
+node_modules/
+.next/
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+.eggs/
+*.egg-info/
+
+# Dependency lock files
+package-lock.json
+yarn.lock
+poetry.lock
+pip-lock.txt
+
+# Logs
+*.log
+logs/
+
+# Cache directories
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.cache/
+*.cache
+
+# Secrets — never read
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+backend/.env
+
+# Git internals
+.git/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Docker layer cache
+.dockerignore
+
+# Load test output
+load-tests/*.log
+load-tests/results/
+
+# Alembic compiled cache
+backend/alembic/versions/__pycache__/
+
+# Audit reports (long, rarely needed)
+SECURITY_AUDIT_REPORT.md
+CODE_QUALITY_AUDIT_REPORT.md
+PERFORMANCE_AUDIT_REPORT.md
+SEO_AUDIT_REPORT.md
+CHANGELOG.md
+
+# Coverage reports
+htmlcov/
+.coverage
+coverage.xml
+
+# OS
+.DS_Store
+Thumbs.db
