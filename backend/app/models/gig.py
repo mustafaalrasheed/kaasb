@@ -119,6 +119,12 @@ class Gig(BaseModel):
     )
     rejection_reason: Mapped[str | None] = mapped_column(Text)
 
+    # === Review Audit Trail ===
+    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # === Stats (denormalized for fast reads) ===
     orders_count: Mapped[int] = mapped_column(Integer, default=0)
     avg_rating: Mapped[float] = mapped_column(Numeric(3, 2), default=0.0)

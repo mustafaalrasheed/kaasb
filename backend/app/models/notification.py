@@ -47,6 +47,11 @@ class NotificationType(str, enum.Enum):
     # Messages
     NEW_MESSAGE = "new_message"
 
+    # Gigs
+    GIG_APPROVED = "gig_approved"
+    GIG_REJECTED = "gig_rejected"
+    GIG_SUBMITTED = "gig_submitted"
+
     # System
     SYSTEM_ALERT = "system_alert"
 

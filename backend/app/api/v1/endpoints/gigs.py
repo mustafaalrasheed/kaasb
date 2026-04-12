@@ -275,19 +275,19 @@ async def complete_order(
 @router.post("/admin/{gig_id}/approve", response_model=GigOut, summary="Admin: approve gig")
 async def approve_gig(
     gig_id: uuid.UUID,
-    _admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     svc = GigService(db)
-    return await svc.approve_gig(gig_id)
+    return await svc.approve_gig(gig_id, admin)
 
 
 @router.post("/admin/{gig_id}/reject", response_model=GigOut, summary="Admin: reject gig")
 async def reject_gig(
     gig_id: uuid.UUID,
     reason: str = Query(..., min_length=10),
-    _admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     svc = GigService(db)
-    return await svc.reject_gig(gig_id, reason)
+    return await svc.reject_gig(gig_id, reason, admin)
