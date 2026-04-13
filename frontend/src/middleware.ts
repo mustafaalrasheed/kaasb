@@ -44,27 +44,30 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const tokenCookie = request.cookies.get("access_token")?.value;
 
-  // A token is "valid" if it exists AND is not expired
-  const authenticated = tokenCookie ? !isTokenExpired(tokenCookie) : false;
+  // "Has a session" means the cookie exists — even if expired.
+  // An expired token means the user should silently refresh, not be signed out.
+  // The client-side 401 interceptor handles the actual refresh and retries.
+  // We only hard-redirect when there is NO cookie at all (never logged in, or
+  // explicitly logged out via clear-session which deletes the cookie).
+  const hasSession = !!tokenCookie;
+
+  // For the auth pages redirect (already logged in → go to dashboard), we still
+  // require a non-expired token to avoid redirecting someone mid-refresh-cycle.
+  const isValidSession = tokenCookie ? !isTokenExpired(tokenCookie) : false;
 
   // Protect dashboard and admin routes
   const isProtected = PROTECTED_PATHS.some((path) => pathname.startsWith(path));
-  if (isProtected && !authenticated) {
+  if (isProtected && !hasSession) {
     const loginUrl = new URL("/auth/login", request.url);
     if (isValidRedirect(pathname)) {
       loginUrl.searchParams.set("next", pathname);
     }
-    // Delete the stale cookie so this redirect only happens once
-    const response = NextResponse.redirect(loginUrl);
-    if (tokenCookie) {
-      response.cookies.delete("access_token");
-    }
-    return response;
+    return NextResponse.redirect(loginUrl);
   }
 
   // Redirect authenticated users away from auth pages
   const isAuthPage = AUTH_PATHS.some((path) => pathname.startsWith(path));
-  if (isAuthPage && authenticated) {
+  if (isAuthPage && isValidSession) {
     const next = request.nextUrl.searchParams.get("next");
     const redirectPath = next && isValidRedirect(next) ? next : "/dashboard";
     return NextResponse.redirect(new URL(redirectPath, request.url));

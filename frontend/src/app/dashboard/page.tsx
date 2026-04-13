@@ -65,12 +65,12 @@ export default function DashboardPage() {
           <>
             <StatCard label={ar ? "إجمالي الإنفاق" : "Total Spent"}
               value={`${(user?.total_spent ?? 0).toLocaleString(numLocale)} ${currency}`} icon="💳" />
-            <StatCard label={ar ? "الوظائف النشطة" : "Active Jobs"}
-              value={0} icon="📋" />
-            <StatCard label={ar ? "المستقلون الموظَّفون" : "Freelancers Hired"}
-              value={user?.jobs_completed ?? 0} icon="🤝" />
-            <StatCard label={ar ? "التقييمات المعلقة" : "Pending Reviews"}
-              value={0} icon="⏳" />
+            <StatCard label={ar ? "التقييمات المُعطاة" : "Reviews Given"}
+              value={user?.total_reviews ?? 0} icon="🤝" />
+            <StatCard label={ar ? "متوسط التقييم" : "Avg. Rating"}
+              value={user?.avg_rating ? `${user.avg_rating.toFixed(1)} / 5` : "—"} icon="⭐" />
+            <StatCard label={ar ? "الوظائف المنشورة" : "Jobs Posted"}
+              value="—" icon="📋" />
           </>
         )}
       </div>

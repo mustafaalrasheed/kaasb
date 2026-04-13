@@ -12,10 +12,11 @@ export const api = axios.create({
   withCredentials: true, // Send httpOnly cookies with every request
 });
 
-// === Response Interceptor: 401 handling ===
-// The Next.js middleware (middleware.ts) now validates JWTs and handles all
-// auth routing server-side. The interceptor only needs to handle the case where
-// the session expires MID-PAGE (after initial load) on a non-auth API call.
+// Prevents concurrent refresh calls — if multiple requests 401 at the same time,
+// only one refresh call is made and all others wait for it.
+let _refreshPromise: Promise<void> | null = null;
+
+// === Response Interceptor: silent token refresh on 401 ===
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -24,30 +25,44 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      // For auth endpoints, let the error propagate to the caller (initialize,
-      // login forms, etc.) — they handle it themselves.
+      // Endpoints that should never trigger a silent refresh — let errors
+      // propagate directly to their callers.
       const isAuthEndpoint =
-        originalRequest.url?.includes("/auth/me") ||
         originalRequest.url?.includes("/auth/refresh") ||
         originalRequest.url?.includes("/auth/login") ||
         originalRequest.url?.includes("/auth/register") ||
         originalRequest.url?.includes("/auth/social") ||
-        originalRequest.url?.includes("/auth/phone");
+        originalRequest.url?.includes("/auth/phone") ||
+        originalRequest.url?.includes("/auth/clear-session");
       if (isAuthEndpoint) {
         return Promise.reject(error);
       }
 
-      // For all other endpoints: session expired mid-page.
-      // Clear the stale cookie and do a full-page redirect to login.
-      // The middleware will then validate (fail) and redirect cleanly.
-      await axios
-        .post(`${API_URL}/auth/clear-session`, {}, { withCredentials: true })
-        .catch(() => {});
+      // Try a silent token refresh. The browser automatically sends the
+      // httpOnly refresh_token cookie to /api/v1/auth/refresh. On success,
+      // the backend sets new access_token + refresh_token cookies, and we
+      // retry the original request transparently.
+      try {
+        if (!_refreshPromise) {
+          _refreshPromise = axios
+            .post(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
+            .then(() => { _refreshPromise = null; })
+            .catch((e) => { _refreshPromise = null; throw e; });
+        }
+        await _refreshPromise;
 
-      if (typeof window !== "undefined") {
-        window.location.href = "/auth/login";
+        // Refresh succeeded — retry original request with new cookies
+        return api(originalRequest);
+      } catch {
+        // Refresh token also expired or invalid — the session is truly dead.
+        await axios
+          .post(`${API_URL}/auth/clear-session`, {}, { withCredentials: true })
+          .catch(() => {});
+        if (typeof window !== "undefined") {
+          window.location.href = "/auth/login";
+        }
+        return Promise.reject(error);
       }
-      return Promise.reject(error);
     }
 
     return Promise.reject(error);
@@ -385,6 +400,18 @@ export const adminApi = {
 
   releaseEscrow: (escrowId: string) =>
     api.post(`/admin/escrows/${escrowId}/release`),
+
+  getPendingGigs: () =>
+    api.get("/gigs/admin/pending"),
+
+  approveGig: (gigId: string) =>
+    api.post(`/gigs/admin/${gigId}/approve`),
+
+  requestGigRevision: (gigId: string, note: string) =>
+    api.post(`/gigs/admin/${gigId}/request-revision`, null, { params: { note } }),
+
+  rejectGig: (gigId: string, reason: string) =>
+    api.post(`/gigs/admin/${gigId}/reject`, null, { params: { reason } }),
 };
 
 // === Gigs API ===

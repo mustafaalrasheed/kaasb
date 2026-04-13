@@ -207,7 +207,7 @@ class AdminService(BaseService):
             raise HTTPException(status_code=404, detail="User not found")
 
         user.status = UserStatus(new_status)
-        await self.db.flush()
+        await self.db.commit()
         await self.db.refresh(user)
         return user
 
@@ -244,12 +244,15 @@ class AdminService(BaseService):
         user.is_superuser = not user.is_superuser
         if user.is_superuser:
             user.primary_role = UserRole.ADMIN
+        else:
+            # Demoted — fall back to client (safest default; admin can update further)
+            user.primary_role = UserRole.CLIENT
         logger.info(
             "Admin privilege %s user=%s by admin=%s",
             "granted to" if user.is_superuser else "revoked from",
             user_id, acting_admin.id,
         )
-        await self.db.flush()
+        await self.db.commit()
         await self.db.refresh(user)
         return user
 
@@ -298,7 +301,7 @@ class AdminService(BaseService):
             raise HTTPException(status_code=404, detail="Job not found")
 
         job.status = JobStatus(new_status)
-        await self.db.flush()
+        await self.db.commit()
         await self.db.refresh(job)
         return job
 

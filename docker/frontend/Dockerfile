@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 WORKDIR /app
 
 # ============================================================
@@ -14,7 +14,7 @@ CMD ["npm", "run", "dev"]
 # ============================================================
 # Builder — production Next.js build
 # ============================================================
-FROM node:20 AS builder
+FROM node:22 AS builder
 WORKDIR /app
 
 # Build-time env vars (baked into static assets)
@@ -39,7 +39,7 @@ RUN npm run build
 # ============================================================
 # Production target — minimal standalone image, non-root user
 # ============================================================
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 RUN addgroup -S kaasb && adduser -S kaasb -G kaasb
 

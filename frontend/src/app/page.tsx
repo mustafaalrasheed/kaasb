@@ -132,10 +132,37 @@ const HOW_IT_WORKS_EN = [
   },
 ];
 
+function decodeJwtRole(token: string): string | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.role === "string" ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
+
+function isJwtExpired(token: string): boolean {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.exp !== "number" || Date.now() / 1000 > payload.exp - 5;
+  } catch {
+    return true;
+  }
+}
+
 export default async function HomePage() {
   const cookieStore = await cookies();
   const locale = cookieStore.get("locale")?.value === "en" ? "en" : "ar";
   const ar = locale === "ar";
+
+  const tokenCookie = cookieStore.get("access_token")?.value;
+  const isLoggedIn = !!tokenCookie && !isJwtExpired(tokenCookie);
+  const role = tokenCookie ? decodeJwtRole(tokenCookie) : null;
+  const dashboardHref = role === "admin" ? "/admin" : "/dashboard";
 
   const faqItems = ar ? FAQ_ITEMS_AR : FAQ_ITEMS_EN;
   const howItWorks = ar ? HOW_IT_WORKS_AR : HOW_IT_WORKS_EN;
@@ -170,12 +197,21 @@ export default async function HomePage() {
                 : "Kaasb connects businesses with talented freelancers across Iraq and the Middle East. Post a job, review proposals, and hire the best — all in one place."}
             </p>
             <div className="mt-10 flex flex-col sm:flex-row gap-4">
-              <Link
-                href="/auth/register"
-                className="btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"
-              >
-                {ar ? "ابدأ مجاناً" : "Get Started Free"}
-              </Link>
+              {isLoggedIn ? (
+                <Link
+                  href={dashboardHref}
+                  className="btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"
+                >
+                  {ar ? "الذهاب إلى لوحتي" : "Open Dashboard"}
+                </Link>
+              ) : (
+                <Link
+                  href="/auth/register"
+                  className="btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"
+                >
+                  {ar ? "ابدأ مجاناً" : "Get Started Free"}
+                </Link>
+              )}
               <Link
                 href="/jobs"
                 className="btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"
@@ -257,18 +293,20 @@ export default async function HomePage() {
               : "Join thousands of freelancers and businesses on Kaasb."}
           </p>
           <div className="mt-8 flex justify-center gap-4">
-            <Link
-              href="/auth/register"
-              className="btn-primary text-lg px-8 py-3"
-            >
-              {ar ? "سجّل كمستقل" : "Sign Up as Freelancer"}
-            </Link>
-            <Link
-              href="/auth/register"
-              className="btn-secondary text-lg px-8 py-3"
-            >
-              {ar ? "وظّف مستقلاً" : "Hire a Freelancer"}
-            </Link>
+            {isLoggedIn ? (
+              <Link href={dashboardHref} className="btn-primary text-lg px-8 py-3">
+                {ar ? "الذهاب إلى لوحتي" : "Go to Dashboard"}
+              </Link>
+            ) : (
+              <>
+                <Link href="/auth/register" className="btn-primary text-lg px-8 py-3">
+                  {ar ? "سجّل كمستقل" : "Sign Up as Freelancer"}
+                </Link>
+                <Link href="/auth/register" className="btn-secondary text-lg px-8 py-3">
+                  {ar ? "وظّف مستقلاً" : "Hire a Freelancer"}
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </section>

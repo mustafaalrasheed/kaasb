@@ -3,6 +3,7 @@ Kaasb Platform - Review Model
 Both client and freelancer can leave reviews after a contract is completed.
 Each party can only review the other once per contract.
 """
+from __future__ import annotations
 
 import uuid
 
@@ -52,7 +53,7 @@ class Review(BaseModel):
         nullable=False,
         index=True,
     )
-    contract: Mapped["Contract"] = relationship(
+    contract: Mapped[Contract] = relationship(
         "Contract", backref="reviews", lazy="raise"
     )
 
@@ -62,7 +63,7 @@ class Review(BaseModel):
         nullable=False,
         index=True,
     )
-    reviewer: Mapped["User"] = relationship(
+    reviewer: Mapped[User] = relationship(
         "User", foreign_keys=[reviewer_id], backref="reviews_given", lazy="raise"
     )
 
@@ -72,7 +73,7 @@ class Review(BaseModel):
         nullable=False,
         index=True,
     )
-    reviewee: Mapped["User"] = relationship(
+    reviewee: Mapped[User] = relationship(
         "User", foreign_keys=[reviewee_id], backref="reviews_received", lazy="raise"
     )
 

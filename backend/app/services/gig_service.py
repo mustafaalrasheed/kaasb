@@ -3,6 +3,7 @@ Kaasb Platform - Gig Service
 Business logic for the Fiverr-style gig marketplace.
 """
 
+import asyncio
 import logging
 import re
 import uuid
@@ -22,6 +23,7 @@ from app.models.gig import (
     GigPackage,
     GigStatus,
 )
+from app.models.notification import NotificationType
 from app.models.user import User, UserRole
 from app.schemas.gig import (
     GigCreate,
@@ -30,6 +32,7 @@ from app.schemas.gig import (
     GigUpdate,
 )
 from app.services.base import BaseService
+from app.services.notification_service import notify
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,24 @@ class GigService(BaseService):
         await self.db.commit()
         await self.db.refresh(gig)
 
+        # Notify all active admins that a new gig is pending review
+        admin_result = await self.db.execute(
+            select(User).where(
+                User.is_superuser == True,  # noqa: E712
+                User.status == "active",
+            )
+        )
+        for admin in admin_result.scalars().all():
+            asyncio.create_task(notify(
+                self.db,
+                user_id=admin.id,
+                type=NotificationType.GIG_SUBMITTED,
+                title="New gig pending review",
+                message=f'"{gig.title}" by {freelancer.username} is awaiting approval.',
+                link_type="gig",
+                link_id=str(gig.id),
+            ))
+
         # Eager-load relationships for response
         return await self._load_gig(gig.id)  # type: ignore[return-value]
 
@@ -170,9 +191,10 @@ class GigService(BaseService):
                 )
                 self.db.add(pkg)
 
-        # Re-submit for review if was active
-        if gig.status == GigStatus.ACTIVE:
+        # Re-submit for review when freelancer edits
+        if gig.status in (GigStatus.ACTIVE, GigStatus.NEEDS_REVISION):
             gig.status = GigStatus.PENDING_REVIEW
+            gig.revision_note = None  # clear previous revision note on resubmit
 
         await self.db.commit()
         return await self._load_gig(gig.id)  # type: ignore[return-value]
@@ -268,22 +290,80 @@ class GigService(BaseService):
     # Admin Review
     # ──────────────────────────────────────────
 
-    async def approve_gig(self, gig_id: uuid.UUID) -> Gig:
+    async def approve_gig(self, gig_id: uuid.UUID, admin: User) -> Gig:
         gig = await self._load_gig(gig_id)
         if not gig:
             raise HTTPException(status_code=404, detail="Gig not found")
+        if gig.status != GigStatus.PENDING_REVIEW:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot approve a gig with status '{gig.status.value}'. Only pending_review gigs can be approved.",
+            )
         gig.status = GigStatus.ACTIVE
         gig.rejection_reason = None
+        gig.reviewed_by_id = admin.id
+        gig.reviewed_at = datetime.now(UTC)
         await self.db.commit()
+        asyncio.create_task(notify(
+            self.db,
+            user_id=gig.freelancer_id,
+            type=NotificationType.GIG_APPROVED,
+            title="Your gig was approved",
+            message=f'Your gig "{gig.title}" is now live and visible to clients.',
+            link_type="gig",
+            link_id=str(gig.id),
+        ))
         return await self._load_gig(gig_id)  # type: ignore[return-value]
 
-    async def reject_gig(self, gig_id: uuid.UUID, reason: str) -> Gig:
+    async def request_gig_revision(self, gig_id: uuid.UUID, note: str, admin: User) -> Gig:
         gig = await self._load_gig(gig_id)
         if not gig:
             raise HTTPException(status_code=404, detail="Gig not found")
+        if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.ACTIVE):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot request revision on a gig with status '{gig.status.value}'.",
+            )
+        gig.status = GigStatus.NEEDS_REVISION
+        gig.revision_note = note
+        gig.reviewed_by_id = admin.id
+        gig.reviewed_at = datetime.now(UTC)
+        await self.db.commit()
+        asyncio.create_task(notify(
+            self.db,
+            user_id=gig.freelancer_id,
+            type=NotificationType.GIG_NEEDS_REVISION,
+            title="Your gig needs edits before it can go live",
+            message=f'Your gig "{gig.title}" needs changes: {note}',
+            link_type="gig",
+            link_id=str(gig.id),
+        ))
+        return await self._load_gig(gig_id)  # type: ignore[return-value]
+
+    async def reject_gig(self, gig_id: uuid.UUID, reason: str, admin: User) -> Gig:
+        gig = await self._load_gig(gig_id)
+        if not gig:
+            raise HTTPException(status_code=404, detail="Gig not found")
+        if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.NEEDS_REVISION, GigStatus.ACTIVE):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot reject a gig with status '{gig.status.value}'.",
+            )
         gig.status = GigStatus.REJECTED
         gig.rejection_reason = reason
+        gig.revision_note = None
+        gig.reviewed_by_id = admin.id
+        gig.reviewed_at = datetime.now(UTC)
         await self.db.commit()
+        asyncio.create_task(notify(
+            self.db,
+            user_id=gig.freelancer_id,
+            type=NotificationType.GIG_REJECTED,
+            title="Your gig was rejected",
+            message=f'Your gig "{gig.title}" was rejected. Reason: {reason}',
+            link_type="gig",
+            link_id=str(gig.id),
+        ))
         return await self._load_gig(gig_id)  # type: ignore[return-value]
 
     async def list_pending_gigs(self) -> list[Gig]:

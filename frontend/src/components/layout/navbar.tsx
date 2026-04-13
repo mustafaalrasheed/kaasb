@@ -6,12 +6,16 @@ import { useAuthStore } from "@/lib/auth-store";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
 import { NotificationBell } from "@/components/ui/notification-bell";
 import { useLocale } from "@/providers/locale-provider";
+import { usePathname } from "next/navigation";
+import { backendUrl } from "@/lib/utils";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const { user, isAuthenticated, logout, initialize } = useAuthStore();
   const toggleMobileMenu = useCallback(() => setMobileMenuOpen((prev) => !prev), []);
   const { locale } = useLocale();
+  const pathname = usePathname();
+  const isAdminPage = pathname?.startsWith("/admin");
 
   // Initialize auth state once on mount
   useEffect(() => {
@@ -49,36 +53,63 @@ export function Navbar() {
 
           {/* Desktop Navigation */}
           <div className={`hidden md:flex items-center gap-6 ${isRTL ? "flex-row-reverse" : "flex-row"}`}>
-            <Link href="/jobs" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
-              {t.findWork}
-            </Link>
-            <Link href="/freelancers" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
-              {t.findFreelancers}
-            </Link>
-            <Link href="/gigs" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
-              {t.services}
-            </Link>
+            {/* Public links — hidden on admin pages */}
+            {!isAdminPage && (
+              <>
+                <Link href="/jobs" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                  {t.findWork}
+                </Link>
+                <Link href="/freelancers" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                  {t.findFreelancers}
+                </Link>
+                <Link href="/gigs" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                  {t.services}
+                </Link>
+              </>
+            )}
 
             {isAuthenticated ? (
               <div className={`flex items-center gap-4 ${isRTL ? "flex-row-reverse" : "flex-row"}`}>
-                <Link href="/dashboard" className="text-gray-600 hover:text-gray-900 font-medium">
-                  {t.dashboard}
-                </Link>
-                <Link href="/dashboard/messages" className="text-gray-600 hover:text-gray-900 font-medium">
-                  {t.messages}
-                </Link>
+                {!isAdminPage && (
+                  <>
+                    <Link href="/dashboard" className="text-gray-600 hover:text-gray-900 font-medium">
+                      {t.dashboard}
+                    </Link>
+                    <Link href="/dashboard/messages" className="text-gray-600 hover:text-gray-900 font-medium">
+                      {t.messages}
+                    </Link>
+                  </>
+                )}
+                {isAdminPage && (
+                  <span className="text-xs font-semibold uppercase tracking-wider text-red-600 bg-red-50 px-2 py-1 rounded">
+                    {locale === "ar" ? "لوحة الإدارة" : "Admin Panel"}
+                  </span>
+                )}
                 {user?.is_superuser && (
                   <Link href="/admin" className="text-red-600 hover:text-red-800 font-medium text-sm">
                     {t.admin}
                   </Link>
                 )}
                 <NotificationBell />
-                <div className={`flex items-center gap-3 ${isRTL ? "pe-4 border-e" : "ps-4 border-s"} border-gray-200 ${isRTL ? "flex-row-reverse" : "flex-row"}`}>
-                  <div className="w-8 h-8 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center font-semibold text-sm shrink-0">
-                    {user?.first_name?.[0]}
-                    {user?.last_name?.[0]}
+                <div className={`flex items-center gap-2 ${isRTL ? "pe-4 border-e" : "ps-4 border-s"} border-gray-200 ${isRTL ? "flex-row-reverse" : "flex-row"}`}>
+                  {/* Avatar or initials */}
+                  <div className="w-8 h-8 rounded-full overflow-hidden bg-brand-100 text-brand-600 flex items-center justify-center font-semibold text-sm shrink-0">
+                    {user?.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`${backendUrl(user.avatar_url)}?v=${new Date(user.updated_at).getTime()}`}
+                        alt={user.first_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <>{user?.first_name?.[0]}{user?.last_name?.[0]}</>
+                    )}
                   </div>
-                  <button onClick={logout} className="text-sm text-gray-500 hover:text-gray-700">
+                  {/* Name */}
+                  <span className="text-sm font-medium text-gray-900 max-w-[120px] truncate">
+                    {user?.display_name || user?.first_name}
+                  </span>
+                  <button onClick={logout} className="text-sm text-gray-400 hover:text-gray-600">
                     {t.logout}
                   </button>
                 </div>
@@ -121,26 +152,34 @@ export function Navbar() {
       {/* Mobile menu */}
       {mobileMenuOpen && (
         <div className={`md:hidden bg-white border-t border-gray-100 py-4 px-4 space-y-1 ${isRTL ? "text-right" : "text-left"}`}>
-          <Link href="/jobs" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
-            {t.findWork}
-          </Link>
-          <Link href="/freelancers" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
-            {t.findFreelancers}
-          </Link>
-          <Link href="/gigs" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
-            {t.services}
-          </Link>
+          {!isAdminPage && (
+            <>
+              <Link href="/jobs" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                {t.findWork}
+              </Link>
+              <Link href="/freelancers" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                {t.findFreelancers}
+              </Link>
+              <Link href="/gigs" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                {t.services}
+              </Link>
+            </>
+          )}
           {isAuthenticated ? (
             <>
-              <Link href="/dashboard" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
-                {t.dashboard}
-              </Link>
-              <Link href="/dashboard/messages" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
-                {t.messages}
-              </Link>
-              <Link href="/dashboard/notifications" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
-                {t.notifications}
-              </Link>
+              {!isAdminPage && (
+                <>
+                  <Link href="/dashboard" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                    {t.dashboard}
+                  </Link>
+                  <Link href="/dashboard/messages" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                    {t.messages}
+                  </Link>
+                  <Link href="/dashboard/notifications" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                    {t.notifications}
+                  </Link>
+                </>
+              )}
               {user?.is_superuser && (
                 <Link href="/admin" className="block py-2.5 px-3 rounded-lg text-red-600 font-medium hover:bg-red-50">
                   {t.admin}
@@ -148,8 +187,17 @@ export function Navbar() {
               )}
               <div className="border-t border-gray-100 mt-2 pt-2">
                 <div className={`flex items-center gap-3 px-3 py-2 ${isRTL ? "flex-row-reverse" : "flex-row"}`}>
-                  <div className="w-8 h-8 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center font-semibold text-sm shrink-0">
-                    {user?.first_name?.[0]}{user?.last_name?.[0]}
+                  <div className="w-8 h-8 rounded-full overflow-hidden bg-brand-100 text-brand-600 flex items-center justify-center font-semibold text-sm shrink-0">
+                    {user?.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`${backendUrl(user.avatar_url)}?v=${new Date(user.updated_at).getTime()}`}
+                        alt={user.first_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <>{user?.first_name?.[0]}{user?.last_name?.[0]}</>
+                    )}
                   </div>
                   <span className="text-sm font-medium text-gray-900">
                     {user?.display_name || `${user?.first_name} ${user?.last_name}`}

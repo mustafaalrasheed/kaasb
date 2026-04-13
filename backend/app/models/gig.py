@@ -27,6 +27,7 @@ from app.models.base import BaseModel
 class GigStatus(str, enum.Enum):
     DRAFT = "draft"
     PENDING_REVIEW = "pending_review"
+    NEEDS_REVISION = "needs_revision"
     ACTIVE = "active"
     PAUSED = "paused"
     REJECTED = "rejected"
@@ -118,6 +119,13 @@ class Gig(BaseModel):
         default=GigStatus.PENDING_REVIEW, nullable=False, index=True
     )
     rejection_reason: Mapped[str | None] = mapped_column(Text)
+    revision_note: Mapped[str | None] = mapped_column(Text)  # feedback for needs_revision
+
+    # === Review Audit Trail ===
+    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # === Stats (denormalized for fast reads) ===
     orders_count: Mapped[int] = mapped_column(Integer, default=0)
