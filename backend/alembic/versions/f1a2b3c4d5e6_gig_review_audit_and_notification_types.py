@@ -1,7 +1,7 @@
 """gig review audit trail and gig notification types
 
-Revision ID: a1b2c3d4e5f6
-Revises: f3a4b5c6d7e8
+Revision ID: f1a2b3c4d5e6
+Revises: e5f6a7b8c9d0
 Create Date: 2026-04-12
 
 Changes:
@@ -17,8 +17,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "a1b2c3d4e5f6"
-down_revision: Union[str, None] = "f3a4b5c6d7e8"
+revision: str = "f1a2b3c4d5e6"
+down_revision: Union[str, None] = "e5f6a7b8c9d0"
 branch_labels = None
 depends_on = None
 

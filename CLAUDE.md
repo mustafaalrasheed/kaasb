@@ -281,8 +281,8 @@ alembic upgrade head
 alembic check   # must show "No new upgrade operations detected"
 ```
 
-**Migration chain** (16 migrations, linear):
-`25c8a4c` → `1f80b6c` → `40dda09` → `8708878` → `ae6a5c3` → `b3f9e2a` → `c7d4e8f` → `d1a2b3c` → `e2b3c4d` → `f3a4b5c` → `a1b2c3d` (gig_marketplace) → `b2c3d4e` (qi_card_only) → `c3d4e5f` (phone_otp) → `d4e5f6a` (schema_drift_fix) → `e5f6a7b` (social_ids_nullable_password_iqd) → `f3a4b5c6d7e8` (legal_compliance) → `a1b2c3d4e5f6` (gig_review_audit + notification_types)
+**Migration chain** (18 migrations, linear):
+`25c8a4c` → `1f80b6c` → `40dda09` → `8708878` → `ae6a5c3` → `b3f9e2a` → `c7d4e8f` → `d1a2b3c` → `e2b3c4d` → `f3a4b5c6d7e8` (legal_compliance) → `a1b2c3d4e5f6` (gig_marketplace) → `b2c3d4e5f6a7` (qi_card_only) → `c3d4e5f6a7b8` (phone_otp) → `d4e5f6a7b8c9` (schema_drift_fix) → `e5f6a7b8c9d0` (social_ids_nullable_password_iqd) → `f1a2b3c4d5e6` (gig_review_audit + notification_types) → `f2a3b4c5d6e7` (gig_needs_revision + revision_note)
 
 **Enum creation** (idempotent pattern):
 ```python
