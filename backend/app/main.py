@@ -169,6 +169,10 @@ async def lifespan(app: FastAPI):
     if settings.ENVIRONMENT == "development":
         await init_db()
 
+    # Start Redis pub/sub subscriber for cross-worker WebSocket delivery
+    from app.services.websocket_manager import manager as ws_manager
+    subscriber_task = asyncio.create_task(ws_manager.start_redis_subscriber())
+
     logger.info(
         "%s v%s started in %s mode",
         settings.APP_NAME, settings.APP_VERSION, settings.ENVIRONMENT,
@@ -177,6 +181,10 @@ async def lifespan(app: FastAPI):
     yield
 
     # === Shutdown ===
+    subscriber_task.cancel()
+    from contextlib import suppress
+    async with suppress(asyncio.CancelledError):
+        await subscriber_task
     await engine.dispose()
     logger.info("%s shutting down...", settings.APP_NAME)
 

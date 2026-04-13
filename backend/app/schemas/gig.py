@@ -189,6 +189,8 @@ class GigOrderOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     gig: Optional[GigOut] = None
+    # Populated only on initial order placement when Qi Card payment is needed
+    payment_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

@@ -40,8 +40,8 @@ async def websocket_endpoint(
     Requires a short-lived ticket obtained from POST /api/v1/auth/ws-ticket.
     Tickets expire after 60 seconds and are single-use.
     """
-    # Redeem the ticket — single use, expires in 60s
-    user_id = redeem_ws_ticket(ticket)
+    # Redeem the ticket — single use, expires in 60s (Redis-backed)
+    user_id = await redeem_ws_ticket(ticket)
     if not user_id:
         await websocket.close(code=4001)
         logger.warning("WebSocket rejected: invalid or expired ticket")

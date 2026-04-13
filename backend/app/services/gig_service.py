@@ -8,6 +8,7 @@ import logging
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
 from fastapi import HTTPException, status
@@ -15,6 +16,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import get_settings
 from app.models.gig import (
     Category,
     Gig,
@@ -24,6 +26,14 @@ from app.models.gig import (
     GigStatus,
 )
 from app.models.notification import NotificationType
+from app.models.payment import (
+    Escrow,
+    EscrowStatus,
+    PaymentProvider,
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+)
 from app.models.user import User, UserRole
 from app.schemas.gig import (
     GigCreate,
@@ -33,6 +43,7 @@ from app.schemas.gig import (
 )
 from app.services.base import BaseService
 from app.services.notification_service import notify
+from app.services.qi_card_client import USD_TO_IQD, QiCardClient, QiCardError
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +397,13 @@ class GigService(BaseService):
     # Orders
     # ──────────────────────────────────────────
 
-    async def place_order(self, client: User, data: GigOrderCreate) -> GigOrder:
+    async def place_order(self, client: User, data: GigOrderCreate) -> tuple[GigOrder, str | None]:
+        """
+        Create a gig order and initiate Qi Card payment.
+
+        Returns (order, payment_url). If Qi Card is not configured (sandbox/dev),
+        payment_url is the mock URL. Escrow stays PENDING until payment confirmed.
+        """
         if client.primary_role == UserRole.ADMIN:
             raise HTTPException(status_code=403, detail="Admins cannot place orders")
 
@@ -401,6 +418,12 @@ class GigService(BaseService):
         pkg = next((p for p in gig.packages if str(p.id) == str(data.package_id)), None)
         if not pkg:
             raise HTTPException(status_code=404, detail="Package not found")
+
+        settings = get_settings()
+        fee_rate = Decimal(str(settings.PLATFORM_FEE_PERCENT)) / Decimal("100")
+        price_d = Decimal(str(float(pkg.price)))
+        platform_fee_d = (price_d * fee_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        freelancer_amount_d = (price_d - platform_fee_d).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
         due = datetime.now(UTC) + timedelta(days=pkg.delivery_days)
 
@@ -423,9 +446,69 @@ class GigService(BaseService):
             update(Gig).where(Gig.id == gig.id).values(orders_count=Gig.orders_count + 1)
         )
 
+        # Flush to get order.id before initiating payment
+        await self.db.flush()
+
+        # Initiate Qi Card payment (price is stored in IQD)
+        order_ref = f"gig-order-{order.id}"
+        base = f"https://{settings.DOMAIN}"
+        payment_url: str | None = None
+
+        try:
+            qi_card = QiCardClient()
+            # price is IQD; convert to USD for QiCardClient which converts back
+            amount_usd = float(price_d) / USD_TO_IQD
+            qi_result = await qi_card.create_payment(
+                amount_usd=amount_usd,
+                order_id=order_ref,
+                success_url=f"{base}/api/v1/payments/qi-card/success",
+                failure_url=f"{base}/api/v1/payments/qi-card/failure",
+                cancel_url=f"{base}/api/v1/payments/qi-card/cancel",
+            )
+            payment_url = qi_result.get("link")
+        except QiCardError as e:
+            logger.error("Qi Card error during gig order %s: %s", order.id, e)
+            # Roll back so order is not half-created without payment
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=502,
+                detail="Payment gateway error. Please try again later.",
+            ) from e
+
+        # Create transaction record
+        txn = Transaction(
+            transaction_type=TransactionType.ESCROW_FUND,
+            status=TransactionStatus.PENDING,
+            amount=float(price_d),
+            currency=settings.QI_CARD_CURRENCY,
+            platform_fee=float(platform_fee_d),
+            net_amount=float(freelancer_amount_d),
+            payer_id=client.id,
+            payee_id=gig.freelancer_id,
+            provider=PaymentProvider.QI_CARD,
+            external_transaction_id=order_ref,
+            description=f"Gig order: {gig.title[:100]}",
+        )
+        self.db.add(txn)
+        await self.db.flush()
+
+        # Create escrow in PENDING state (moves to FUNDED after payment confirmation)
+        escrow = Escrow(
+            amount=float(price_d),
+            platform_fee=float(platform_fee_d),
+            freelancer_amount=float(freelancer_amount_d),
+            currency=settings.QI_CARD_CURRENCY,
+            status=EscrowStatus.PENDING,
+            gig_order_id=order.id,
+            client_id=client.id,
+            freelancer_id=gig.freelancer_id,
+            funding_transaction_id=txn.id,
+        )
+        self.db.add(escrow)
+
         await self.db.commit()
         await self.db.refresh(order)
-        return order
+        return order, payment_url
 
     async def get_my_orders_as_client(self, client: User) -> list[GigOrder]:
         result = await self.db.execute(
@@ -478,6 +561,40 @@ class GigService(BaseService):
             raise HTTPException(status_code=400, detail="Order must be delivered to complete")
         order.status = GigOrderStatus.COMPLETED
         order.completed_at = datetime.now(UTC)
+
+        # Release escrow to freelancer
+        result = await self.db.execute(
+            select(Escrow).where(
+                Escrow.gig_order_id == order_id,
+                Escrow.status == EscrowStatus.FUNDED,
+            )
+        )
+        escrow = result.scalar_one_or_none()
+        if escrow:
+            settings = get_settings()
+            escrow.status = EscrowStatus.RELEASED
+            escrow.released_at = datetime.now(UTC)
+
+            # Record the release transaction
+            release_txn = Transaction(
+                transaction_type=TransactionType.ESCROW_RELEASE,
+                status=TransactionStatus.COMPLETED,
+                amount=escrow.freelancer_amount,
+                currency=settings.QI_CARD_CURRENCY,
+                platform_fee=0,
+                net_amount=escrow.freelancer_amount,
+                payer_id=order.client_id,
+                payee_id=order.freelancer_id,
+                provider=PaymentProvider.QI_CARD,
+                description=f"Escrow released for gig order {order_id}",
+                completed_at=datetime.now(UTC),
+            )
+            self.db.add(release_txn)
+            await self.db.flush()
+            escrow.release_transaction_id = release_txn.id
+        else:
+            logger.warning("complete_order: no funded escrow found for order %s", order_id)
+
         await self.db.commit()
         return order
 

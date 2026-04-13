@@ -234,8 +234,16 @@ async def place_order(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Create a gig order and initiate Qi Card payment.
+    The response includes `payment_url` — redirect the client there to complete payment.
+    """
     svc = GigService(db)
-    return await svc.place_order(current_user, data)
+    order, payment_url = await svc.place_order(current_user, data)
+    # Attach payment_url to the response (not a DB column — injected here)
+    out = GigOrderOut.model_validate(order)
+    out.payment_url = payment_url
+    return out
 
 
 @router.post("/orders/{order_id}/deliver", response_model=GigOrderOut, summary="Mark order as delivered")

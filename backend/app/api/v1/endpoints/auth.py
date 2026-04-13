@@ -292,7 +292,7 @@ async def get_ws_ticket(current_user: User = Depends(get_current_user)):
     an opaque ticket it can safely pass as a URL query parameter.
     """
     from app.services.websocket_manager import create_ws_ticket
-    ticket = create_ws_ticket(current_user.id)
+    ticket = await create_ws_ticket(current_user.id)
     return {"ticket": ticket, "expires_in": 60}
 
 

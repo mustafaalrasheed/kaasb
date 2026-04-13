@@ -75,7 +75,7 @@ const t = {
     requirementsPlaceholder: "اشرح متطلباتك بالتفصيل...",
     submitOrder: "تأكيد الطلب",
     cancel: "إلغاء",
-    orderSuccess: "تم إرسال طلبك بنجاح!",
+    orderSuccess: "تم إرسال طلبك! جاري التوجيه للدفع...",
     orderError: "حدث خطأ أثناء إرسال الطلب",
     imagePrev: "الصورة السابقة",
     imageNext: "الصورة التالية",
@@ -104,7 +104,7 @@ const t = {
     requirementsPlaceholder: "Describe your requirements in detail...",
     submitOrder: "Confirm Order",
     cancel: "Cancel",
-    orderSuccess: "Order placed successfully!",
+    orderSuccess: "Order placed! Redirecting to payment...",
     orderError: "Failed to place order",
     imagePrev: "Previous image",
     imageNext: "Next image",
@@ -200,13 +200,18 @@ function OrderModal({
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await gigsApi.placeOrder({
+      const res = await gigsApi.placeOrder({
         gig_id: gig.id,
         package_id: packageId,
         requirements: requirements.trim() || undefined,
       });
       toast.success(str.orderSuccess);
       onClose();
+      // Redirect to Qi Card payment page (or mock URL in dev)
+      const paymentUrl = (res.data as { payment_url?: string }).payment_url;
+      if (paymentUrl) {
+        window.location.href = paymentUrl;
+      }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
       toast.error(axiosErr?.response?.data?.detail || str.orderError);

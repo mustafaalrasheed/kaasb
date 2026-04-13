@@ -215,6 +215,7 @@ class Escrow(BaseModel):
     __tablename__ = "escrows"
     __table_args__ = (
         UniqueConstraint("milestone_id", name="uq_escrow_milestone"),
+        UniqueConstraint("gig_order_id", name="uq_escrow_gig_order"),
         CheckConstraint("amount > 0", name="ck_escrow_amount_positive"),
         CheckConstraint("platform_fee >= 0", name="ck_escrow_fee_non_negative"),
         CheckConstraint("freelancer_amount > 0", name="ck_escrow_freelancer_amount_positive"),
@@ -236,16 +237,24 @@ class Escrow(BaseModel):
     )
 
     # === Relations ===
-    contract_id: Mapped[uuid.UUID] = mapped_column(
+    # contract_id / milestone_id used for contract-based escrow (proposals/contracts flow)
+    # gig_order_id used for gig order escrow — exactly one of the two must be set
+    contract_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("contracts.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
-    milestone_id: Mapped[uuid.UUID] = mapped_column(
+    milestone_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("milestones.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+    )
+    gig_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("gig_orders.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     client_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
