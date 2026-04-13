@@ -50,7 +50,7 @@ class TestSanitizeUrl:
 
 class TestEscapeLike:
     def test_escapes_percent(self):
-        assert "%" not in escape_like("50%")
+        assert escape_like("50%") == r"50\%"
 
     def test_escapes_underscore(self):
         assert escape_like("hello_world") == r"hello\_world"

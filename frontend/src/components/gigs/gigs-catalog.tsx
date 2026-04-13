@@ -161,6 +161,7 @@ function GigCard({ gig, locale }: { gig: GigSummary; locale: "ar" | "en" }) {
         {/* Thumbnail */}
         <div className="aspect-video bg-gray-100 overflow-hidden">
           {gig.thumbnail_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={backendUrl(gig.thumbnail_url)}
               alt={gig.title}
@@ -182,6 +183,7 @@ function GigCard({ gig, locale }: { gig: GigSummary; locale: "ar" | "en" }) {
           <div className="flex items-center gap-2 mb-2">
             <div className="w-7 h-7 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
               {gig.freelancer.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={backendUrl(gig.freelancer.avatar_url)}
                   alt={freelancerName}

@@ -59,7 +59,7 @@ export default function MessagesPage() {
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [activeConvo?.id, fetchMessages]);
+  }, [activeConvo?.id, fetchMessages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -197,6 +197,7 @@ export default function MessagesPage() {
                 <div className="flex items-center gap-3">
                   <div className="relative shrink-0">
                     {c.other_user.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={c.other_user.avatar_url}
                         alt=""
@@ -248,6 +249,7 @@ export default function MessagesPage() {
             {/* Header */}
             <div className="px-5 py-3.5 border-b border-gray-200 bg-white flex items-center gap-3">
               {activeConvo.other_user.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={activeConvo.other_user.avatar_url}
                   alt=""

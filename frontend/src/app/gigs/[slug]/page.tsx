@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { gigsApi } from "@/lib/api";
 import { useLocale } from "@/providers/locale-provider";
@@ -134,6 +134,7 @@ function ImageCarousel({ images, title, locale }: { images: string[]; title: str
   return (
     <div className="relative">
       <div className="aspect-video rounded-xl overflow-hidden bg-gray-100">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={backendUrl(images[current])}
           alt={`${title} - ${current + 1}`}
@@ -254,7 +255,6 @@ function OrderModal({
 
 export default function GigDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const slug = params.slug as string;
   const { locale } = useLocale();
   const str = t[locale];

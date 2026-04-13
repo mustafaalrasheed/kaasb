@@ -294,10 +294,10 @@ class GigService(BaseService):
         gig = await self._load_gig(gig_id)
         if not gig:
             raise HTTPException(status_code=404, detail="Gig not found")
-        if gig.status != GigStatus.PENDING_REVIEW:
+        if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.NEEDS_REVISION):
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot approve a gig with status '{gig.status.value}'. Only pending_review gigs can be approved.",
+                detail=f"Cannot approve a gig with status '{gig.status.value}'.",
             )
         gig.status = GigStatus.ACTIVE
         gig.rejection_reason = None
@@ -319,7 +319,7 @@ class GigService(BaseService):
         gig = await self._load_gig(gig_id)
         if not gig:
             raise HTTPException(status_code=404, detail="Gig not found")
-        if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.ACTIVE):
+        if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.NEEDS_REVISION, GigStatus.ACTIVE):
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot request revision on a gig with status '{gig.status.value}'.",
@@ -344,6 +344,8 @@ class GigService(BaseService):
         gig = await self._load_gig(gig_id)
         if not gig:
             raise HTTPException(status_code=404, detail="Gig not found")
+        if gig.status == GigStatus.REJECTED:
+            return gig  # Already rejected — idempotent
         if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.NEEDS_REVISION, GigStatus.ACTIVE):
             raise HTTPException(
                 status_code=400,

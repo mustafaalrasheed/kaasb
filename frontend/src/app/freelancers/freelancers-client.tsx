@@ -51,6 +51,7 @@ export default function FreelancersClient() {
       if (skills) params.skills = skills;
       if (experienceLevel) params.experience_level = experienceLevel;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await usersApi.searchFreelancers(params as any);
       setFreelancers(response.data.users);
       setTotal(response.data.total);
@@ -216,6 +217,7 @@ function FreelancerCard({ user, ar }: { user: UserProfile; ar: boolean }) {
         <div className="flex items-start gap-4">
           <div className="w-14 h-14 shrink-0 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center">
             {user.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={backendUrl(user.avatar_url)}
                 alt={`${user.first_name} ${user.last_name}`}

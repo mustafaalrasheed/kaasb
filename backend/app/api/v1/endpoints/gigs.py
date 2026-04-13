@@ -73,7 +73,7 @@ async def search_gigs(
     min_price: float | None = Query(None, ge=0),
     max_price: float | None = Query(None, ge=0),
     delivery_days: int | None = Query(None, ge=1),
-    sort_by: str = Query("orders", regex="^(relevance|newest|rating|orders)$"),
+    sort_by: str = Query("orders", pattern="^(relevance|newest|rating|orders)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),

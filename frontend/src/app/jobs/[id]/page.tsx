@@ -11,7 +11,6 @@ import {
   SITE_URL,
   ogImageUrl,
   jobDetailMeta,
-  canonicalUrl,
 } from "@/lib/seo";
 
 const API_URL =

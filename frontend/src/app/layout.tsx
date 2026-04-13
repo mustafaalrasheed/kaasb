@@ -138,13 +138,15 @@ export default async function RootLayout({
   return (
     <html lang={htmlLang} dir={dir} className={locale === "ar" ? "font-arabic" : ""}>
       <head>
-        {/* Google Fonts — Tajawal for Arabic */}
+        {/* Google Fonts — Tajawal for Arabic (root layout is the correct place; eslint false-positive) */}
+        {/* eslint-disable @next/next/no-page-custom-font */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
           href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;900&display=swap"
           rel="stylesheet"
         />
+        {/* eslint-enable @next/next/no-page-custom-font */}
 
         {/* Structured Data */}
         <OrganizationJsonLd />

@@ -81,6 +81,7 @@ export default function JobsClient() {
       if (jobType) params.job_type = jobType;
       if (experienceLevel) params.experience_level = experienceLevel;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await jobsApi.search(params as any);
       const data: JobListResponse = response.data;
       setJobs(data.jobs);
@@ -341,6 +342,7 @@ function JobCard({ job, ar }: { job: JobSummary; ar: boolean }) {
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
                 {job.client.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={backendUrl(job.client.avatar_url)}
                     alt={`${job.client.first_name} ${job.client.last_name}`}

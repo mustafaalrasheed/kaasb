@@ -122,6 +122,7 @@ export default function ProfileClient() {
           <div className="shrink-0">
             <div className="w-28 h-28 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center">
               {profile.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={backendUrl(profile.avatar_url)}
                   alt={`${ar ? "صورة" : "Avatar of"} ${profile.first_name}`}

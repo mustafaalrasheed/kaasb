@@ -175,7 +175,7 @@ const DEFAULT_PACKAGE = (): PackageForm => ({
 function StepIndicator({
   step,
   steps,
-  locale,
+  locale: _locale,
 }: {
   step: number;
   steps: string[];

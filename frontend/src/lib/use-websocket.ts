@@ -110,14 +110,14 @@ export function useWebSocket({
       // onclose will fire after onerror — reconnect is handled there
     };
 
-    ws.onclose = (event) => {
+    ws.onclose = (_event) => {
       wsRef.current = null;
       // 4001 = auth failure (invalid/expired ticket) — still retry after delay
       if (mountedRef.current) {
         scheduleReconnect();
       }
     };
-  }, [enabled]);
+  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function scheduleReconnect() {
     if (reconnectTimer.current) clearTimeout(reconnectTimer.current);

@@ -287,7 +287,7 @@ class AuthService(BaseService):
             expires_at=expires,
         )
         self.db.add(rt)
-        await self.db.flush()
+        await self.db.commit()
 
         return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 

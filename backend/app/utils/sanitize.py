@@ -91,7 +91,7 @@ def sanitize_url(url: str | None) -> str | None:
     url = url.strip()
     lower = url.lower()
     if lower.startswith("javascript:") or lower.startswith("data:"):
-        return None
+        return ""
     if not (lower.startswith("http://") or lower.startswith("https://")):
         return None
     return url[:2000]
