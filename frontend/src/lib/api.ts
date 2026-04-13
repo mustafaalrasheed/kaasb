@@ -58,7 +58,7 @@ api.interceptors.response.use(
         await axios
           .post(`${API_URL}/auth/clear-session`, {}, { withCredentials: true })
           .catch(() => {});
-        if (typeof window !== "undefined") {
+        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/auth")) {
           window.location.href = "/auth/login";
         }
         return Promise.reject(error);

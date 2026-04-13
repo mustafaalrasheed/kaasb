@@ -17,9 +17,12 @@ export function Navbar() {
   const pathname = usePathname();
   const isAdminPage = pathname?.startsWith("/admin");
 
-  // Initialize auth state once on mount
+  // Initialize auth state once on mount — skip on auth pages (login/register/etc.)
+  // to avoid a redirect loop: getMe→401→refresh→401→redirect to /auth/login→repeat.
   useEffect(() => {
-    initialize();
+    if (!pathname?.startsWith("/auth")) {
+      initialize();
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const t = {
