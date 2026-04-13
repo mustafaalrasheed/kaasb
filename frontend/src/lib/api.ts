@@ -58,8 +58,15 @@ api.interceptors.response.use(
         await axios
           .post(`${API_URL}/auth/clear-session`, {}, { withCredentials: true })
           .catch(() => {});
-        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/auth")) {
-          window.location.href = "/auth/login";
+        // Only hard-redirect on protected pages (/dashboard, /admin).
+        // On public pages a failed refresh just means "not logged in" — let the
+        // UI render in logged-out state instead of bouncing the user to /auth/login.
+        if (typeof window !== "undefined") {
+          const p = window.location.pathname;
+          const isProtected = p.startsWith("/dashboard") || p.startsWith("/admin");
+          if (isProtected) {
+            window.location.href = "/auth/login";
+          }
         }
         return Promise.reject(error);
       }

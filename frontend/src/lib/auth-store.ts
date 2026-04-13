@@ -152,8 +152,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       scheduleRefresh();
       setupVisibilityRefresh(); // sliding session: refresh on tab restore
     } catch {
-      // Both access and refresh tokens are invalid — truly signed out.
-      await authApi.clearSession().catch(() => {});
+      // Not authenticated — render in logged-out state.
+      // The interceptor already called clear-session if a refresh was attempted.
       set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
