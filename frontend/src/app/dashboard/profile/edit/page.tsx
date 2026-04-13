@@ -203,7 +203,7 @@ export default function EditProfilePage() {
           >
             {user.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={backendUrl(user.avatar_url)} alt={ar ? "صورة شخصية" : "Profile photo"} className="w-full h-full object-cover" />
+              <img src={`${backendUrl(user.avatar_url)}?v=${new Date(user.updated_at).getTime()}`} alt={ar ? "صورة شخصية" : "Profile photo"} className="w-full h-full object-cover" />
             ) : (
               <span className="text-3xl font-bold text-brand-500">
                 {user.first_name[0]}{user.last_name[0]}

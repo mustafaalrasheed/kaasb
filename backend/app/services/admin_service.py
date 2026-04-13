@@ -207,7 +207,7 @@ class AdminService(BaseService):
             raise HTTPException(status_code=404, detail="User not found")
 
         user.status = UserStatus(new_status)
-        await self.db.flush()
+        await self.db.commit()
         await self.db.refresh(user)
         return user
 
@@ -301,7 +301,7 @@ class AdminService(BaseService):
             raise HTTPException(status_code=404, detail="Job not found")
 
         job.status = JobStatus(new_status)
-        await self.db.flush()
+        await self.db.commit()
         await self.db.refresh(job)
         return job
 

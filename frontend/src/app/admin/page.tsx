@@ -224,7 +224,7 @@ export default function AdminPage() {
     try {
       setLoading(true);
       const params: Record<string, string> = {};
-      if (txTypeFilter) params.transaction_type = txTypeFilter;
+      if (txTypeFilter) params.type = txTypeFilter;
       if (txStatusFilter) params.status = txStatusFilter;
       const res = await adminApi.getTransactions(params);
       setTransactions(res.data.transactions);
@@ -334,10 +334,12 @@ export default function AdminPage() {
     }
   };
 
-  const handleToggleAdmin = async (userId: string) => {
+  const handleToggleAdmin = async (userId: string, isCurrentlyAdmin: boolean) => {
     try {
       await adminApi.toggleAdmin(userId);
-      toast.success(ar ? "تم تغيير صلاحية المدير" : "Admin role toggled");
+      toast.success(isCurrentlyAdmin
+        ? (ar ? "تم إلغاء صلاحية المدير" : "Admin access revoked")
+        : (ar ? "تمت ترقية المستخدم إلى مدير" : "User promoted to admin"));
       fetchUsers();
     } catch (err: unknown) {
       toast.error(getApiError(err, ar ? "تعذّر تغيير الصلاحية" : "Failed to change role"));
@@ -395,9 +397,9 @@ export default function AdminPage() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <StatCard label={ar ? "إجمالي حجم التداول" : "Total Volume"} value={`$${stats.financials.total_volume.toFixed(2)}`} icon="💰" isText />
-              <StatCard label={ar ? "عمولات المنصة" : "Platform Fees"} value={`$${stats.financials.platform_fees_earned.toFixed(2)}`} icon="🏦" isText />
-              <StatCard label={ar ? "في الضمان" : "In Escrow"} value={`$${stats.financials.pending_escrow.toFixed(2)}`} icon="🔒" isText />
+              <StatCard label={ar ? "إجمالي حجم التداول" : "Total Volume"} value={`${stats.financials.total_volume.toLocaleString(ar ? "ar-IQ" : "en-US")} ${ar ? "د.ع" : "IQD"}`} icon="💰" isText />
+              <StatCard label={ar ? "عمولات المنصة" : "Platform Fees"} value={`${stats.financials.platform_fees_earned.toLocaleString(ar ? "ar-IQ" : "en-US")} ${ar ? "د.ع" : "IQD"}`} icon="🏦" isText />
+              <StatCard label={ar ? "في الضمان" : "In Escrow"} value={`${stats.financials.pending_escrow.toLocaleString(ar ? "ar-IQ" : "en-US")} ${ar ? "د.ع" : "IQD"}`} icon="🔒" isText />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -533,13 +535,13 @@ export default function AdminPage() {
                             </button>
                           )}
                           {u.id !== user?.id && !u.is_superuser && (
-                            <button onClick={() => handleToggleAdmin(u.id)}
+                            <button onClick={() => handleToggleAdmin(u.id, false)}
                               className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100">
                               {ar ? "ترقية لمدير" : "Make Admin"}
                             </button>
                           )}
                           {u.id !== user?.id && u.is_superuser && (
-                            <button onClick={() => handleToggleAdmin(u.id)}
+                            <button onClick={() => handleToggleAdmin(u.id, true)}
                               className="px-2 py-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100">
                               {ar ? "إلغاء صلاحية المدير" : "Revoke Admin"}
                             </button>
@@ -606,8 +608,8 @@ export default function AdminPage() {
                       </td>
                       <td className="p-3 text-gray-600 text-xs" dir="ltr">
                         {j.budget_min != null && j.budget_max != null
-                          ? `$${j.budget_min}–$${j.budget_max}`
-                          : j.budget_min != null ? `from $${j.budget_min}` : "—"}
+                          ? `${j.budget_min.toLocaleString()}–${j.budget_max.toLocaleString()} IQD`
+                          : j.budget_min != null ? `from ${j.budget_min.toLocaleString()} IQD` : "—"}
                       </td>
                       <td className="p-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -935,7 +937,11 @@ export default function AdminPage() {
                 : "For each row below, go to your Qi Card merchant portal and send the listed amount to the freelancer's Qi Card phone. After sending, click \"Confirm Payout\" to update the ledger."}
             </div>
 
-            {escrows.length === 0 && !loading ? (
+            {loading ? (
+              <div className="bg-white rounded-lg border p-12 text-center text-gray-400">
+                {ar ? "جاري التحميل..." : "Loading..."}
+              </div>
+            ) : escrows.length === 0 ? (
               <div className="bg-white rounded-lg border p-12 text-center text-gray-400">
                 {ar ? "لا توجد مدفوعات معلقة — كل العقود تمت تسويتها." : "No pending payouts — all contracts are settled."}
               </div>
@@ -1015,11 +1021,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {loading && (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-gray-400">{ar ? "جاري التحميل..." : "Loading..."}</div>
-          </div>
-        )}
       </div>
     </div>
   );

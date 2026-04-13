@@ -76,8 +76,8 @@ export default function PaymentsPage() {
 
   const handlePayout = async () => {
     const amount = parseFloat(payoutAmount);
-    if (isNaN(amount) || amount < 10) {
-      toast.error(ar ? "الحد الأدنى للسحب هو $10" : "Minimum withdrawal is $10");
+    if (isNaN(amount) || amount <= 0) {
+      toast.error(ar ? "أدخل مبلغاً صحيحاً" : "Enter a valid amount");
       return;
     }
     if (!payoutAccountId) {
@@ -141,17 +141,17 @@ export default function PaymentsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {isFreelancer ? (
             <>
-              <SummaryCard label={ar ? "إجمالي الأرباح" : "Total Earned"} value={summary.total_earned} color="green" />
-              <SummaryCard label={ar ? "محتجز في الضمان" : "In Escrow"} value={summary.pending_escrow} color="blue" />
-              <SummaryCard label={ar ? "عمولة المنصة" : "Platform Fees"} value={summary.total_platform_fees} color="yellow" />
-              <SummaryCard label={ar ? "المعاملات" : "Transactions"} value={summary.transaction_count} isCurrency={false} color="gray" />
+              <SummaryCard label={ar ? "إجمالي الأرباح" : "Total Earned"} value={summary.total_earned} color="green" ar={ar} />
+              <SummaryCard label={ar ? "محتجز في الضمان" : "In Escrow"} value={summary.pending_escrow} color="blue" ar={ar} />
+              <SummaryCard label={ar ? "عمولة المنصة" : "Platform Fees"} value={summary.total_platform_fees} color="yellow" ar={ar} />
+              <SummaryCard label={ar ? "المعاملات" : "Transactions"} value={summary.transaction_count} isCurrency={false} color="gray" ar={ar} />
             </>
           ) : (
             <>
-              <SummaryCard label={ar ? "إجمالي الإنفاق" : "Total Spent"} value={summary.total_spent} color="red" />
-              <SummaryCard label={ar ? "في الضمان" : "In Escrow"} value={summary.pending_escrow} color="blue" />
-              <SummaryCard label={ar ? "عمولة المنصة" : "Platform Fees"} value={summary.total_platform_fees} color="yellow" />
-              <SummaryCard label={ar ? "المعاملات" : "Transactions"} value={summary.transaction_count} isCurrency={false} color="gray" />
+              <SummaryCard label={ar ? "إجمالي الإنفاق" : "Total Spent"} value={summary.total_spent} color="red" ar={ar} />
+              <SummaryCard label={ar ? "في الضمان" : "In Escrow"} value={summary.pending_escrow} color="blue" ar={ar} />
+              <SummaryCard label={ar ? "عمولة المنصة" : "Platform Fees"} value={summary.total_platform_fees} color="yellow" ar={ar} />
+              <SummaryCard label={ar ? "المعاملات" : "Transactions"} value={summary.transaction_count} isCurrency={false} color="gray" ar={ar} />
             </>
           )}
         </div>
@@ -196,15 +196,15 @@ export default function PaymentsPage() {
           <div className="flex gap-3 items-end flex-wrap">
             <div>
               <label className="block text-sm text-gray-600 mb-1">
-                {ar ? "المبلغ ($)" : "Amount ($)"}
+                {ar ? "المبلغ (د.ع)" : "Amount (IQD)"}
               </label>
               <input
                 type="number"
                 value={payoutAmount}
                 onChange={(e) => setPayoutAmount(e.target.value)}
-                placeholder="100.00"
-                min="10"
-                step="0.01"
+                placeholder="10000"
+                min="1"
+                step="1"
                 dir="ltr"
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-32"
               />
@@ -297,7 +297,7 @@ export default function PaymentsPage() {
                 </div>
                 <div className="text-end">
                   <div className="font-semibold text-gray-900">
-                    {TX_SIGN[tx.transaction_type] ?? "+"}${tx.amount.toFixed(2)}
+                    {TX_SIGN[tx.transaction_type] ?? "+"}{tx.amount.toLocaleString(ar ? "ar-IQ" : "en-US")} {ar ? "د.ع" : "IQD"}
                   </div>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${TRANSACTION_STATUS_COLORS[tx.status] || "bg-gray-100"}`}>
                     {tx.status}
@@ -326,8 +326,8 @@ export default function PaymentsPage() {
   );
 }
 
-function SummaryCard({ label, value, color, isCurrency = true }: {
-  label: string; value: number; color: string; isCurrency?: boolean;
+function SummaryCard({ label, value, color, isCurrency = true, ar = false }: {
+  label: string; value: number; color: string; isCurrency?: boolean; ar?: boolean;
 }) {
   const colorMap: Record<string, string> = {
     green: "bg-green-50 border-green-200",
@@ -339,8 +339,10 @@ function SummaryCard({ label, value, color, isCurrency = true }: {
   return (
     <div className={`p-4 rounded-lg border ${colorMap[color] || colorMap.gray}`}>
       <div className="text-sm text-gray-600">{label}</div>
-      <div className="text-xl font-bold text-gray-900 mt-1">
-        {isCurrency ? `$${value.toFixed(2)}` : value}
+      <div className="text-xl font-bold text-gray-900 mt-1" dir="ltr">
+        {isCurrency
+          ? `${value.toLocaleString(ar ? "ar-IQ" : "en-US")} ${ar ? "د.ع" : "IQD"}`
+          : value}
       </div>
     </div>
   );

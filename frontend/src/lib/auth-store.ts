@@ -21,6 +21,9 @@ function getAccessTokenTtl(): number | null {
 // Refresh token 5 minutes before expiry. Called once on initialize and then
 // re-scheduled after every successful refresh.
 let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let _lastActivity = Date.now();
+let _visibilityListenerAttached = false;
+
 function scheduleRefresh() {
   if (_refreshTimer) clearTimeout(_refreshTimer);
   const ttl = getAccessTokenTtl();
@@ -36,6 +39,41 @@ function scheduleRefresh() {
       // Refresh failed — user will be signed out on next 401
     }
   }, refreshIn * 1000);
+}
+
+// Record the last time the user was active so we can decide whether to
+// refresh immediately when the tab becomes visible again.
+function recordActivity() {
+  _lastActivity = Date.now();
+}
+
+// When the user returns to a backgrounded tab, check if the token is likely
+// expired and refresh immediately rather than waiting for the next timer tick
+// or a 401. Covers "left PC / switched tabs for 30+ minutes" scenarios.
+function setupVisibilityRefresh() {
+  if (typeof document === "undefined" || _visibilityListenerAttached) return;
+  _visibilityListenerAttached = true;
+
+  // Track user activity so we know they were recently active.
+  (["mousedown", "keydown", "touchstart", "scroll"] as const).forEach((evt) => {
+    window.addEventListener(evt, recordActivity, { passive: true });
+  });
+
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState !== "visible") return;
+
+    // If the tab was hidden for more than 20 minutes, proactively refresh
+    // rather than waiting for the next scheduled tick.
+    const hiddenFor = Date.now() - _lastActivity;
+    if (hiddenFor > 20 * 60 * 1000) {
+      try {
+        await authApi.refresh();
+        scheduleRefresh();
+      } catch {
+        // Session truly expired — the next API call's 401 interceptor handles redirect
+      }
+    }
+  });
 }
 
 interface AuthState {
@@ -70,6 +108,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     const userResponse = await authApi.getMe();
     set({ user: userResponse.data, isAuthenticated: true });
     scheduleRefresh();
+    setupVisibilityRefresh();
   },
 
   socialLogin: async (provider, token, role = "freelancer") => {
@@ -77,6 +116,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     const userResponse = await authApi.getMe();
     set({ user: userResponse.data, isAuthenticated: true });
     scheduleRefresh();
+    setupVisibilityRefresh();
   },
 
   register: async (data) => {
@@ -84,6 +124,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     const userResponse = await authApi.getMe();
     set({ user: userResponse.data, isAuthenticated: true });
     scheduleRefresh();
+    setupVisibilityRefresh();
   },
 
   logout: () => {
@@ -109,6 +150,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const response = await authApi.getMe();
       set({ user: response.data, isAuthenticated: true, isLoading: false });
       scheduleRefresh();
+      setupVisibilityRefresh(); // sliding session: refresh on tab restore
     } catch {
       // Both access and refresh tokens are invalid — truly signed out.
       await authApi.clearSession().catch(() => {});
