@@ -8,14 +8,19 @@ import { useEffect } from "react";
 import { cn, backendUrl } from "@/lib/utils";
 
 const sidebarLinks = [
+  // Admin-only
+  { href: "/admin", labelAr: "لوحة الإدارة", labelEn: "Admin Panel", icon: "🛡️", roles: ["admin"] },
+  // Shared client + freelancer
   { href: "/dashboard", labelAr: "نظرة عامة", labelEn: "Overview", icon: "📊", roles: ["client", "freelancer"] },
   { href: "/dashboard/contracts", labelAr: "العقود", labelEn: "Contracts", icon: "📝", roles: ["client", "freelancer"] },
   { href: "/dashboard/payments", labelAr: "المدفوعات", labelEn: "Payments", icon: "💰", roles: ["client", "freelancer"] },
   { href: "/dashboard/messages", labelAr: "الرسائل", labelEn: "Messages", icon: "💬", roles: ["client", "freelancer"] },
   { href: "/dashboard/notifications", labelAr: "الإشعارات", labelEn: "Notifications", icon: "🔔", roles: ["client", "freelancer"] },
   { href: "/dashboard/reviews", labelAr: "التقييمات", labelEn: "Reviews", icon: "⭐", roles: ["client", "freelancer"] },
+  // Client-only
   { href: "/dashboard/my-jobs", labelAr: "وظائفي", labelEn: "My Jobs", icon: "📋", roles: ["client"] },
   { href: "/jobs/new", labelAr: "نشر وظيفة", labelEn: "Post a Job", icon: "✏️", roles: ["client"] },
+  // Freelancer-only
   { href: "/dashboard/gigs", labelAr: "خدماتي", labelEn: "My Gigs", icon: "🛍️", roles: ["freelancer"] },
   { href: "/dashboard/gigs/new", labelAr: "إنشاء خدمة", labelEn: "Create Gig", icon: "✨", roles: ["freelancer"] },
   { href: "/dashboard/gigs/orders", labelAr: "طلبات الخدمات", labelEn: "Gig Orders", icon: "📦", roles: ["client", "freelancer"] },
@@ -23,7 +28,6 @@ const sidebarLinks = [
   { href: "/jobs", labelAr: "ابحث عن عمل", labelEn: "Find Work", icon: "🔍", roles: ["freelancer"] },
   { href: "/dashboard/profile/edit", labelAr: "تعديل الملف", labelEn: "Edit Profile", icon: "👤", roles: ["client", "freelancer"] },
   { href: "/dashboard/settings", labelAr: "الإعدادات", labelEn: "Settings", icon: "⚙️", roles: ["client", "freelancer"] },
-  { href: "/admin", labelAr: "لوحة الإدارة", labelEn: "Admin Panel", icon: "🛡️", roles: ["admin"] },
 ];
 
 export default function DashboardLayout({
@@ -54,9 +58,8 @@ export default function DashboardLayout({
 
   if (!isAuthenticated || !user) return null;
 
-  const filteredLinks = sidebarLinks.filter(
-    (link) => link.roles.includes(user.primary_role) || user.is_superuser
-  );
+  const role = user.is_superuser ? "admin" : user.primary_role;
+  const filteredLinks = sidebarLinks.filter((link) => link.roles.includes(role));
 
   const roleLabel =
     user.primary_role === "client"

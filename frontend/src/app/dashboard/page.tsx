@@ -2,12 +2,24 @@
 
 import { useAuthStore } from "@/lib/auth-store";
 import { useLocale } from "@/providers/locale-provider";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import Link from "next/link";
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const { locale } = useLocale();
+  const router = useRouter();
   const ar = locale === "ar";
+
+  // Admins have no business on the user dashboard — send them to admin panel
+  useEffect(() => {
+    if (user?.is_superuser) {
+      router.replace("/admin");
+    }
+  }, [user, router]);
+
+  if (user?.is_superuser) return null;
 
   const isFreelancer = user?.primary_role === "freelancer";
   const profileComplete = Boolean(

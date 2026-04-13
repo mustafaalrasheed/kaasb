@@ -369,7 +369,7 @@ class GigService(BaseService):
     async def list_pending_gigs(self) -> list[Gig]:
         result = await self.db.execute(
             select(Gig)
-            .where(Gig.status == GigStatus.PENDING_REVIEW)
+            .where(Gig.status.in_([GigStatus.PENDING_REVIEW, GigStatus.NEEDS_REVISION]))
             .options(selectinload(Gig.freelancer), selectinload(Gig.packages))
             .order_by(Gig.created_at.asc())
         )
