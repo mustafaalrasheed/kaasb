@@ -252,7 +252,7 @@ class AdminService(BaseService):
             "granted to" if user.is_superuser else "revoked from",
             user_id, acting_admin.id,
         )
-        await self.db.flush()
+        await self.db.commit()
         await self.db.refresh(user)
         return user
 
