@@ -191,9 +191,10 @@ class GigService(BaseService):
                 )
                 self.db.add(pkg)
 
-        # Re-submit for review if was active
-        if gig.status == GigStatus.ACTIVE:
+        # Re-submit for review when freelancer edits
+        if gig.status in (GigStatus.ACTIVE, GigStatus.NEEDS_REVISION):
             gig.status = GigStatus.PENDING_REVIEW
+            gig.revision_note = None  # clear previous revision note on resubmit
 
         await self.db.commit()
         return await self._load_gig(gig.id)  # type: ignore[return-value]
@@ -314,17 +315,43 @@ class GigService(BaseService):
         ))
         return await self._load_gig(gig_id)  # type: ignore[return-value]
 
-    async def reject_gig(self, gig_id: uuid.UUID, reason: str, admin: User) -> Gig:
+    async def request_gig_revision(self, gig_id: uuid.UUID, note: str, admin: User) -> Gig:
         gig = await self._load_gig(gig_id)
         if not gig:
             raise HTTPException(status_code=404, detail="Gig not found")
         if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.ACTIVE):
             raise HTTPException(
                 status_code=400,
+                detail=f"Cannot request revision on a gig with status '{gig.status.value}'.",
+            )
+        gig.status = GigStatus.NEEDS_REVISION
+        gig.revision_note = note
+        gig.reviewed_by_id = admin.id
+        gig.reviewed_at = datetime.now(UTC)
+        await self.db.commit()
+        asyncio.create_task(notify(
+            self.db,
+            user_id=gig.freelancer_id,
+            type=NotificationType.GIG_NEEDS_REVISION,
+            title="Your gig needs edits before it can go live",
+            message=f'Your gig "{gig.title}" needs changes: {note}',
+            link_type="gig",
+            link_id=str(gig.id),
+        ))
+        return await self._load_gig(gig_id)  # type: ignore[return-value]
+
+    async def reject_gig(self, gig_id: uuid.UUID, reason: str, admin: User) -> Gig:
+        gig = await self._load_gig(gig_id)
+        if not gig:
+            raise HTTPException(status_code=404, detail="Gig not found")
+        if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.NEEDS_REVISION, GigStatus.ACTIVE):
+            raise HTTPException(
+                status_code=400,
                 detail=f"Cannot reject a gig with status '{gig.status.value}'.",
             )
         gig.status = GigStatus.REJECTED
         gig.rejection_reason = reason
+        gig.revision_note = None
         gig.reviewed_by_id = admin.id
         gig.reviewed_at = datetime.now(UTC)
         await self.db.commit()

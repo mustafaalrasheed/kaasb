@@ -51,6 +51,7 @@ class NotificationType(str, enum.Enum):
     GIG_APPROVED = "gig_approved"
     GIG_REJECTED = "gig_rejected"
     GIG_SUBMITTED = "gig_submitted"
+    GIG_NEEDS_REVISION = "gig_needs_revision"
 
     # System
     SYSTEM_ALERT = "system_alert"

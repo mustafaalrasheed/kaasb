@@ -282,6 +282,17 @@ async def approve_gig(
     return await svc.approve_gig(gig_id, admin)
 
 
+@router.post("/admin/{gig_id}/request-revision", response_model=GigOut, summary="Admin: request revision on gig")
+async def admin_request_gig_revision(
+    gig_id: uuid.UUID,
+    note: str = Query(..., min_length=10, description="Specific feedback for the freelancer"),
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    svc = GigService(db)
+    return await svc.request_gig_revision(gig_id, note, admin)
+
+
 @router.post("/admin/{gig_id}/reject", response_model=GigOut, summary="Admin: reject gig")
 async def reject_gig(
     gig_id: uuid.UUID,

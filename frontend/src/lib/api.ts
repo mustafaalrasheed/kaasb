@@ -385,6 +385,18 @@ export const adminApi = {
 
   releaseEscrow: (escrowId: string) =>
     api.post(`/admin/escrows/${escrowId}/release`),
+
+  getPendingGigs: () =>
+    api.get("/gigs/admin/pending"),
+
+  approveGig: (gigId: string) =>
+    api.post(`/gigs/admin/${gigId}/approve`),
+
+  requestGigRevision: (gigId: string, note: string) =>
+    api.post(`/gigs/admin/${gigId}/request-revision`, null, { params: { note } }),
+
+  rejectGig: (gigId: string, reason: string) =>
+    api.post(`/gigs/admin/${gigId}/reject`, null, { params: { reason } }),
 };
 
 // === Gigs API ===
