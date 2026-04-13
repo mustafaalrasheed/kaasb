@@ -11,7 +11,7 @@ import { backendUrl } from "@/lib/utils";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
-  const { user, isAuthenticated, logout, initialize } = useAuthStore();
+  const { user, isAuthenticated, isLoading, logout, initialize } = useAuthStore();
   const toggleMobileMenu = useCallback(() => setMobileMenuOpen((prev) => !prev), []);
   const { locale } = useLocale();
   const pathname = usePathname();
@@ -71,7 +71,10 @@ export function Navbar() {
               </>
             )}
 
-            {isAuthenticated ? (
+            {isLoading ? (
+              /* Placeholder during hydration — prevents sign-in/sign-up flash */
+              <div className="w-32 h-8" />
+            ) : isAuthenticated ? (
               <div className={`flex items-center gap-4 ${isRTL ? "flex-row-reverse" : "flex-row"}`}>
                 {!isAdminPage && (
                   <>
