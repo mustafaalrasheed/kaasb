@@ -447,7 +447,7 @@ class AuthService(BaseService):
             expires_at=expires,
         )
         self.db.add(new_rt)
-        await self.db.flush()
+        await self.db.commit()
 
         logger.info("Token refreshed: user=%s", user.id)
 

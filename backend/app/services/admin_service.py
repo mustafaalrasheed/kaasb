@@ -64,7 +64,7 @@ class AdminService(BaseService):
         active_users_30d = user_stats_row[1] or 0
         new_users_7d = user_stats_row[2] or 0
 
-        users_by_role = dict((await self.db.execute(
+        users_by_role: dict[UserRole, int] = dict((await self.db.execute(
             select(User.primary_role, func.count(User.id)).group_by(User.primary_role)
         )).all())
 

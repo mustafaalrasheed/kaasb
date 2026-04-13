@@ -52,6 +52,7 @@ pytest==8.3.4
 pytest-asyncio==0.24.0
 pytest-cov==6.0.0
 requests==2.32.3
+aiosqlite==0.20.0
 
 # === Dev Tools ===
 black==24.10.0
