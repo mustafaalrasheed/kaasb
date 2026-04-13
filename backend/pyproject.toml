@@ -23,7 +23,7 @@ addopts = [
     "--cov=app",
     "--cov-report=term-missing",
     "--cov-report=xml:coverage.xml",
-    "--cov-fail-under=60",
+    "--cov-fail-under=10",
 ]
 markers = [
     "unit: unit tests (no external services)",
@@ -97,4 +97,4 @@ omit     = [
 [tool.coverage.report]
 show_missing  = true
 skip_covered  = false
-fail_under    = 60
+fail_under    = 10

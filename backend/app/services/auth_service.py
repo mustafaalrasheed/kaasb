@@ -182,7 +182,7 @@ class AuthService(BaseService):
             expires_at=expires,
         )
         self.db.add(rt)
-        await self.db.flush()
+        await self.db.commit()
 
         logger.info("Login successful: user=%s", user.id)
 

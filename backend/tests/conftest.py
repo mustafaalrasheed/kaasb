@@ -18,10 +18,15 @@ from app.main import app
 from app.models.user import User, UserRole, UserStatus
 from app.core.security import hash_password
 
-# In-memory SQLite for tests (fast, isolated)
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# Use the PostgreSQL service from CI (DATABASE_URL env var).
+# SQLite cannot handle PostgreSQL-specific types (ARRAY, UUID, enums).
+import os
+_db_url = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+asyncpg://test_user:test_pass@localhost:5432/test_db",
+)
 
-test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+test_engine = create_async_engine(_db_url, echo=False)
 TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 

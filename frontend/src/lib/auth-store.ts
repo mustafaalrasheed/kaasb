@@ -106,7 +106,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (email, password) => {
     await authApi.login({ email, password });
     const userResponse = await authApi.getMe();
-    set({ user: userResponse.data, isAuthenticated: true });
+    set({ user: userResponse.data, isAuthenticated: true, isLoading: false });
     scheduleRefresh();
     setupVisibilityRefresh();
   },
@@ -114,7 +114,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   socialLogin: async (provider, token, role = "freelancer") => {
     await authApi.socialLogin({ provider, token, role });
     const userResponse = await authApi.getMe();
-    set({ user: userResponse.data, isAuthenticated: true });
+    set({ user: userResponse.data, isAuthenticated: true, isLoading: false });
     scheduleRefresh();
     setupVisibilityRefresh();
   },
@@ -122,7 +122,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   register: async (data) => {
     await authApi.register(data);
     const userResponse = await authApi.getMe();
-    set({ user: userResponse.data, isAuthenticated: true });
+    set({ user: userResponse.data, isAuthenticated: true, isLoading: false });
     scheduleRefresh();
     setupVisibilityRefresh();
   },
