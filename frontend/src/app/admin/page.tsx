@@ -479,7 +479,7 @@ export default function AdminPage() {
             </div>
 
             <div className="bg-white rounded-lg border overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="min-w-[650px] w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="text-start p-3 font-medium text-gray-600">{ar ? "المستخدم" : "User"}</th>
@@ -587,7 +587,7 @@ export default function AdminPage() {
             </div>
 
             <div className="bg-white rounded-lg border overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="min-w-[650px] w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="text-start p-3 font-medium text-gray-600">{ar ? "العنوان" : "Title"}</th>
@@ -880,7 +880,7 @@ export default function AdminPage() {
             </div>
 
             <div className="bg-white rounded-lg border overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="min-w-[700px] w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="text-start p-3 font-medium text-gray-600">{ar ? "النوع" : "Type"}</th>
@@ -947,7 +947,7 @@ export default function AdminPage() {
               </div>
             ) : (
               <div className="bg-white rounded-lg border overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="min-w-[900px] w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="text-start p-3 font-medium text-gray-600">{ar ? "المستقل" : "Freelancer"}</th>

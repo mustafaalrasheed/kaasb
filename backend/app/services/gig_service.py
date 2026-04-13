@@ -370,7 +370,12 @@ class GigService(BaseService):
         result = await self.db.execute(
             select(Gig)
             .where(Gig.status.in_([GigStatus.PENDING_REVIEW, GigStatus.NEEDS_REVISION]))
-            .options(selectinload(Gig.freelancer), selectinload(Gig.packages))
+            .options(
+                selectinload(Gig.freelancer),
+                selectinload(Gig.packages),
+                selectinload(Gig.category),
+                selectinload(Gig.subcategory),
+            )
             .order_by(Gig.created_at.asc())
         )
         return list(result.scalars().all())

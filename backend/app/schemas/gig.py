@@ -130,6 +130,7 @@ class GigOut(BaseModel):
     reviews_count: int
     category_id: Optional[uuid.UUID] = None
     subcategory_id: Optional[uuid.UUID] = None
+    revision_note: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     freelancer: Optional[FreelancerBrief] = None
