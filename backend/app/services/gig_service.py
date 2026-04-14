@@ -126,26 +126,36 @@ class GigService(BaseService):
         await self.db.commit()
         await self.db.refresh(gig)
 
-        # Notify all active admins that a new gig is pending review
+        # Collect admin IDs and gig data BEFORE _load_gig so notify tasks are
+        # scheduled after the load completes (avoids concurrent AsyncSession use).
         admin_result = await self.db.execute(
             select(User).where(
                 User.is_superuser == True,  # noqa: E712
                 User.status == "active",
             )
         )
-        for admin in admin_result.scalars().all():
+        admin_ids = [admin.id for admin in admin_result.scalars().all()]
+        gig_title = gig.title
+        gig_id_str = str(gig.id)
+        freelancer_username = freelancer.username
+
+        # Eager-load relationships for response BEFORE scheduling background tasks.
+        # asyncio.create_task shares self.db — concurrent use of the same AsyncSession
+        # across coroutines causes a 500. Load first, notify after.
+        loaded_gig = await self._load_gig(gig.id)
+
+        for admin_id in admin_ids:
             asyncio.create_task(notify(
                 self.db,
-                user_id=admin.id,
+                user_id=admin_id,
                 type=NotificationType.GIG_SUBMITTED,
                 title="New gig pending review",
-                message=f'"{gig.title}" by {freelancer.username} is awaiting approval.',
+                message=f'"{gig_title}" by {freelancer_username} is awaiting approval.',
                 link_type="gig",
-                link_id=str(gig.id),
+                link_id=gig_id_str,
             ))
 
-        # Eager-load relationships for response
-        return await self._load_gig(gig.id)  # type: ignore[return-value]
+        return loaded_gig  # type: ignore[return-value]
 
     async def get_gig_by_slug(self, slug: str) -> Gig:
         gig = await self._load_gig_by_slug(slug)
