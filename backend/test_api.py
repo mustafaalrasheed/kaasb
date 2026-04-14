@@ -12,6 +12,14 @@ import requests
 
 BASE_URL = "http://localhost:8000/api/v1"
 
+# Unique test credentials — prefixed to avoid colliding with real accounts.
+# Deleted automatically after each run.
+_UID = uuid.uuid4().hex[:8]
+TEST_CLIENT_EMAIL = f"_test_client_{_UID}@kaasb-test.invalid"
+TEST_CLIENT_USERNAME = f"tstclient{_UID}"
+TEST_FREELANCER_EMAIL = f"_test_freelancer_{_UID}@kaasb-test.invalid"
+TEST_FREELANCER_USERNAME = f"tstfree{_UID}"
+
 # Terminal colors
 class C:
     G = '\033[92m'   # Green
@@ -82,51 +90,35 @@ def test_02_auth():
 
     # --- Register client ---
     r = raw("POST", "/auth/register", json={
-        "email": "client@test.com", "password": "TestPass123!",
+        "email": TEST_CLIENT_EMAIL, "password": "TestPass123!",
         "first_name": "Test", "last_name": "Client",
-        "username": "testclient", "primary_role": "client",
+        "username": TEST_CLIENT_USERNAME, "primary_role": "client",
     })
     if r.status_code == 201 and "access_token" in r.json():
         tokens["client"] = r.json()["access_token"]
         ok("Client registered")
-    elif r.status_code in (409, 429):
-        r2 = raw("POST", "/auth/login", json={"email": "client@test.com", "password": "TestPass123!"})
-        if r2.status_code == 200:
-            tokens["client"] = r2.json()["access_token"]
-            ok("Client already registered — logged in")
-        else:
-            fail(f"Client registration+login fallback: {r2.status_code}")
-            return False
     else:
         fail(f"Client registration: {r.status_code} {r.text[:200]}")
         return False
 
     # --- Register freelancer ---
     r = raw("POST", "/auth/register", json={
-        "email": "freelancer@test.com", "password": "TestPass123!",
+        "email": TEST_FREELANCER_EMAIL, "password": "TestPass123!",
         "first_name": "Test", "last_name": "Freelancer",
-        "username": "testfreelancer", "primary_role": "freelancer",
+        "username": TEST_FREELANCER_USERNAME, "primary_role": "freelancer",
     })
     if r.status_code == 201:
         tokens["freelancer"] = r.json()["access_token"]
         ok("Freelancer registered")
-    elif r.status_code in (409, 429):
-        r2 = raw("POST", "/auth/login", json={"email": "freelancer@test.com", "password": "TestPass123!"})
-        if r2.status_code == 200:
-            tokens["freelancer"] = r2.json()["access_token"]
-            ok("Freelancer already registered — logged in")
-        else:
-            fail(f"Freelancer registration+login fallback: {r2.status_code}")
-            return False
     else:
-        fail(f"Freelancer registration: {r.status_code}")
+        fail(f"Freelancer registration: {r.status_code} {r.text[:200]}")
         return False
 
     # --- Duplicate email → 409 ---
     r = raw("POST", "/auth/register", json={
-        "email": "client@test.com", "password": "TestPass123!",
+        "email": TEST_CLIENT_EMAIL, "password": "TestPass123!",
         "first_name": "Dup", "last_name": "User",
-        "username": "dupuser", "primary_role": "client",
+        "username": f"dup{_UID}", "primary_role": "client",
     })
     if r.status_code == 409:
         ok("Duplicate email rejected (409)")
@@ -135,16 +127,16 @@ def test_02_auth():
 
     # --- Weak password → 422 ---
     r = raw("POST", "/auth/register", json={
-        "email": "bad@test.com", "password": "weak",
+        "email": f"bad{_UID}@kaasb-test.invalid", "password": "weak",
         "first_name": "Bad", "last_name": "Pass",
-        "username": "badpass", "primary_role": "client",
+        "username": f"bad{_UID}", "primary_role": "client",
     })
     if r.status_code == 422:
         ok("Weak password rejected (422)")
 
     # --- Invalid username (spaces) → 422 ---
     r = raw("POST", "/auth/register", json={
-        "email": "space@test.com", "password": "TestPass123!",
+        "email": f"space{_UID}@kaasb-test.invalid", "password": "TestPass123!",
         "first_name": "Space", "last_name": "User",
         "username": "has spaces", "primary_role": "client",
     })
@@ -153,7 +145,7 @@ def test_02_auth():
 
     # --- Login ---
     r = raw("POST", "/auth/login", json={
-        "email": "client@test.com", "password": "TestPass123!",
+        "email": TEST_CLIENT_EMAIL, "password": "TestPass123!",
     })
     if r.status_code == 200:
         data = r.json()
@@ -173,7 +165,7 @@ def test_02_auth():
 
     # --- Wrong password → 401 ---
     r = raw("POST", "/auth/login", json={
-        "email": "client@test.com", "password": "WrongPass123!",
+        "email": TEST_CLIENT_EMAIL, "password": "WrongPass123!",
     })
     if r.status_code == 401:
         ok("Wrong password rejected (401)")
@@ -925,7 +917,28 @@ def run_all_tests():
     return failed == 0
 
 
+def teardown():
+    """Delete test accounts created by this run."""
+    import asyncio as _asyncio
+    from app.core.database import async_session as _session
+    from sqlalchemy import text as _text
+
+    async def _delete():
+        async with _session() as db:
+            await db.execute(_text(
+                "DELETE FROM users WHERE email IN (:c, :f)"
+            ), {"c": TEST_CLIENT_EMAIL, "f": TEST_FREELANCER_EMAIL})
+            await db.commit()
+
+    try:
+        _asyncio.run(_delete())
+        info(f"Teardown: test accounts deleted ({TEST_CLIENT_EMAIL}, {TEST_FREELANCER_EMAIL})")
+    except Exception as e:
+        info(f"Teardown warning: {e}")
+
+
 if __name__ == "__main__":
     import sys
     success = run_all_tests()
+    teardown()
     sys.exit(0 if success else 1)
