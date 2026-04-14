@@ -54,6 +54,7 @@ interface GigDetail {
 const t = {
   ar: {
     loading: "جارٍ التحميل...",
+    error: "تعذّر تحميل الخدمة. يرجى المحاولة مرة أخرى.",
     notFound: "الخدمة غير موجودة",
     backToGigs: "العودة إلى الخدمات",
     description: "وصف الخدمة",
@@ -83,6 +84,7 @@ const t = {
   },
   en: {
     loading: "Loading...",
+    error: "Failed to load this gig. Please try again.",
     notFound: "Gig not found",
     backToGigs: "Back to Services",
     description: "About This Gig",
@@ -282,7 +284,7 @@ export default function GigDetailPage() {
         }
       } catch (err: unknown) {
         const axiosErr = err as { response?: { status?: number } };
-        setError(axiosErr?.response?.status === 404 ? str.notFound : str.loading);
+        setError(axiosErr?.response?.status === 404 ? str.notFound : str.error);
       } finally {
         setIsLoading(false);
       }

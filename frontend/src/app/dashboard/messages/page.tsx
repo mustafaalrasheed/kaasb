@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { messagesApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { useWebSocket } from "@/lib/use-websocket";
@@ -8,11 +9,14 @@ import type { WsMessageData } from "@/lib/use-websocket";
 import { toast } from "sonner";
 import type { ConversationSummary, MessageDetail } from "@/types/message";
 import { useLocale } from "@/providers/locale-provider";
+import { backendUrl } from "@/lib/utils";
 
 export default function MessagesPage() {
   const { user } = useAuthStore();
   const { locale } = useLocale();
   const ar = locale === "ar";
+  const searchParams = useSearchParams();
+  const withUserId = searchParams.get("with");
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConvo, setActiveConvo] = useState<ConversationSummary | null>(null);
@@ -49,6 +53,14 @@ export default function MessagesPage() {
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
+
+  // Auto-open conversation when ?with=<userId> is in the URL (e.g. from "Contact Freelancer")
+  useEffect(() => {
+    if (!withUserId || conversations.length === 0) return;
+    const existing = conversations.find((c) => c.other_user.id === withUserId);
+    if (existing) selectConversation(existing);
+    // If no existing conversation, the empty state guides the user to send a first message
+  }, [withUserId, conversations]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!activeConvo) return;
@@ -199,7 +211,7 @@ export default function MessagesPage() {
                     {c.other_user.avatar_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={c.other_user.avatar_url}
+                        src={backendUrl(c.other_user.avatar_url)}
                         alt=""
                         className="w-10 h-10 rounded-full object-cover"
                       />
@@ -251,7 +263,7 @@ export default function MessagesPage() {
               {activeConvo.other_user.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={activeConvo.other_user.avatar_url}
+                  src={backendUrl(activeConvo.other_user.avatar_url)}
                   alt=""
                   className="w-9 h-9 rounded-full object-cover"
                 />

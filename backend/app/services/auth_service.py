@@ -418,14 +418,26 @@ class AuthService(BaseService):
             )
 
         user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload",
+            )
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except (ValueError, AttributeError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload",
+            ) from e
         result = await self.db.execute(
-            select(User).where(User.id == uuid.UUID(user_id))
+            select(User).where(User.id == user_uuid)
         )
         user = result.scalar_one_or_none()
 
         if not user:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found",
             )
 
