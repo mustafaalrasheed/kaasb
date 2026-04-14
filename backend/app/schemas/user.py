@@ -51,9 +51,13 @@ class TokenResponse(BaseModel):
 
 
 class TokenRefresh(BaseModel):
-    """Refresh token request."""
+    """Refresh token request.
 
-    refresh_token: str
+    refresh_token is optional — the backend prefers the httpOnly cookie.
+    Clients that manage tokens manually (API scripts) can pass it in the body.
+    """
+
+    refresh_token: str | None = None
 
 
 class SocialLoginRequest(BaseModel):

@@ -21,7 +21,9 @@ function getAccessTokenTtl(): number | null {
 // Refresh token 5 minutes before expiry. Called once on initialize and then
 // re-scheduled after every successful refresh.
 let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
-let _lastActivity = Date.now();
+// Timestamp when the tab was hidden — used to calculate how long the browser
+// was closed or backgrounded so we can proactively refresh on return.
+let _hiddenAt: number | null = null;
 let _visibilityListenerAttached = false;
 
 function scheduleRefresh() {
@@ -41,31 +43,31 @@ function scheduleRefresh() {
   }, refreshIn * 1000);
 }
 
-// Record the last time the user was active so we can decide whether to
-// refresh immediately when the tab becomes visible again.
-function recordActivity() {
-  _lastActivity = Date.now();
-}
-
-// When the user returns to a backgrounded tab, check if the token is likely
-// expired and refresh immediately rather than waiting for the next timer tick
-// or a 401. Covers "left PC / switched tabs for 30+ minutes" scenarios.
+// When the user returns to a backgrounded tab (or reopens the browser),
+// check how long the page was hidden. If it was hidden for more than
+// 20 minutes the access token may have expired, so refresh proactively
+// instead of waiting for the next scheduled tick or a 401.
+// Using _hiddenAt (set when the tab hides) is correct — _lastActivity
+// (mouse/keyboard) would wrongly count idle-but-visible time as hidden time.
 function setupVisibilityRefresh() {
   if (typeof document === "undefined" || _visibilityListenerAttached) return;
   _visibilityListenerAttached = true;
 
-  // Track user activity so we know they were recently active.
-  (["mousedown", "keydown", "touchstart", "scroll"] as const).forEach((evt) => {
-    window.addEventListener(evt, recordActivity, { passive: true });
-  });
-
   document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState === "hidden") {
+      // Record when the page was hidden (tab switch, browser minimize, close).
+      _hiddenAt = Date.now();
+      return;
+    }
+
     if (document.visibilityState !== "visible") return;
 
-    // If the tab was hidden for more than 20 minutes, proactively refresh
-    // rather than waiting for the next scheduled tick.
-    const hiddenFor = Date.now() - _lastActivity;
-    if (hiddenFor > 20 * 60 * 1000) {
+    // Calculate how long the page was actually hidden.
+    const hiddenDuration = _hiddenAt != null ? Date.now() - _hiddenAt : 0;
+    _hiddenAt = null; // reset for next hide/show cycle
+
+    // If hidden for >20 min, proactively refresh before the next API call fails.
+    if (hiddenDuration > 20 * 60 * 1000) {
       try {
         await authApi.refresh();
         scheduleRefresh();

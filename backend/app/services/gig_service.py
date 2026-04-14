@@ -310,21 +310,32 @@ class GigService(BaseService):
                 status_code=400,
                 detail=f"Cannot approve a gig with status '{gig.status.value}'.",
             )
+        # Capture notification params before commit (ORM object expires after commit)
+        freelancer_id = gig.freelancer_id
+        gig_title = gig.title
+        gig_id_str = str(gig.id)
+
         gig.status = GigStatus.ACTIVE
         gig.rejection_reason = None
         gig.reviewed_by_id = admin.id
         gig.reviewed_at = datetime.now(UTC)
         await self.db.commit()
+
+        # Reload the updated gig BEFORE scheduling the background notification.
+        # asyncio.create_task shares self.db — running _load_gig() concurrently
+        # with notify() on the same AsyncSession causes a 500. Load first, notify after.
+        updated_gig = await self._load_gig(gig_id)
+
         asyncio.create_task(notify(
             self.db,
-            user_id=gig.freelancer_id,
+            user_id=freelancer_id,
             type=NotificationType.GIG_APPROVED,
             title="Your gig was approved",
-            message=f'Your gig "{gig.title}" is now live and visible to clients.',
+            message=f'Your gig "{gig_title}" is now live and visible to clients.',
             link_type="gig",
-            link_id=str(gig.id),
+            link_id=gig_id_str,
         ))
-        return await self._load_gig(gig_id)  # type: ignore[return-value]
+        return updated_gig  # type: ignore[return-value]
 
     async def request_gig_revision(self, gig_id: uuid.UUID, note: str, admin: User) -> Gig:
         gig = await self._load_gig(gig_id)
@@ -335,21 +346,28 @@ class GigService(BaseService):
                 status_code=400,
                 detail=f"Cannot request revision on a gig with status '{gig.status.value}'.",
             )
+        freelancer_id = gig.freelancer_id
+        gig_title = gig.title
+        gig_id_str = str(gig.id)
+
         gig.status = GigStatus.NEEDS_REVISION
         gig.revision_note = note
         gig.reviewed_by_id = admin.id
         gig.reviewed_at = datetime.now(UTC)
         await self.db.commit()
+
+        updated_gig = await self._load_gig(gig_id)
+
         asyncio.create_task(notify(
             self.db,
-            user_id=gig.freelancer_id,
+            user_id=freelancer_id,
             type=NotificationType.GIG_NEEDS_REVISION,
             title="Your gig needs edits before it can go live",
-            message=f'Your gig "{gig.title}" needs changes: {note}',
+            message=f'Your gig "{gig_title}" needs changes: {note}',
             link_type="gig",
-            link_id=str(gig.id),
+            link_id=gig_id_str,
         ))
-        return await self._load_gig(gig_id)  # type: ignore[return-value]
+        return updated_gig  # type: ignore[return-value]
 
     async def reject_gig(self, gig_id: uuid.UUID, reason: str, admin: User) -> Gig:
         gig = await self._load_gig(gig_id)
@@ -362,22 +380,29 @@ class GigService(BaseService):
                 status_code=400,
                 detail=f"Cannot reject a gig with status '{gig.status.value}'.",
             )
+        freelancer_id = gig.freelancer_id
+        gig_title = gig.title
+        gig_id_str = str(gig.id)
+
         gig.status = GigStatus.REJECTED
         gig.rejection_reason = reason
         gig.revision_note = None
         gig.reviewed_by_id = admin.id
         gig.reviewed_at = datetime.now(UTC)
         await self.db.commit()
+
+        updated_gig = await self._load_gig(gig_id)
+
         asyncio.create_task(notify(
             self.db,
-            user_id=gig.freelancer_id,
+            user_id=freelancer_id,
             type=NotificationType.GIG_REJECTED,
             title="Your gig was rejected",
-            message=f'Your gig "{gig.title}" was rejected. Reason: {reason}',
+            message=f'Your gig "{gig_title}" was rejected. Reason: {reason}',
             link_type="gig",
-            link_id=str(gig.id),
+            link_id=gig_id_str,
         ))
-        return await self._load_gig(gig_id)  # type: ignore[return-value]
+        return updated_gig  # type: ignore[return-value]
 
     async def list_pending_gigs(self) -> list[Gig]:
         result = await self.db.execute(
