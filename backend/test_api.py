@@ -41,10 +41,13 @@ def h(role: str) -> dict:
     """Auth headers for a role."""
     return {"Authorization": f"Bearer {tokens[role]}"}
 
+_DEFAULT_HEADERS = {"Origin": "https://kaasb.com"}
+
 def raw(method, path, **kwargs):
     """Raw request — returns response object."""
     url = path if path.startswith("http") else f"{BASE_URL}{path}"
-    return requests.request(method, url, **kwargs)
+    headers = {**_DEFAULT_HEADERS, **kwargs.pop("headers", {})}
+    return requests.request(method, url, headers=headers, **kwargs)
 
 
 # ============================================================
