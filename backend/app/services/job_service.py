@@ -9,11 +9,11 @@ import time
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from app.models.job import ExperienceLevel, Job, JobDuration, JobStatus, JobType
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobUpdate
@@ -40,10 +40,7 @@ class JobService(BaseService):
     async def create_job(self, client: User, data: JobCreate) -> Job:
         """Create a new job posting."""
         if client.primary_role != UserRole.CLIENT:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only clients can post jobs",
-            )
+            raise ForbiddenError("Only clients can post jobs")
 
         job = Job(
             title=data.title,
@@ -85,10 +82,7 @@ class JobService(BaseService):
         )
         job = result.scalar_one_or_none()
         if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found",
-            )
+            raise NotFoundError("Job")
         return job
 
     async def increment_view(self, job: Job) -> None:
@@ -129,23 +123,14 @@ class JobService(BaseService):
         job = await self.get_by_id(job_id)
 
         if job.client_id != client.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only edit your own jobs",
-            )
+            raise ForbiddenError("You can only edit your own jobs")
 
         if job.status not in (JobStatus.OPEN, JobStatus.DRAFT):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot edit a job with status '{job.status.value}'",
-            )
+            raise BadRequestError(f"Cannot edit a job with status '{job.status.value}'")
 
         update_data = data.model_dump(exclude_unset=True)
         if not update_data:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No fields to update",
-            )
+            raise BadRequestError("No fields to update")
 
         # Map string enums back to enum types
         if "job_type" in update_data:
@@ -172,16 +157,10 @@ class JobService(BaseService):
         job = await self.get_by_id(job_id)
 
         if job.client_id != client.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only close your own jobs",
-            )
+            raise ForbiddenError("You can only close your own jobs")
 
         if job.status not in (JobStatus.OPEN, JobStatus.DRAFT):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot close a job with status '{job.status.value}'",
-            )
+            raise BadRequestError(f"Cannot close a job with status '{job.status.value}'")
 
         job.status = JobStatus.CLOSED
         job.closed_at = datetime.now(UTC)
@@ -195,22 +174,13 @@ class JobService(BaseService):
         job = await self.get_by_id(job_id)
 
         if job.client_id != client.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only delete your own jobs",
-            )
+            raise ForbiddenError("You can only delete your own jobs")
 
         if job.status not in (JobStatus.OPEN, JobStatus.DRAFT):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Can only delete open or draft jobs",
-            )
+            raise BadRequestError("Can only delete open or draft jobs")
 
         if job.proposal_count > 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot delete a job that has proposals. Close it instead.",
-            )
+            raise BadRequestError("Cannot delete a job that has proposals. Close it instead.")
 
         await self.db.delete(job)
         await self.db.flush()

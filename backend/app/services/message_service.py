@@ -8,11 +8,11 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import HTTPException
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from app.models.job import Job
 from app.models.message import Conversation, Message
 from app.models.notification import Notification, NotificationType
@@ -35,15 +35,14 @@ class MessageService(BaseService):
     ) -> Conversation:
         """Start a new conversation or return existing one."""
         if sender.id == data.recipient_id:
-            raise HTTPException(status_code=400, detail="Cannot message yourself")
+            raise BadRequestError("Cannot message yourself")
 
-        # Verify recipient exists
         result = await self.db.execute(
             select(User).where(User.id == data.recipient_id)
         )
         recipient = result.scalar_one_or_none()
         if not recipient:
-            raise HTTPException(status_code=404, detail="Recipient not found")
+            raise NotFoundError("Recipient")
 
         # Normalize participant order (smaller UUID first for consistency)
         p1 = min(sender.id, data.recipient_id)
@@ -63,19 +62,16 @@ class MessageService(BaseService):
         existing = result.scalar_one_or_none()
 
         if existing:
-            # Send initial message in existing conversation
             await self._send_message(existing, sender, data.initial_message)
             return await self._get_conversation(existing.id)
 
-        # Validate job if provided
         if data.job_id:
             job_result = await self.db.execute(
                 select(Job).where(Job.id == data.job_id)
             )
             if not job_result.scalar_one_or_none():
-                raise HTTPException(status_code=404, detail="Job not found")
+                raise NotFoundError("Job")
 
-        # Create conversation
         conversation = Conversation(
             participant_one_id=p1,
             participant_two_id=p2,
@@ -84,7 +80,6 @@ class MessageService(BaseService):
         self.db.add(conversation)
         await self.db.flush()
 
-        # Send initial message
         await self._send_message(conversation, sender, data.initial_message)
 
         return await self._get_conversation(conversation.id)
@@ -95,9 +90,8 @@ class MessageService(BaseService):
         """Send a message in an existing conversation."""
         conversation = await self._get_conversation(conversation_id)
 
-        # Verify sender is a participant
         if sender.id not in (conversation.participant_one_id, conversation.participant_two_id):
-            raise HTTPException(status_code=403, detail="Not part of this conversation")
+            raise ForbiddenError("Not part of this conversation")
 
         return await self._send_message(conversation, sender, data.content)
 
@@ -119,7 +113,6 @@ class MessageService(BaseService):
             "last_message_at": now,
             "message_count": Conversation.message_count + 1,
         }
-        # Increment unread for the OTHER participant
         if sender.id == conversation.participant_one_id:
             update_values["unread_two"] = Conversation.unread_two + 1
         else:
@@ -134,14 +127,12 @@ class MessageService(BaseService):
         await self.db.flush()
         await self.db.refresh(message, attribute_names=["sender"])
 
-        # Determine recipient
         recipient_id = (
             conversation.participant_two_id
             if sender.id == conversation.participant_one_id
             else conversation.participant_one_id
         )
 
-        # Create in-app notification for the recipient
         notification = Notification(
             user_id=recipient_id,
             type=NotificationType.NEW_MESSAGE,
@@ -154,7 +145,6 @@ class MessageService(BaseService):
         self.db.add(notification)
         await self.db.flush()
 
-        # Push real-time event to recipient via WebSocket (non-blocking)
         ws_payload = {
             "type": "message",
             "data": {
@@ -194,18 +184,15 @@ class MessageService(BaseService):
             )
         )
 
-        # Count
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.db.execute(count_stmt)).scalar() or 0
 
-        # Order by latest message
         stmt = stmt.order_by(Conversation.last_message_at.desc().nullslast())
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
         result = await self.db.execute(stmt)
         conversations = result.scalars().unique().all()
 
-        # Enrich with other_user and unread
         enriched = []
         for c in conversations:
             if user.id == c.participant_one_id:
@@ -230,16 +217,14 @@ class MessageService(BaseService):
         conversation = await self._get_conversation(conversation_id)
 
         if user.id not in (conversation.participant_one_id, conversation.participant_two_id):
-            raise HTTPException(status_code=403, detail="Not part of this conversation")
+            raise ForbiddenError("Not part of this conversation")
 
-        # Mark as read for this user
         if user.id == conversation.participant_one_id:
             conversation.unread_one = 0
         else:
             conversation.unread_two = 0
         await self.db.flush()
 
-        # Get messages
         stmt = (
             select(Message)
             .options(selectinload(Message.sender))
@@ -249,7 +234,6 @@ class MessageService(BaseService):
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.db.execute(count_stmt)).scalar() or 0
 
-        # Newest first
         stmt = stmt.order_by(Message.created_at.desc())
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
@@ -271,5 +255,5 @@ class MessageService(BaseService):
         )
         conversation = result.scalar_one_or_none()
         if not conversation:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise NotFoundError("Conversation")
         return conversation

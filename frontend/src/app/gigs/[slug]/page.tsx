@@ -290,7 +290,7 @@ export default function GigDetailPage() {
       }
     }
     if (slug) load();
-  }, [slug, str.loading, str.notFound]);
+  }, [slug, locale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) {
     return (

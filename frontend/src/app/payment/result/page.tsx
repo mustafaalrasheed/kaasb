@@ -1,13 +1,13 @@
 "use client";
 
+import { Suspense, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect } from "react";
 import Link from "next/link";
 import { useLocale } from "@/providers/locale-provider";
 
 type PaymentStatus = "success" | "failed" | "cancelled" | "unknown";
 
-export default function PaymentResultPage() {
+function PaymentResultContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { locale } = useLocale();
@@ -122,5 +122,17 @@ export default function PaymentResultPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function PaymentResultPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <PaymentResultContent />
+    </Suspense>
   );
 }

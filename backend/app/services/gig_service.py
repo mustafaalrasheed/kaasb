@@ -11,12 +11,12 @@ from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
-from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
+from app.core.exceptions import BadRequestError, ExternalServiceError, ForbiddenError, NotFoundError
 from app.models.gig import (
     Category,
     Gig,
@@ -82,15 +82,12 @@ class GigService(BaseService):
 
     async def create_gig(self, freelancer: User, data: GigCreate) -> Gig:
         if freelancer.primary_role not in (UserRole.FREELANCER, UserRole.ADMIN):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only freelancers can create gigs",
-            )
+            raise ForbiddenError("Only freelancers can create gigs")
 
         # Verify category exists
         cat = await self.db.get(Category, data.category_id)
         if not cat:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise NotFoundError("Category")
 
         # Generate unique slug
         base_slug = _slugify(data.title)
@@ -160,9 +157,9 @@ class GigService(BaseService):
     async def get_gig_by_slug(self, slug: str) -> Gig:
         gig = await self._load_gig_by_slug(slug)
         if not gig:
-            raise HTTPException(status_code=404, detail="Gig not found")
+            raise NotFoundError("Gig")
         if gig.status != GigStatus.ACTIVE:
-            raise HTTPException(status_code=404, detail="Gig not found")
+            raise NotFoundError("Gig")
         # Increment impressions (fire and forget — don't await commit)
         await self.db.execute(
             update(Gig).where(Gig.id == gig.id).values(impressions=Gig.impressions + 1)
@@ -174,9 +171,9 @@ class GigService(BaseService):
         """Get any gig (any status) for the owner or admin."""
         gig = await self._load_gig(gig_id)
         if not gig:
-            raise HTTPException(status_code=404, detail="Gig not found")
+            raise NotFoundError("Gig")
         if gig.freelancer_id != user.id and user.primary_role != UserRole.ADMIN:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise ForbiddenError("Access denied")
         return gig
 
     async def update_gig(self, gig_id: uuid.UUID, user: User, data: GigUpdate) -> Gig:
@@ -223,17 +220,14 @@ class GigService(BaseService):
     async def delete_gig(self, gig_id: uuid.UUID, user: User) -> None:
         gig = await self.get_gig_by_id_for_owner(gig_id, user)
         if gig.orders_count > 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot delete a gig that has orders — archive it instead",
-            )
+            raise BadRequestError("Cannot delete a gig that has orders — archive it instead")
         await self.db.delete(gig)
         await self.db.commit()
 
     async def pause_gig(self, gig_id: uuid.UUID, user: User) -> Gig:
         gig = await self.get_gig_by_id_for_owner(gig_id, user)
         if gig.status not in (GigStatus.ACTIVE,):
-            raise HTTPException(status_code=400, detail="Only active gigs can be paused")
+            raise BadRequestError("Only active gigs can be paused")
         gig.status = GigStatus.PAUSED
         await self.db.commit()
         return await self._load_gig(gig.id)  # type: ignore[return-value]
@@ -241,7 +235,7 @@ class GigService(BaseService):
     async def resume_gig(self, gig_id: uuid.UUID, user: User) -> Gig:
         gig = await self.get_gig_by_id_for_owner(gig_id, user)
         if gig.status != GigStatus.PAUSED:
-            raise HTTPException(status_code=400, detail="Only paused gigs can be resumed")
+            raise BadRequestError("Only paused gigs can be resumed")
         gig.status = GigStatus.ACTIVE
         await self.db.commit()
         return await self._load_gig(gig.id)  # type: ignore[return-value]
@@ -314,12 +308,9 @@ class GigService(BaseService):
     async def approve_gig(self, gig_id: uuid.UUID, admin: User) -> Gig:
         gig = await self._load_gig(gig_id)
         if not gig:
-            raise HTTPException(status_code=404, detail="Gig not found")
+            raise NotFoundError("Gig")
         if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.NEEDS_REVISION):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot approve a gig with status '{gig.status.value}'.",
-            )
+            raise BadRequestError(f"Cannot approve a gig with status '{gig.status.value}'.")
         # Capture notification params before commit (ORM object expires after commit)
         freelancer_id = gig.freelancer_id
         gig_title = gig.title
@@ -350,12 +341,9 @@ class GigService(BaseService):
     async def request_gig_revision(self, gig_id: uuid.UUID, note: str, admin: User) -> Gig:
         gig = await self._load_gig(gig_id)
         if not gig:
-            raise HTTPException(status_code=404, detail="Gig not found")
+            raise NotFoundError("Gig")
         if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.NEEDS_REVISION, GigStatus.ACTIVE):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot request revision on a gig with status '{gig.status.value}'.",
-            )
+            raise BadRequestError(f"Cannot request revision on a gig with status '{gig.status.value}'.")
         freelancer_id = gig.freelancer_id
         gig_title = gig.title
         gig_id_str = str(gig.id)
@@ -382,14 +370,11 @@ class GigService(BaseService):
     async def reject_gig(self, gig_id: uuid.UUID, reason: str, admin: User) -> Gig:
         gig = await self._load_gig(gig_id)
         if not gig:
-            raise HTTPException(status_code=404, detail="Gig not found")
+            raise NotFoundError("Gig")
         if gig.status == GigStatus.REJECTED:
             return gig  # Already rejected — idempotent
         if gig.status not in (GigStatus.PENDING_REVIEW, GigStatus.NEEDS_REVISION, GigStatus.ACTIVE):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot reject a gig with status '{gig.status.value}'.",
-            )
+            raise BadRequestError(f"Cannot reject a gig with status '{gig.status.value}'.")
         freelancer_id = gig.freelancer_id
         gig_title = gig.title
         gig_id_str = str(gig.id)
@@ -440,19 +425,19 @@ class GigService(BaseService):
         payment_url is the mock URL. Escrow stays PENDING until payment confirmed.
         """
         if client.primary_role == UserRole.ADMIN:
-            raise HTTPException(status_code=403, detail="Admins cannot place orders")
+            raise ForbiddenError("Admins cannot place orders")
 
         # Load gig + package
         gig = await self._load_gig(data.gig_id)
         if not gig or gig.status != GigStatus.ACTIVE:
-            raise HTTPException(status_code=404, detail="Gig not found or not available")
+            raise NotFoundError("Gig")
 
         if str(gig.freelancer_id) == str(client.id):
-            raise HTTPException(status_code=400, detail="Cannot order your own gig")
+            raise BadRequestError("Cannot order your own gig")
 
         pkg = next((p for p in gig.packages if str(p.id) == str(data.package_id)), None)
         if not pkg:
-            raise HTTPException(status_code=404, detail="Package not found")
+            raise NotFoundError("Package")
 
         settings = get_settings()
         fee_rate = Decimal(str(settings.PLATFORM_FEE_PERCENT)) / Decimal("100")
@@ -505,10 +490,7 @@ class GigService(BaseService):
             logger.error("Qi Card error during gig order %s: %s", order.id, e)
             # Roll back so order is not half-created without payment
             await self.db.rollback()
-            raise HTTPException(
-                status_code=502,
-                detail="Payment gateway error. Please try again later.",
-            ) from e
+            raise ExternalServiceError("Payment gateway error. Please try again later.") from e
 
         # Create transaction record
         txn = Transaction(
@@ -566,9 +548,9 @@ class GigService(BaseService):
     async def mark_delivered(self, order_id: uuid.UUID, freelancer: User) -> GigOrder:
         order = await self._get_order(order_id)
         if str(order.freelancer_id) != str(freelancer.id):
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise ForbiddenError("Access denied")
         if order.status != GigOrderStatus.IN_PROGRESS:
-            raise HTTPException(status_code=400, detail="Order must be in progress to mark delivered")
+            raise BadRequestError("Order must be in progress to mark delivered")
         order.status = GigOrderStatus.DELIVERED
         order.delivered_at = datetime.now(UTC)
         await self.db.commit()
@@ -577,11 +559,11 @@ class GigService(BaseService):
     async def request_revision(self, order_id: uuid.UUID, client: User) -> GigOrder:
         order = await self._get_order(order_id)
         if str(order.client_id) != str(client.id):
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise ForbiddenError("Access denied")
         if order.status != GigOrderStatus.DELIVERED:
-            raise HTTPException(status_code=400, detail="Can only request revision on delivered orders")
+            raise BadRequestError("Can only request revision on delivered orders")
         if order.revisions_remaining == 0:
-            raise HTTPException(status_code=400, detail="No revisions remaining")
+            raise BadRequestError("No revisions remaining")
         order.status = GigOrderStatus.REVISION_REQUESTED
         if order.revisions_remaining > 0:
             order.revisions_remaining -= 1
@@ -591,9 +573,9 @@ class GigService(BaseService):
     async def complete_order(self, order_id: uuid.UUID, client: User) -> GigOrder:
         order = await self._get_order(order_id)
         if str(order.client_id) != str(client.id):
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise ForbiddenError("Access denied")
         if order.status not in (GigOrderStatus.DELIVERED,):
-            raise HTTPException(status_code=400, detail="Order must be delivered to complete")
+            raise BadRequestError("Order must be delivered to complete")
         order.status = GigOrderStatus.COMPLETED
         order.completed_at = datetime.now(UTC)
 
@@ -679,5 +661,5 @@ class GigService(BaseService):
     async def _get_order(self, order_id: uuid.UUID) -> GigOrder:
         order = await self.db.get(GigOrder, order_id)
         if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise NotFoundError("Order")
         return order

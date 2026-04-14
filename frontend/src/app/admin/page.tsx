@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { adminApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { useLocale } from "@/providers/locale-provider";
@@ -65,7 +65,7 @@ type Tab = "stats" | "users" | "jobs" | "gigs" | "transactions" | "payouts";
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function AdminPage() {
+function AdminPageContent() {
   const { user, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -437,5 +437,17 @@ export default function AdminPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <AdminPageContent />
+    </Suspense>
   );
 }

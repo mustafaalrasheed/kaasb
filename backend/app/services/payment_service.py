@@ -19,12 +19,12 @@ import uuid
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.exceptions import BadRequestError, ConflictError, ExternalServiceError, ForbiddenError, NotFoundError
 from app.models.contract import Contract, Milestone, MilestoneStatus
 from app.models.notification import NotificationType
 from app.models.payment import (
@@ -104,10 +104,7 @@ class PaymentService(BaseService):
             )
         )
         if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"You already have a {data.provider} payment account",
-            )
+            raise BadRequestError(f"You already have a {data.provider} payment account")
 
         provider = PaymentProvider(data.provider)
         external_id = f"qc_acct_{uuid.uuid4().hex[:12]}"
@@ -153,23 +150,20 @@ class PaymentService(BaseService):
         )
         milestone = result.scalar_one_or_none()
         if not milestone:
-            raise HTTPException(status_code=404, detail="Milestone not found")
+            raise NotFoundError("Milestone")
 
         result = await self.db.execute(
             select(Contract).where(Contract.id == milestone.contract_id)
         )
         contract = result.scalar_one_or_none()
         if not contract:
-            raise HTTPException(status_code=404, detail="Contract not found")
+            raise NotFoundError("Contract")
 
         if contract.client_id != client.id:
-            raise HTTPException(status_code=403, detail="Only the client can fund escrow")
+            raise ForbiddenError("Only the client can fund escrow")
 
         if milestone.status not in (MilestoneStatus.PENDING, MilestoneStatus.IN_PROGRESS):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot fund escrow for milestone with status '{milestone.status.value}'",
-            )
+            raise BadRequestError(f"Cannot fund escrow for milestone with status '{milestone.status.value}'")
 
         existing = await self.db.execute(
             select(Escrow).where(
@@ -178,7 +172,7 @@ class PaymentService(BaseService):
             )
         )
         if existing.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Escrow already funded or pending for this milestone")
+            raise BadRequestError("Escrow already funded or pending for this milestone")
 
         fees = self._calculate_fees(milestone.amount)
         order_id = f"escrow-{milestone.id}"
@@ -200,10 +194,7 @@ class PaymentService(BaseService):
             )
         except QiCardError as e:
             logger.exception("Qi Card error in fund_escrow: %s", e)
-            raise HTTPException(
-                status_code=502,
-                detail="Payment gateway error. Please try again later.",
-            ) from e
+            raise ExternalServiceError("Payment gateway error. Please try again later.") from e
 
         qi_payment_id = order_id   # Qi Card uses our orderId to identify the payment
         amount_iqd = qi_result["amount_iqd"]
@@ -229,9 +220,10 @@ class PaymentService(BaseService):
         # Flush transaction first to get its ID for the escrow FK
         try:
             await self.db.flush()
-        except (IntegrityError, SQLAlchemyError) as e:
-            logger.exception("Database error creating transaction: %s", e)
-            raise HTTPException(status_code=500, detail="Internal server error") from e
+        except IntegrityError as e:
+            raise ConflictError("Duplicate or constraint violation") from e
+        except SQLAlchemyError:
+            raise
 
         # Create escrow in PENDING state (will be FUNDED after webhook)
         escrow = Escrow(
@@ -251,10 +243,9 @@ class PaymentService(BaseService):
         try:
             await self.db.flush()
         except IntegrityError as e:
-            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation") from e
-        except SQLAlchemyError as e:
-            logger.exception("Database error in fund_escrow: %s", e)
-            raise HTTPException(status_code=500, detail="Internal server error") from e
+            raise ConflictError("Duplicate or constraint violation") from e
+        except SQLAlchemyError:
+            raise
 
         logger.info(
             "Qi Card payment initiated: milestone=%s payment_id=%s amount_usd=%s amount_iqd=%s",
@@ -413,9 +404,8 @@ class PaymentService(BaseService):
 
         try:
             await self.db.flush()
-        except SQLAlchemyError as e:
-            logger.exception("Database error in release_escrow: %s", e)
-            raise HTTPException(status_code=500, detail="Internal server error") from e
+        except SQLAlchemyError:
+            raise
 
         logger.info("Escrow released: milestone=%s amount=%s", milestone_id, escrow.freelancer_amount)
 
@@ -521,7 +511,7 @@ class PaymentService(BaseService):
         )
         account = result.scalar_one_or_none()
         if not account:
-            raise HTTPException(status_code=404, detail="Payment account not found or not verified")
+            raise NotFoundError("Payment account")
 
         # Acquire advisory lock on user ID to prevent concurrent payout race conditions.
         # This ensures only one payout request per user is processed at a time.
@@ -549,10 +539,7 @@ class PaymentService(BaseService):
 
         available = round(total_released - total_paid_out, 2)
         if data.amount > available:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Insufficient balance. Available: ${available:.2f}",
-            )
+            raise BadRequestError(f"Insufficient balance. Available: ${available:.2f}")
 
         amount_iqd = usd_to_iqd(data.amount)
 
@@ -583,9 +570,8 @@ class PaymentService(BaseService):
 
         try:
             await self.db.flush()
-        except SQLAlchemyError as e:
-            logger.exception("Database error in request_payout: %s", e)
-            raise HTTPException(status_code=500, detail="Internal server error") from e
+        except SQLAlchemyError:
+            raise
 
         logger.info(
             "Payout requested: freelancer=%s amount=%s (%s IQD) provider=%s",

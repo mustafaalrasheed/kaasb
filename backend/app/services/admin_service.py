@@ -7,11 +7,11 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.exceptions import BadRequestError, NotFoundError
 from app.models.contract import Contract, ContractStatus, Milestone
 from app.models.job import Job, JobStatus
 from app.models.message import Message
@@ -69,7 +69,6 @@ class AdminService(BaseService):
         )).all())
 
         # === Query 2: Job + Contract + Proposal counts in one query ===
-        # Uses conditional aggregation to compute all stats in a single scan
         job_stats_row = (await self.db.execute(
             select(
                 func.count(Job.id),
@@ -90,15 +89,13 @@ class AdminService(BaseService):
             select(func.count(Proposal.id))
         )).scalar() or 0
 
-        # === Query 3: Financial stats — batched (uses ix_transactions_type_status) ===
+        # === Query 3: Financial stats — batched ===
         fin_row = (await self.db.execute(
             select(
-                # Total escrow volume
                 func.coalesce(func.sum(Transaction.amount).filter(
                     Transaction.transaction_type == TransactionType.ESCROW_FUND,
                     Transaction.status == TransactionStatus.COMPLETED,
                 ), 0.0),
-                # Platform fees earned
                 func.coalesce(func.sum(Transaction.platform_fee).filter(
                     Transaction.transaction_type == TransactionType.PLATFORM_FEE,
                     Transaction.status == TransactionStatus.COMPLETED,
@@ -114,7 +111,7 @@ class AdminService(BaseService):
             )
         )).scalar() or 0.0
 
-        # === Query 4: Review + Message counts in one query each (cheap) ===
+        # === Query 4: Review + Message counts ===
         review_row = (await self.db.execute(
             select(func.avg(Review.rating), func.count(Review.id))
         )).one()
@@ -204,7 +201,7 @@ class AdminService(BaseService):
         )
         user = result.scalar_one_or_none()
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise NotFoundError("User")
 
         user.status = UserStatus(new_status)
         await self.db.commit()
@@ -214,17 +211,14 @@ class AdminService(BaseService):
     async def toggle_superuser(self, user_id: uuid.UUID, acting_admin: User) -> User:
         """Grant or revoke admin privileges with safety checks."""
         if user_id == acting_admin.id:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot modify your own admin privileges",
-            )
+            raise BadRequestError("Cannot modify your own admin privileges")
 
         result = await self.db.execute(
             select(User).where(User.id == user_id)
         )
         user = result.scalar_one_or_none()
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise NotFoundError("User")
 
         # If revoking, ensure at least one other admin remains
         if user.is_superuser:
@@ -236,10 +230,7 @@ class AdminService(BaseService):
             )
             admin_count = admin_count_result.scalar() or 0
             if admin_count <= 1:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Cannot revoke the last remaining admin",
-                )
+                raise BadRequestError("Cannot revoke the last remaining admin")
 
         user.is_superuser = not user.is_superuser
         if user.is_superuser:
@@ -298,7 +289,7 @@ class AdminService(BaseService):
         )
         job = result.scalar_one_or_none()
         if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise NotFoundError("Job")
 
         job.status = JobStatus(new_status)
         await self.db.commit()
@@ -364,12 +355,12 @@ class AdminService(BaseService):
         )
         escrow = result.scalar_one_or_none()
         if not escrow:
-            raise HTTPException(status_code=404, detail="Funded escrow not found")
+            raise NotFoundError("Funded escrow")
 
         payment_service = PaymentService(self.db)
         release_result = await payment_service.release_escrow(escrow.milestone_id)
         if not release_result:
-            raise HTTPException(status_code=500, detail="Failed to release escrow")
+            raise BadRequestError("Failed to release escrow")
 
         return {
             "escrow_id": str(escrow_id),

@@ -397,6 +397,11 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 
 | Date | Change |
 |------|--------|
+| 2026-04-14 | Known Issue #6 resolved: gig orders wired to Qi Card payment (Escrow + Transaction created on place_order, escrow released on complete_order, migration g3b4c5d6e7f8) |
+| 2026-04-14 | Known Issue #1 resolved: WebSocket Redis pub/sub (psubscribe pattern, cross-worker delivery, Redis-backed WS tickets with in-memory fallback) |
+| 2026-04-14 | Admin page refactored: extracted 6 tabs into src/app/admin/tabs/ (1039→280 lines in page.tsx) |
+| 2026-04-14 | api.ts split: domain APIs moved to src/lib/api/{auth,users,jobs,...}.ts; api.ts now a thin re-export barrel |
+| 2026-04-13 | Auth flash fix, pending gigs 500 fix (selectinload), mobile table min-widths, gig approve/reject/revision status rules, social login flush→commit, all CI errors resolved |
 | 2026-04-12 | Admin promote/demote: added "Revoke Admin" button (orange) in admin UI; fixed toggle_superuser to reset primary_role→CLIENT on demotion |
 | 2026-04-12 | Gig lifecycle hardened: added reviewed_by_id+reviewed_at audit columns, status-transition validation, GIG_APPROVED/GIG_REJECTED/GIG_SUBMITTED notifications; migration a1b2c3d4e5f6 |
 | 2026-04-12 | Pre-beta verification: fixed 6 issues (missing OG image, favicon, icon.svg, apple-touch-icon, nginx /api/og routing, manifest.json RTL); report at tests/pre-beta-report.md — GO with conditions |

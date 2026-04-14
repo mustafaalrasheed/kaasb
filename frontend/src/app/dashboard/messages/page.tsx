@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { messagesApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
@@ -11,7 +11,7 @@ import type { ConversationSummary, MessageDetail } from "@/types/message";
 import { useLocale } from "@/providers/locale-provider";
 import { backendUrl } from "@/lib/utils";
 
-export default function MessagesPage() {
+function MessagesContent() {
   const { user } = useAuthStore();
   const { locale } = useLocale();
   const ar = locale === "ar";
@@ -356,5 +356,17 @@ export default function MessagesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <MessagesContent />
+    </Suspense>
   );
 }

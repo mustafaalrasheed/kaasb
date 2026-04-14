@@ -6,10 +6,10 @@ Business logic for user profiles, search, and account management.
 import logging
 import uuid
 
-from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import BadRequestError, NotFoundError
 from app.core.security import hash_password_async, verify_password_async
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.user import PasswordChange, UserProfileUpdate
@@ -32,10 +32,7 @@ class UserService(BaseService):
         result = await self.db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
+            raise NotFoundError("User")
         return user
 
     async def get_by_username(self, username: str) -> User:
@@ -48,10 +45,7 @@ class UserService(BaseService):
         )
         user = result.scalar_one_or_none()
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
+            raise NotFoundError("User")
         return user
 
     # === Profile Update ===
@@ -63,10 +57,7 @@ class UserService(BaseService):
         update_data = data.model_dump(exclude_unset=True)
 
         if not update_data:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No fields to update",
-            )
+            raise BadRequestError("No fields to update")
 
         # Sanitize text fields before applying
         if "bio" in update_data and update_data["bio"] is not None:
@@ -87,9 +78,8 @@ class UserService(BaseService):
             freelancer_fields = {"title", "hourly_rate", "skills", "experience_level", "portfolio_url"}
             invalid = freelancer_fields & set(update_data.keys())
             if invalid:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Fields {invalid} are only available for freelancer accounts",
+                raise BadRequestError(
+                    f"Fields {invalid} are only available for freelancer accounts"
                 )
 
         # Apply updates
@@ -122,22 +112,13 @@ class UserService(BaseService):
         """Change the user's password after verifying the current one."""
         # Social-login accounts have no password — cannot change what doesn't exist
         if not user.hashed_password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This account uses social login and has no password to change",
-            )
+            raise BadRequestError("This account uses social login and has no password to change")
         # Async bcrypt — prevents blocking the event loop during the ~200ms hash operation
         if not await verify_password_async(data.current_password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Current password is incorrect",
-            )
+            raise BadRequestError("Current password is incorrect")
 
         if data.current_password == data.new_password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="New password must be different from current password",
-            )
+            raise BadRequestError("New password must be different from current password")
 
         user.hashed_password = await hash_password_async(data.new_password)
         await self.db.flush()

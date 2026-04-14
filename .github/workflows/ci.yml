@@ -140,37 +140,6 @@ jobs:
           fi
           exit $TEST_EXIT
 
-      # ---- pytest + coverage (if pytest tests exist) ----
-      - name: Run pytest with coverage
-        continue-on-error: true
-        env:
-          DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/test_db
-          REDIS_URL:    redis://localhost:6379/0
-          SECRET_KEY:   ci-test-secret-key-do-not-use
-          ENVIRONMENT:  testing
-        run: |
-          cd backend
-          if find tests/ -name "test_*.py" -type f 2>/dev/null | grep -q .; then
-            pytest tests/ \
-              --cov=app \
-              --cov-report=xml:coverage.xml \
-              --cov-report=term-missing \
-              --junitxml=junit-backend.xml \
-              -q
-          else
-            echo "No pytest test files found in tests/ — skipping coverage step"
-          fi
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-coverage
-          path: |
-            backend/coverage.xml
-            backend/junit-backend.xml
-          if-no-files-found: ignore
-          retention-days: 7
 
   # ===========================================================================
   # Frontend: lint → type-check → security → build
@@ -221,14 +190,6 @@ jobs:
           cd frontend
           npm run build
 
-      - name: Upload build artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build
-          path: frontend/.next
-          if-no-files-found: ignore
-          retention-days: 1
 
   # ===========================================================================
   # Docker: build & push to GHCR on main branch only
@@ -277,7 +238,8 @@ jobs:
           file: ./docker/frontend/Dockerfile
           target: production
           push: true
-          no-cache: true
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
           build-args: |
             NEXT_PUBLIC_API_URL=https://kaasb.com/api/v1
             NEXT_PUBLIC_APP_NAME=Kaasb

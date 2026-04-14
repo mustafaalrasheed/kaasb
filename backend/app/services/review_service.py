@@ -6,11 +6,11 @@ Business logic for reviews and rating aggregation.
 import logging
 import uuid
 
-from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.contract import Contract, ContractStatus
 from app.models.review import Review
 from app.models.user import User
@@ -30,7 +30,6 @@ class ReviewService(BaseService):
         self, reviewer: User, contract_id: uuid.UUID, data: ReviewCreate
     ) -> Review:
         """Submit a review for the other party on a completed contract."""
-        # Get contract
         result = await self.db.execute(
             select(Contract)
             .options(
@@ -41,24 +40,18 @@ class ReviewService(BaseService):
         )
         contract = result.scalar_one_or_none()
         if not contract:
-            raise HTTPException(status_code=404, detail="Contract not found")
+            raise NotFoundError("Contract")
 
-        # Must be completed
         if contract.status != ContractStatus.COMPLETED:
-            raise HTTPException(
-                status_code=400,
-                detail="Can only review completed contracts",
-            )
+            raise BadRequestError("Can only review completed contracts")
 
-        # Must be a party to the contract
         if reviewer.id == contract.client_id:
             reviewee_id = contract.freelancer_id
         elif reviewer.id == contract.freelancer_id:
             reviewee_id = contract.client_id
         else:
-            raise HTTPException(status_code=403, detail="You are not part of this contract")
+            raise ForbiddenError("You are not part of this contract")
 
-        # Check not already reviewed
         existing = await self.db.execute(
             select(Review).where(
                 Review.contract_id == contract_id,
@@ -66,10 +59,7 @@ class ReviewService(BaseService):
             )
         )
         if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=400,
-                detail="You have already reviewed this contract",
-            )
+            raise ConflictError("You have already reviewed this contract")
 
         review = Review(
             rating=data.rating,
@@ -85,7 +75,6 @@ class ReviewService(BaseService):
         self.db.add(review)
         await self.db.flush()
 
-        # Update reviewee's aggregate rating
         await self._update_user_rating(reviewee_id)
 
         await self.db.refresh(review, attribute_names=["reviewer", "reviewee", "contract"])
@@ -104,7 +93,6 @@ class ReviewService(BaseService):
         avg_rating = float(row[0]) if row[0] else 0.0
         total_reviews = row[1] or 0
 
-        # Update user
         user_result = await self.db.execute(
             select(User).where(User.id == user_id)
         )
@@ -132,11 +120,9 @@ class ReviewService(BaseService):
             .where(Review.reviewee_id == user_id, Review.is_public.is_(True))
         )
 
-        # Count
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.db.execute(count_stmt)).scalar() or 0
 
-        # Avg rating
         avg_result = await self.db.execute(
             select(func.avg(Review.rating)).where(
                 Review.reviewee_id == user_id, Review.is_public.is_(True)
@@ -144,7 +130,6 @@ class ReviewService(BaseService):
         )
         avg_rating = avg_result.scalar()
 
-        # Paginate
         stmt = stmt.order_by(Review.created_at.desc())
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
@@ -157,7 +142,6 @@ class ReviewService(BaseService):
 
     async def get_review_stats(self, user_id: uuid.UUID) -> dict:
         """Get aggregated review statistics."""
-        # Overall stats
         stats_result = await self.db.execute(
             select(
                 func.avg(Review.rating),
@@ -170,7 +154,6 @@ class ReviewService(BaseService):
         )
         row = stats_result.one()
 
-        # Rating distribution
         dist_result = await self.db.execute(
             select(Review.rating, func.count(Review.id))
             .where(Review.reviewee_id == user_id, Review.is_public.is_(True))
@@ -194,16 +177,15 @@ class ReviewService(BaseService):
         self, user: User, contract_id: uuid.UUID
     ) -> list[Review]:
         """Get reviews for a specific contract (both parties)."""
-        # Verify access
         result = await self.db.execute(
             select(Contract).where(Contract.id == contract_id)
         )
         contract = result.scalar_one_or_none()
         if not contract:
-            raise HTTPException(status_code=404, detail="Contract not found")
+            raise NotFoundError("Contract")
 
         if user.id not in (contract.client_id, contract.freelancer_id):
-            raise HTTPException(status_code=403, detail="Not part of this contract")
+            raise ForbiddenError("Not part of this contract")
 
         result = await self.db.execute(
             select(Review)

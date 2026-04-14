@@ -7,11 +7,11 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import HTTPException, status
 from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.job import Job, JobStatus
 from app.models.notification import NotificationType
 from app.models.proposal import Proposal, ProposalStatus
@@ -36,10 +36,7 @@ class ProposalService(BaseService):
         result = await self.db.execute(select(Job).where(Job.id == job_id))
         job = result.scalar_one_or_none()
         if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found",
-            )
+            raise NotFoundError("Job")
         return job
 
     async def _get_proposal_with_relations(self, proposal_id: uuid.UUID) -> Proposal:
@@ -54,10 +51,7 @@ class ProposalService(BaseService):
         )
         proposal = result.scalar_one_or_none()
         if not proposal:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Proposal not found",
-            )
+            raise NotFoundError("Proposal")
         return proposal
 
     # === Submit Proposal ===
@@ -70,17 +64,11 @@ class ProposalService(BaseService):
         job = await self._get_job(job_id)
 
         if job.status != JobStatus.OPEN:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This job is no longer accepting proposals",
-            )
+            raise BadRequestError("This job is no longer accepting proposals")
 
         # Can't bid on own job
         if job.client_id == freelancer.id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You cannot submit a proposal on your own job",
-            )
+            raise BadRequestError("You cannot submit a proposal on your own job")
 
         # Check for existing proposal
         existing = await self.db.execute(
@@ -90,21 +78,14 @@ class ProposalService(BaseService):
             )
         )
         if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="You have already submitted a proposal for this job",
-            )
+            raise ConflictError("You have already submitted a proposal for this job")
 
         # Validate bid amount
         if data.bid_amount <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Bid amount must be greater than zero",
-            )
+            raise BadRequestError("Bid amount must be greater than zero")
         if job.budget_max and data.bid_amount > job.budget_max * 2:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Bid amount exceeds reasonable range for this job (max budget: ${job.budget_max:.2f})",
+            raise BadRequestError(
+                f"Bid amount exceeds reasonable range for this job (max budget: ${job.budget_max:.2f})"
             )
 
         # Create proposal
@@ -152,23 +133,14 @@ class ProposalService(BaseService):
         proposal = await self._get_proposal_with_relations(proposal_id)
 
         if proposal.freelancer_id != freelancer.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only edit your own proposals",
-            )
+            raise ForbiddenError("You can only edit your own proposals")
 
         if proposal.status != ProposalStatus.PENDING:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot edit a proposal with status '{proposal.status.value}'",
-            )
+            raise BadRequestError(f"Cannot edit a proposal with status '{proposal.status.value}'")
 
         update_data = data.model_dump(exclude_unset=True)
         if not update_data:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No fields to update",
-            )
+            raise BadRequestError("No fields to update")
 
         for field, value in update_data.items():
             setattr(proposal, field, value)
@@ -186,16 +158,10 @@ class ProposalService(BaseService):
         proposal = await self._get_proposal_with_relations(proposal_id)
 
         if proposal.freelancer_id != freelancer.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only withdraw your own proposals",
-            )
+            raise ForbiddenError("You can only withdraw your own proposals")
 
         if proposal.status not in (ProposalStatus.PENDING, ProposalStatus.SHORTLISTED):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot withdraw a proposal with status '{proposal.status.value}'",
-            )
+            raise BadRequestError(f"Cannot withdraw a proposal with status '{proposal.status.value}'")
 
         proposal.status = ProposalStatus.WITHDRAWN
 
@@ -223,10 +189,7 @@ class ProposalService(BaseService):
 
         # Verify the client owns the job
         if proposal.job.client_id != client.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only respond to proposals on your own jobs",
-            )
+            raise ForbiddenError("You can only respond to proposals on your own jobs")
 
         # Validate status transitions
         new_status = ProposalStatus(data.status)
@@ -245,10 +208,7 @@ class ProposalService(BaseService):
 
         allowed = valid_transitions.get(proposal.status, set())
         if new_status not in allowed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot change status from '{proposal.status.value}' to '{data.status}'",
-            )
+            raise BadRequestError(f"Cannot change status from '{proposal.status.value}' to '{data.status}'")
 
         proposal.status = new_status
         proposal.client_note = data.client_note
@@ -262,10 +222,7 @@ class ProposalService(BaseService):
             )
             job = job_result.scalar_one_or_none()
             if not job or job.status != JobStatus.OPEN:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="This job is no longer open — another proposal may have been accepted",
-                )
+                raise ConflictError("This job is no longer open — another proposal may have been accepted")
             job.status = JobStatus.IN_PROGRESS
             job.freelancer_id = proposal.freelancer_id
 
@@ -348,10 +305,7 @@ class ProposalService(BaseService):
         is_client = proposal.job.client_id == user.id
 
         if not is_freelancer and not is_client:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have access to this proposal",
-            )
+            raise ForbiddenError("You do not have access to this proposal")
 
         return proposal
 
@@ -371,10 +325,7 @@ class ProposalService(BaseService):
         # Verify client owns the job
         job = await self._get_job(job_id)
         if job.client_id != client.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only view proposals on your own jobs",
-            )
+            raise ForbiddenError("You can only view proposals on your own jobs")
 
         stmt = (
             select(Proposal)

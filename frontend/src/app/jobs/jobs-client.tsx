@@ -71,18 +71,15 @@ export default function JobsClient() {
   const fetchJobs = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params: Record<string, unknown> = {
+      const response = await jobsApi.search({
         sort_by: sortBy,
         page,
         page_size: 12,
-      };
-      if (searchQuery) params.q = searchQuery;
-      if (category) params.category = category;
-      if (jobType) params.job_type = jobType;
-      if (experienceLevel) params.experience_level = experienceLevel;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await jobsApi.search(params as any);
+        ...(searchQuery && { q: searchQuery }),
+        ...(category && { category }),
+        ...(jobType && { job_type: jobType }),
+        ...(experienceLevel && { experience_level: experienceLevel }),
+      });
       const data: JobListResponse = response.data;
       setJobs(data.jobs);
       setTotal(data.total);

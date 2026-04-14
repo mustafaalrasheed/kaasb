@@ -42,17 +42,14 @@ export default function FreelancersClient() {
   const fetchFreelancers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params: Record<string, unknown> = {
+      const response = await usersApi.searchFreelancers({
         sort_by: sortBy,
         page,
         page_size: 12,
-      };
-      if (searchQuery) params.q = searchQuery;
-      if (skills) params.skills = skills;
-      if (experienceLevel) params.experience_level = experienceLevel;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await usersApi.searchFreelancers(params as any);
+        ...(searchQuery && { q: searchQuery }),
+        ...(skills && { skills }),
+        ...(experienceLevel && { experience_level: experienceLevel }),
+      });
       setFreelancers(response.data.users);
       setTotal(response.data.total);
       setTotalPages(response.data.total_pages);

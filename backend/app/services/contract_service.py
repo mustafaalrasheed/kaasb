@@ -7,12 +7,12 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.contract import (
     Contract,
     ContractStatus,
@@ -57,10 +57,7 @@ class ContractService(BaseService):
         )
         contract = result.scalar_one_or_none()
         if not contract:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Contract not found",
-            )
+            raise NotFoundError("Contract")
         return contract
 
     async def _get_milestone(self, milestone_id: uuid.UUID) -> Milestone:
@@ -72,10 +69,7 @@ class ContractService(BaseService):
         )
         milestone = result.scalar_one_or_none()
         if not milestone:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Milestone not found",
-            )
+            raise NotFoundError("Milestone")
         return milestone
 
     def _check_contract_access(self, contract: Contract, user: User) -> str:
@@ -84,10 +78,7 @@ class ContractService(BaseService):
             return "client"
         if user.id == contract.freelancer_id:
             return "freelancer"
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to this contract",
-        )
+        raise ForbiddenError("You do not have access to this contract")
 
     # === Create Contract (called from proposal acceptance) ===
 
@@ -112,10 +103,9 @@ class ContractService(BaseService):
         try:
             await self.db.flush()
         except IntegrityError as e:
-            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation") from e
-        except SQLAlchemyError as e:
-            logger.exception("Database error creating contract: %s", e)
-            raise HTTPException(status_code=500, detail="Internal server error") from e
+            raise ConflictError("Duplicate or constraint violation") from e
+        except SQLAlchemyError:
+            raise
         logger.info("Contract created: %s for job=%s", contract.id, job.id)
 
         # Notify freelancer that a contract has been created
@@ -141,26 +131,19 @@ class ContractService(BaseService):
         contract = await self._get_contract(contract_id)
 
         if contract.client_id != client.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only the client can add milestones",
-            )
+            raise ForbiddenError("Only the client can add milestones")
 
         if contract.status != ContractStatus.ACTIVE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Can only add milestones to active contracts",
-            )
+            raise BadRequestError("Can only add milestones to active contracts")
 
         # Validate total doesn't exceed contract amount
         existing_total = sum(m.amount for m in contract.milestones)
         new_total = sum(m.amount for m in data.milestones)
 
         if existing_total + new_total > contract.total_amount:  # Strict: no overpayment allowed
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Milestone total (${existing_total + new_total:.2f}) "
-                       f"exceeds contract amount (${contract.total_amount:.2f})",
+            raise BadRequestError(
+                f"Milestone total (${existing_total + new_total:.2f}) "
+                f"exceeds contract amount (${contract.total_amount:.2f})"
             )
 
         # Determine order start
@@ -196,23 +179,14 @@ class ContractService(BaseService):
         contract = milestone.contract
 
         if contract.client_id != client.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only the client can update milestones",
-            )
+            raise ForbiddenError("Only the client can update milestones")
 
         if milestone.status != MilestoneStatus.PENDING:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Can only edit pending milestones",
-            )
+            raise BadRequestError("Can only edit pending milestones")
 
         update_data = data.model_dump(exclude_unset=True)
         if not update_data:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No fields to update",
-            )
+            raise BadRequestError("No fields to update")
 
         for field, value in update_data.items():
             setattr(milestone, field, value)
@@ -231,16 +205,10 @@ class ContractService(BaseService):
         contract = milestone.contract
 
         if contract.client_id != client.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only the client can delete milestones",
-            )
+            raise ForbiddenError("Only the client can delete milestones")
 
         if milestone.status != MilestoneStatus.PENDING:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Can only delete pending milestones",
-            )
+            raise BadRequestError("Can only delete pending milestones")
 
         await self.db.delete(milestone)
         await self.db.flush()
@@ -255,22 +223,13 @@ class ContractService(BaseService):
         contract = milestone.contract
 
         if contract.status != ContractStatus.ACTIVE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot start milestones on a contract with status '{contract.status.value}'",
-            )
+            raise BadRequestError(f"Cannot start milestones on a contract with status '{contract.status.value}'")
 
         if contract.freelancer_id != freelancer.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only the assigned freelancer can start milestones",
-            )
+            raise ForbiddenError("Only the assigned freelancer can start milestones")
 
         if milestone.status != MilestoneStatus.PENDING:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot start a milestone with status '{milestone.status.value}'",
-            )
+            raise BadRequestError(f"Cannot start a milestone with status '{milestone.status.value}'")
 
         milestone.status = MilestoneStatus.IN_PROGRESS
         await self.db.flush()
@@ -287,23 +246,14 @@ class ContractService(BaseService):
         contract = milestone.contract
 
         if contract.status != ContractStatus.ACTIVE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot submit milestones on a contract with status '{contract.status.value}'",
-            )
+            raise BadRequestError(f"Cannot submit milestones on a contract with status '{contract.status.value}'")
 
         if contract.freelancer_id != freelancer.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only the assigned freelancer can submit milestones",
-            )
+            raise ForbiddenError("Only the assigned freelancer can submit milestones")
 
         allowed = {MilestoneStatus.IN_PROGRESS, MilestoneStatus.REVISION_REQUESTED}
         if milestone.status not in allowed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot submit a milestone with status '{milestone.status.value}'",
-            )
+            raise BadRequestError(f"Cannot submit a milestone with status '{milestone.status.value}'")
 
         milestone.status = MilestoneStatus.SUBMITTED
         milestone.submitted_at = datetime.now(UTC)
@@ -324,22 +274,13 @@ class ContractService(BaseService):
         contract = milestone.contract
 
         if contract.status != ContractStatus.ACTIVE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot review milestones on a contract with status '{contract.status.value}'",
-            )
+            raise BadRequestError(f"Cannot review milestones on a contract with status '{contract.status.value}'")
 
         if contract.client_id != client.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only the client can review milestones",
-            )
+            raise ForbiddenError("Only the client can review milestones")
 
         if milestone.status != MilestoneStatus.SUBMITTED:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Can only review submitted milestones",
-            )
+            raise BadRequestError("Can only review submitted milestones")
 
         milestone.feedback = data.feedback
 
@@ -407,10 +348,9 @@ class ContractService(BaseService):
         try:
             await self.db.flush()
         except IntegrityError as e:
-            raise HTTPException(status_code=409, detail="Conflict: duplicate or constraint violation") from e
-        except SQLAlchemyError as e:
-            logger.exception("Database error reviewing milestone: %s", e)
-            raise HTTPException(status_code=500, detail="Internal server error") from e
+            raise ConflictError("Duplicate or constraint violation") from e
+        except SQLAlchemyError:
+            raise
         await self.db.refresh(milestone)
         return milestone
 

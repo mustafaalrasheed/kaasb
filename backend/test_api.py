@@ -15,9 +15,9 @@ BASE_URL = "http://localhost:8000/api/v1"
 # Unique test credentials — prefixed to avoid colliding with real accounts.
 # Deleted automatically after each run.
 _UID = uuid.uuid4().hex[:8]
-TEST_CLIENT_EMAIL = f"_test_client_{_UID}@kaasb-test.invalid"
+TEST_CLIENT_EMAIL = f"_test_client_{_UID}@kaasb-ci.com"
 TEST_CLIENT_USERNAME = f"tstclient{_UID}"
-TEST_FREELANCER_EMAIL = f"_test_freelancer_{_UID}@kaasb-test.invalid"
+TEST_FREELANCER_EMAIL = f"_test_freelancer_{_UID}@kaasb-ci.com"
 TEST_FREELANCER_USERNAME = f"tstfree{_UID}"
 
 # Terminal colors
@@ -127,7 +127,7 @@ def test_02_auth():
 
     # --- Weak password → 422 ---
     r = raw("POST", "/auth/register", json={
-        "email": f"bad{_UID}@kaasb-test.invalid", "password": "weak",
+        "email": f"bad{_UID}@kaasb-ci.com", "password": "weak",
         "first_name": "Bad", "last_name": "Pass",
         "username": f"bad{_UID}", "primary_role": "client",
     })
@@ -136,7 +136,7 @@ def test_02_auth():
 
     # --- Invalid username (spaces) → 422 ---
     r = raw("POST", "/auth/register", json={
-        "email": f"space{_UID}@kaasb-test.invalid", "password": "TestPass123!",
+        "email": f"space{_UID}@kaasb-ci.com", "password": "TestPass123!",
         "first_name": "Space", "last_name": "User",
         "username": "has spaces", "primary_role": "client",
     })
