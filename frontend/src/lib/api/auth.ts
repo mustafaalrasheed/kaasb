@@ -47,4 +47,20 @@ export const authApi = {
 
   clearSession: () =>
     api.post("/auth/clear-session", {}),
+
+  listSessions: () =>
+    api.get<Session[]>("/auth/sessions"),
+
+  revokeSession: (id: string) =>
+    api.delete(`/auth/sessions/${id}`),
 };
+
+export interface Session {
+  id: string;
+  user_agent: string | null;
+  ip_address: string | null;
+  created_at: string;
+  last_used_at: string | null;
+  expires_at: string;
+  is_current: boolean;
+}

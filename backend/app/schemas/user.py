@@ -219,3 +219,20 @@ class UserListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+# === Session Schemas ===
+
+
+class SessionOut(BaseModel):
+    """Active session metadata for the Settings → Active Sessions UI."""
+
+    id: uuid.UUID
+    user_agent: str | None = None
+    ip_address: str | None = None
+    created_at: datetime
+    last_used_at: datetime | None = None
+    expires_at: datetime
+    is_current: bool = False
+
+    model_config = {"from_attributes": True}

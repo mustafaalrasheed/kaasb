@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { usersApi } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { usersApi, authApi } from "@/lib/api";
+import type { Session } from "@/lib/api/auth";
 import { useAuthStore } from "@/lib/auth-store";
 import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
@@ -20,6 +21,67 @@ export default function SettingsPage() {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [showDeactivate, setShowDeactivate] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  const loadSessions = async () => {
+    try {
+      const res = await authApi.listSessions();
+      const data = (res.data as unknown as { data?: Session[] })?.data ?? (res.data as Session[]);
+      setSessions(Array.isArray(data) ? data : []);
+    } catch {
+      // Silent — sessions section simply stays empty
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSessions();
+  }, []);
+
+  const handleRevokeSession = async (id: string) => {
+    setRevokingId(id);
+    try {
+      await authApi.revokeSession(id);
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+      toast.success(ar ? "تم إنهاء الجلسة" : "Session revoked");
+    } catch (err: unknown) {
+      toast.error(getApiError(err, ar ? "تعذّر إنهاء الجلسة" : "Failed to revoke session"));
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
+  const describeDevice = (ua: string | null) => {
+    if (!ua) return ar ? "جهاز غير معروف" : "Unknown device";
+    const u = ua.toLowerCase();
+    let os = ar ? "جهاز" : "Device";
+    if (u.includes("windows")) os = "Windows";
+    else if (u.includes("mac os") || u.includes("macintosh")) os = "macOS";
+    else if (u.includes("android")) os = "Android";
+    else if (u.includes("iphone") || u.includes("ios")) os = "iOS";
+    else if (u.includes("linux")) os = "Linux";
+    let browser = "";
+    if (u.includes("edg/")) browser = "Edge";
+    else if (u.includes("chrome")) browser = "Chrome";
+    else if (u.includes("firefox")) browser = "Firefox";
+    else if (u.includes("safari")) browser = "Safari";
+    return browser ? `${browser} · ${os}` : os;
+  };
+
+  const formatWhen = (iso: string | null) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString(ar ? "ar-IQ" : "en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+    } catch {
+      return iso;
+    }
+  };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,6 +181,60 @@ export default function SettingsPage() {
               : (ar ? "تغيير كلمة المرور" : "Change Password")}
           </button>
         </form>
+      </div>
+
+      {/* Active Sessions */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {ar ? "الجلسات النشطة" : "Active Sessions"}
+            </h2>
+            <p className="text-sm text-gray-600 mt-1">
+              {ar
+                ? "الأجهزة التي سجّلت الدخول من حسابك. يمكنك إنهاء أي جلسة لا تعرفها."
+                : "Devices currently signed in to your account. Revoke any you don't recognize."}
+            </p>
+          </div>
+        </div>
+
+        {sessionsLoading ? (
+          <p className="text-sm text-gray-500">{ar ? "جاري التحميل..." : "Loading..."}</p>
+        ) : sessions.length === 0 ? (
+          <p className="text-sm text-gray-500">{ar ? "لا توجد جلسات نشطة." : "No active sessions."}</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {sessions.map((s) => (
+              <li key={s.id} className="py-3 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-gray-900 text-sm">{describeDevice(s.user_agent)}</span>
+                    {s.is_current && (
+                      <span className="text-[10px] uppercase tracking-wider font-semibold bg-green-50 text-green-700 px-2 py-0.5 rounded">
+                        {ar ? "الجلسة الحالية" : "This device"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1 truncate">
+                    {s.ip_address ? `${s.ip_address} · ` : ""}
+                    {ar ? "آخر استخدام" : "Last used"}: {formatWhen(s.last_used_at || s.created_at)}
+                  </div>
+                </div>
+                {!s.is_current && (
+                  <button
+                    onClick={() => handleRevokeSession(s.id)}
+                    disabled={revokingId === s.id}
+                    className="text-sm text-danger-600 hover:text-danger-700 font-medium whitespace-nowrap"
+                  >
+                    {revokingId === s.id
+                      ? (ar ? "جاري..." : "Revoking...")
+                      : (ar ? "إنهاء الجلسة" : "Sign out")}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Danger Zone */}

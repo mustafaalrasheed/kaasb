@@ -13,8 +13,9 @@ POST /auth/reset-password      - Reset password with token
 """
 
 import asyncio
+import uuid
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
@@ -27,6 +28,7 @@ from app.schemas.user import (
     PhoneOtpVerifyRequest,
     ResendVerificationRequest,
     ResetPasswordRequest,
+    SessionOut,
     SocialLoginRequest,
     TokenRefresh,
     TokenResponse,
@@ -70,6 +72,14 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
     )
 
 
+def _session_metadata(request: Request) -> tuple[str | None, str | None]:
+    """Extract user-agent + client IP from the request (honors X-Forwarded-For)."""
+    ua = request.headers.get("user-agent")
+    xff = request.headers.get("x-forwarded-for")
+    ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client else None)
+    return ua, ip
+
+
 def _clear_auth_cookies(response: Response) -> None:
     """Clear auth cookies on logout."""
     response.delete_cookie("access_token", path="/")
@@ -84,6 +94,7 @@ def _clear_auth_cookies(response: Response) -> None:
 )
 async def register(
     data: UserRegister,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
@@ -100,7 +111,8 @@ async def register(
 
     # Auto-login after registration
     login_data = UserLogin(email=data.email, password=data.password)
-    tokens = await auth_service.login(login_data)
+    ua, ip = _session_metadata(request)
+    tokens = await auth_service.login(login_data, user_agent=ua, ip_address=ip)
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
 
     # Send welcome email in background (non-blocking; MVP auto-verifies email)
@@ -124,6 +136,7 @@ async def register(
 )
 async def login(
     data: UserLogin,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
@@ -132,7 +145,8 @@ async def login(
     Tokens are also set as httpOnly cookies.
     """
     auth_service = AuthService(db)
-    tokens = await auth_service.login(data)
+    ua, ip = _session_metadata(request)
+    tokens = await auth_service.login(data, user_agent=ua, ip_address=ip)
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
     return tokens
 
@@ -144,6 +158,7 @@ async def login(
 )
 async def refresh_token(
     data: TokenRefresh,
+    request: Request,
     response: Response,
     refresh_token_cookie: str | None = Cookie(default=None, alias="refresh_token"),
     db: AsyncSession = Depends(get_db),
@@ -162,7 +177,8 @@ async def refresh_token(
             detail="Refresh token required",
         )
     auth_service = AuthService(db)
-    tokens = await auth_service.refresh_tokens(token)
+    ua, ip = _session_metadata(request)
+    tokens = await auth_service.refresh_tokens(token, user_agent=ua, ip_address=ip)
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
     return tokens
 
@@ -216,6 +232,7 @@ async def logout(
 )
 async def social_login(
     data: SocialLoginRequest,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
@@ -225,7 +242,11 @@ async def social_login(
     """
     service = AuthService(db)
     email_service = EmailService()
-    tokens = await service.social_login(data.provider, data.token, data.role, email_service=email_service)
+    ua, ip = _session_metadata(request)
+    tokens = await service.social_login(
+        data.provider, data.token, data.role,
+        email_service=email_service, user_agent=ua, ip_address=ip,
+    )
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
     return tokens
 
@@ -299,6 +320,51 @@ async def get_ws_ticket(current_user: User = Depends(get_current_user)):
     from app.services.websocket_manager import create_ws_ticket
     ticket = await create_ws_ticket(current_user.id)
     return {"ticket": ticket, "expires_in": 60}
+
+
+@router.get(
+    "/sessions",
+    response_model=list[SessionOut],
+    summary="List active sessions for the current user",
+)
+async def list_sessions(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    refresh_token_cookie: str | None = Cookie(default=None, alias="refresh_token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all active (non-revoked, non-expired) refresh tokens for the user."""
+    service = AuthService(db)
+    tokens = await service.list_sessions(current_user)
+    current_hash = AuthService._hash_token(refresh_token_cookie) if refresh_token_cookie else None
+    return [
+        SessionOut(
+            id=t.id,
+            user_agent=t.user_agent,
+            ip_address=t.ip_address,
+            created_at=t.created_at,
+            last_used_at=t.last_used_at,
+            expires_at=t.expires_at,
+            is_current=(current_hash is not None and t.token_hash == current_hash),
+        )
+        for t in tokens
+    ]
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke a specific session",
+)
+async def revoke_session(
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Revoke a single session owned by the current user."""
+    service = AuthService(db)
+    await service.revoke_session(current_user, session_id)
+    return
 
 
 @router.post("/phone/send-otp", summary="Send OTP to phone number (email delivery in beta)")

@@ -108,7 +108,12 @@ class AuthService(BaseService):
         logger.info("User registered: %s (%s)", user.id, user.primary_role)
         return user
 
-    async def login(self, data: UserLogin) -> TokenResponse:
+    async def login(
+        self,
+        data: UserLogin,
+        user_agent: str | None = None,
+        ip_address: str | None = None,
+    ) -> TokenResponse:
         """Authenticate user and return JWT tokens."""
         # Find user by email
         result = await self.db.execute(
@@ -180,6 +185,9 @@ class AuthService(BaseService):
             token_hash=self._hash_token(refresh_token),
             user_id=user.id,
             expires_at=expires,
+            user_agent=(user_agent or "")[:500] or None,
+            ip_address=ip_address,
+            last_used_at=datetime.now(UTC),
         )
         self.db.add(rt)
         await self.db.commit()
@@ -191,7 +199,15 @@ class AuthService(BaseService):
             refresh_token=refresh_token,
         )
 
-    async def social_login(self, provider: str, token: str, role: str = "freelancer", email_service=None) -> TokenResponse:
+    async def social_login(
+        self,
+        provider: str,
+        token: str,
+        role: str = "freelancer",
+        email_service=None,
+        user_agent: str | None = None,
+        ip_address: str | None = None,
+    ) -> TokenResponse:
         """Authenticate via Google or Facebook OAuth token."""
         # Verify token and fetch profile from provider
         if provider == "google":
@@ -285,6 +301,9 @@ class AuthService(BaseService):
             token_hash=self._hash_token(refresh_token),
             user_id=user.id,
             expires_at=expires,
+            user_agent=(user_agent or "")[:500] or None,
+            ip_address=ip_address,
+            last_used_at=datetime.now(UTC),
         )
         self.db.add(rt)
         await self.db.commit()
@@ -391,7 +410,12 @@ class AuthService(BaseService):
 
         return user
 
-    async def refresh_tokens(self, refresh_token: str) -> TokenResponse:
+    async def refresh_tokens(
+        self,
+        refresh_token: str,
+        user_agent: str | None = None,
+        ip_address: str | None = None,
+    ) -> TokenResponse:
         """Generate new token pair from a valid refresh token."""
         # Check refresh token against DB before decoding
         token_hash = self._hash_token(refresh_token)
@@ -457,6 +481,9 @@ class AuthService(BaseService):
             token_hash=self._hash_token(new_refresh_token),
             user_id=user.id,
             expires_at=expires,
+            user_agent=((user_agent or stored_token.user_agent) or "")[:500] or None,
+            ip_address=ip_address or stored_token.ip_address,
+            last_used_at=datetime.now(UTC),
         )
         self.db.add(new_rt)
         await self.db.commit()
@@ -482,6 +509,34 @@ class AuthService(BaseService):
             token.revoked = True
             await self.db.flush()
         logger.info("User logged out: user=%s", user.id)
+
+    async def list_sessions(self, user: User) -> list[RefreshToken]:
+        """List active (non-revoked, non-expired) refresh tokens for the user."""
+        now = datetime.now(UTC)
+        result = await self.db.execute(
+            select(RefreshToken)
+            .where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.revoked.is_(False),
+                RefreshToken.expires_at > now,
+            )
+            .order_by(RefreshToken.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def revoke_session(self, user: User, session_id: uuid.UUID) -> None:
+        """Revoke a single refresh token owned by the user."""
+        result = await self.db.execute(
+            select(RefreshToken).where(
+                RefreshToken.id == session_id,
+                RefreshToken.user_id == user.id,
+            )
+        )
+        token = result.scalar_one_or_none()
+        if not token:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        token.revoked = True
+        await self.db.commit()
 
     async def logout_all(self, user: User) -> None:
         """Revoke all refresh tokens and invalidate all access tokens for the user."""
