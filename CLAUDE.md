@@ -281,8 +281,8 @@ alembic upgrade head
 alembic check   # must show "No new upgrade operations detected"
 ```
 
-**Migration chain** (18 migrations, linear):
-`25c8a4c` → `1f80b6c` → `40dda09` → `8708878` → `ae6a5c3` → `b3f9e2a` → `c7d4e8f` → `d1a2b3c` → `e2b3c4d` → `f3a4b5c6d7e8` (legal_compliance) → `a1b2c3d4e5f6` (gig_marketplace) → `b2c3d4e5f6a7` (qi_card_only) → `c3d4e5f6a7b8` (phone_otp) → `d4e5f6a7b8c9` (schema_drift_fix) → `e5f6a7b8c9d0` (social_ids_nullable_password_iqd) → `f1a2b3c4d5e6` (gig_review_audit + notification_types) → `f2a3b4c5d6e7` (gig_needs_revision + revision_note)
+**Migration chain** (20 migrations, linear):
+`25c8a4c` → `1f80b6c` → `40dda09` → `8708878` → `ae6a5c3` → `b3f9e2a` → `c7d4e8f` → `d1a2b3c` → `e2b3c4d` → `f3a4b5c6d7e8` (legal_compliance) → `a1b2c3d4e5f6` (gig_marketplace) → `b2c3d4e5f6a7` (qi_card_only) → `c3d4e5f6a7b8` (phone_otp) → `d4e5f6a7b8c9` (schema_drift_fix) → `e5f6a7b8c9d0` (social_ids_nullable_password_iqd) → `f1a2b3c4d5e6` (gig_review_audit + notification_types) → `f2a3b4c5d6e7` (gig_needs_revision + revision_note) → `g3b4c5d6e7f8` (gig_order_payment_wiring) → `h4c5d6e7f8g9` (refresh_tokens session_metadata)
 
 **Enum creation** (idempotent pattern):
 ```python
@@ -397,6 +397,8 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 
 | Date | Change |
 |------|--------|
+| 2026-04-15 | CI history cleaned (134+ failed/skipped runs deleted → 72/72 green); regenerated frontend package-lock.json (21 drifted packages); switched CI to `npm ci --legacy-peer-deps` for deterministic builds; added reusable regenerate-lockfile.yml workflow |
+| 2026-04-15 | Active Sessions feature: migration h4c5d6e7f8g9 (ip_address + last_used_at on refresh_tokens); GET/DELETE /auth/sessions endpoints; device/IP metadata captured on login/social/refresh; Active Sessions UI in /dashboard/settings with per-device revoke |
 | 2026-04-14 | Known Issue #6 resolved: gig orders wired to Qi Card payment (Escrow + Transaction created on place_order, escrow released on complete_order, migration g3b4c5d6e7f8) |
 | 2026-04-14 | Known Issue #1 resolved: WebSocket Redis pub/sub (psubscribe pattern, cross-worker delivery, Redis-backed WS tickets with in-memory fallback) |
 | 2026-04-14 | Admin page refactored: extracted 6 tabs into src/app/admin/tabs/ (1039→280 lines in page.tsx) |
