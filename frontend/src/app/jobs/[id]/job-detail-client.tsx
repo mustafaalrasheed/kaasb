@@ -57,13 +57,16 @@ const DURATION_LABELS_AR: Record<string, string> = {
 };
 
 function formatBudget(job: JobDetail, ar: boolean): string {
+  const numLocale = ar ? "ar-IQ" : "en-US";
+  const currency = ar ? "د.ع" : "IQD";
+  const perHour = ar ? "د.ع/س" : "IQD/hr";
   if (job.job_type === "fixed" && job.fixed_price) {
-    return `$${job.fixed_price.toLocaleString()}`;
+    return `${job.fixed_price.toLocaleString(numLocale)} ${currency}`;
   }
   if (job.budget_min && job.budget_max) {
-    return `$${job.budget_min} - $${job.budget_max}/${ar ? "س" : "hr"}`;
+    return `${job.budget_min.toLocaleString(numLocale)} - ${job.budget_max.toLocaleString(numLocale)} ${perHour}`;
   }
-  if (job.budget_min) return `${ar ? "من" : "From"} $${job.budget_min}/${ar ? "س" : "hr"}`;
+  if (job.budget_min) return `${ar ? "من " : "From "}${job.budget_min.toLocaleString(numLocale)} ${perHour}`;
   return ar ? "الميزانية غير محددة" : "Budget not specified";
 }
 
@@ -89,7 +92,8 @@ export default function JobDetailClient() {
     async function loadJob() {
       try {
         const response = await jobsApi.getById(jobId);
-        setJob(response.data.data);
+        const payload = response.data as unknown as JobDetail & { data?: JobDetail };
+        setJob(payload.data ?? payload);
       } catch (err: unknown) {
         setError(
           getApiStatus(err) === 404
@@ -149,7 +153,8 @@ export default function JobDetailClient() {
       setBidAmount("");
       setEstimatedDuration("");
       const response = await jobsApi.getById(jobId);
-      setJob(response.data.data);
+      const payload = response.data as unknown as JobDetail & { data?: JobDetail };
+      setJob(payload.data ?? payload);
     } catch (err: unknown) {
       toast.error(getApiError(err, ar ? "تعذّر تقديم العرض" : "Failed to submit proposal"));
     } finally {
@@ -340,7 +345,7 @@ export default function JobDetailClient() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {ar ? "مبلغ العرض (USD) *" : "Bid Amount (USD) *"}
+                      {ar ? "مبلغ العرض (د.ع) *" : "Bid Amount (IQD) *"}
                     </label>
                     <input
                       type="number"
@@ -438,7 +443,7 @@ export default function JobDetailClient() {
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-500">{ar ? "إجمالي الإنفاق" : "Total Spent"}</span>
-                <span className="font-medium text-gray-900" dir="ltr">${job.client.total_spent.toLocaleString()}</span>
+                <span className="font-medium text-gray-900">{job.client.total_spent.toLocaleString(ar ? "ar-IQ" : "en-US")} {ar ? "د.ع" : "IQD"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">{ar ? "التقييم" : "Rating"}</span>

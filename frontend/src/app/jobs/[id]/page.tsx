@@ -37,12 +37,12 @@ function formatBudgetStr(job: {
   budget_max?: number | null;
 }): string {
   if (job.job_type === "fixed" && job.fixed_price) {
-    return `$${job.fixed_price.toLocaleString()}`;
+    return `${job.fixed_price.toLocaleString()} IQD`;
   }
   if (job.budget_min && job.budget_max) {
-    return `$${job.budget_min} - $${job.budget_max}/hr`;
+    return `${job.budget_min} - ${job.budget_max} IQD/hr`;
   }
-  if (job.budget_min) return `From $${job.budget_min}/hr`;
+  if (job.budget_min) return `From ${job.budget_min} IQD/hr`;
   return "";
 }
 

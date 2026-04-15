@@ -24,6 +24,7 @@ function MessagesContent() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [composeRecipient, setComposeRecipient] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeConvoRef = useRef<ConversationSummary | null>(null);
   activeConvoRef.current = activeConvo;
@@ -56,11 +57,15 @@ function MessagesContent() {
 
   // Auto-open conversation when ?with=<userId> is in the URL (e.g. from "Contact Freelancer")
   useEffect(() => {
-    if (!withUserId || conversations.length === 0) return;
+    if (!withUserId || loading) return;
     const existing = conversations.find((c) => c.other_user.id === withUserId);
-    if (existing) selectConversation(existing);
-    // If no existing conversation, the empty state guides the user to send a first message
-  }, [withUserId, conversations]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (existing) {
+      selectConversation(existing);
+      setComposeRecipient(null);
+    } else {
+      setComposeRecipient(withUserId);
+    }
+  }, [withUserId, conversations, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!activeConvo) return;
@@ -107,8 +112,32 @@ function MessagesContent() {
   // === Send message ===
 
   const handleSend = async () => {
-    if (!newMessage.trim() || !activeConvo || sending) return;
+    if (!newMessage.trim() || sending) return;
     const content = newMessage.trim();
+
+    // Compose mode: no existing conversation with this user — start one
+    if (!activeConvo && composeRecipient) {
+      setSending(true);
+      setNewMessage("");
+      try {
+        const res = await messagesApi.startConversation({
+          recipient_id: composeRecipient,
+          initial_message: content,
+        });
+        const newConvo = res.data as ConversationSummary;
+        setComposeRecipient(null);
+        setConversations((prev) => [newConvo, ...prev]);
+        setActiveConvo(newConvo);
+      } catch {
+        toast.error(ar ? "تعذّر بدء المحادثة" : "Failed to start conversation");
+        setNewMessage(content);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    if (!activeConvo) return;
     setNewMessage("");
 
     if (user) {
@@ -256,7 +285,42 @@ function MessagesContent() {
 
       {/* Chat View */}
       <div className="flex-1 flex flex-col min-w-0">
-        {activeConvo ? (
+        {!activeConvo && composeRecipient ? (
+          <>
+            <div className="px-5 py-3.5 border-b border-gray-200 bg-white">
+              <div className="font-semibold text-gray-900 text-sm">
+                {ar ? "محادثة جديدة" : "New conversation"}
+              </div>
+              <div className="text-xs text-gray-400">
+                {ar ? "اكتب رسالتك الأولى لبدء المحادثة" : "Type your first message to start chatting"}
+              </div>
+            </div>
+            <div className="flex-1 bg-gray-50" />
+            <div className="px-4 py-3 border-t border-gray-200 bg-white">
+              <div className="flex gap-2 items-end">
+                <textarea
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={ar ? "اكتب رسالتك..." : "Type a message..."}
+                  rows={1}
+                  className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                  style={{ minHeight: "42px", maxHeight: "120px" }}
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={!newMessage.trim() || sending}
+                  className="shrink-0 w-10 h-10 flex items-center justify-center bg-brand-500 text-white rounded-xl hover:bg-brand-600 disabled:opacity-40 transition-colors"
+                  aria-label={ar ? "إرسال" : "Send"}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </>
+        ) : activeConvo ? (
           <>
             {/* Header */}
             <div className="px-5 py-3.5 border-b border-gray-200 bg-white flex items-center gap-3">

@@ -41,6 +41,11 @@ export function Navbar() {
 
   const isRTL = locale === "ar";
 
+  const role = user?.primary_role; // "client" | "freelancer" | undefined (guest)
+  const showFindWork = !isAuthenticated || role === "freelancer";
+  const showFindFreelancers = !isAuthenticated || role === "client";
+  const showPostJob = isAuthenticated && role === "client";
+
   return (
     <nav className="fixed top-0 inset-x-0 z-50 bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -56,18 +61,27 @@ export function Navbar() {
 
           {/* Desktop Navigation */}
           <div className={`hidden md:flex items-center gap-6 ${isRTL ? "flex-row-reverse" : "flex-row"}`}>
-            {/* Public links — hidden on admin pages */}
+            {/* Public links — hidden on admin pages, role-gated for authenticated users */}
             {!isAdminPage && (
               <>
-                <Link href="/jobs" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
-                  {t.findWork}
-                </Link>
-                <Link href="/freelancers" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
-                  {t.findFreelancers}
-                </Link>
+                {showFindWork && (
+                  <Link href="/jobs" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                    {t.findWork}
+                  </Link>
+                )}
+                {showFindFreelancers && (
+                  <Link href="/freelancers" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                    {t.findFreelancers}
+                  </Link>
+                )}
                 <Link href="/gigs" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
                   {t.services}
                 </Link>
+                {showPostJob && (
+                  <Link href="/jobs/new" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                    {isRTL ? "نشر وظيفة" : "Post a Job"}
+                  </Link>
+                )}
               </>
             )}
 
@@ -160,15 +174,24 @@ export function Navbar() {
         <div className={`md:hidden bg-white border-t border-gray-100 py-4 px-4 space-y-1 ${isRTL ? "text-right" : "text-left"}`}>
           {!isAdminPage && (
             <>
-              <Link href="/jobs" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
-                {t.findWork}
-              </Link>
-              <Link href="/freelancers" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
-                {t.findFreelancers}
-              </Link>
+              {showFindWork && (
+                <Link href="/jobs" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                  {t.findWork}
+                </Link>
+              )}
+              {showFindFreelancers && (
+                <Link href="/freelancers" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                  {t.findFreelancers}
+                </Link>
+              )}
               <Link href="/gigs" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
                 {t.services}
               </Link>
+              {showPostJob && (
+                <Link href="/jobs/new" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                  {isRTL ? "نشر وظيفة" : "Post a Job"}
+                </Link>
+              )}
             </>
           )}
           {isAuthenticated ? (

@@ -21,9 +21,10 @@ export const usersApi = {
   uploadAvatar: (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    // Do NOT set Content-Type manually — axios must auto-detect it from
-    // FormData so the browser can include the multipart boundary.
-    return api.post("/users/avatar", formData);
+    return api.post("/users/avatar", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      transformRequest: (data) => data,
+    });
   },
 
   removeAvatar: () => api.delete("/users/avatar"),

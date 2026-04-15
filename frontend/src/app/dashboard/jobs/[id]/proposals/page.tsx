@@ -91,7 +91,8 @@ export default function JobProposalsPage() {
     async function loadJob() {
       try {
         const response = await jobsApi.getById(jobId);
-        setJob(response.data.data);
+        const payload = response.data as unknown as { data?: unknown };
+        setJob((payload.data ?? payload) as typeof job);
       } catch {
         setJob(null);
       }

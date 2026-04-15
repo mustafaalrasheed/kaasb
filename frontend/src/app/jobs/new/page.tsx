@@ -250,7 +250,7 @@ export default function PostJobPage() {
           {form.job_type === "fixed" ? (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {ar ? "السعر الثابت (USD) *" : "Fixed Price (USD) *"}
+                {ar ? "السعر الثابت (د.ع) *" : "Fixed Price (IQD) *"}
               </label>
               <input
                 name="fixed_price"
@@ -269,7 +269,7 @@ export default function PostJobPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {ar ? "الحد الأدنى (USD/س) *" : "Min Rate (USD/hr) *"}
+                  {ar ? "الحد الأدنى (د.ع/س) *" : "Min Rate (IQD/hr) *"}
                 </label>
                 <input
                   name="budget_min"
@@ -286,7 +286,7 @@ export default function PostJobPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {ar ? "الحد الأقصى (USD/س)" : "Max Rate (USD/hr)"}
+                  {ar ? "الحد الأقصى (د.ع/س)" : "Max Rate (IQD/hr)"}
                 </label>
                 <input
                   name="budget_max"

@@ -40,13 +40,16 @@ const DURATION_LABELS_AR: Record<string, string> = {
 };
 
 function formatBudget(job: JobSummary, ar: boolean): string {
+  const numLocale = ar ? "ar-IQ" : "en-US";
+  const currency = ar ? "د.ع" : "IQD";
+  const perHour = ar ? "د.ع/س" : "IQD/hr";
   if (job.job_type === "fixed" && job.fixed_price) {
-    return `$${job.fixed_price.toLocaleString()}`;
+    return `${job.fixed_price.toLocaleString(numLocale)} ${currency}`;
   }
   if (job.budget_min && job.budget_max) {
-    return `$${job.budget_min} - $${job.budget_max}/${ar ? "س" : "hr"}`;
+    return `${job.budget_min.toLocaleString(numLocale)} - ${job.budget_max.toLocaleString(numLocale)} ${perHour}`;
   }
-  if (job.budget_min) return `${ar ? "من" : "From"} $${job.budget_min}/${ar ? "س" : "hr"}`;
+  if (job.budget_min) return `${ar ? "من " : "From "}${job.budget_min.toLocaleString(numLocale)} ${perHour}`;
   return ar ? "الميزانية غير محددة" : "Budget not specified";
 }
 

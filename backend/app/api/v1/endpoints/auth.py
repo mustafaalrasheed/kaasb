@@ -45,13 +45,18 @@ settings = get_settings()
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     """Set httpOnly cookies for access and refresh tokens."""
     is_secure = settings.ENVIRONMENT != "development"  # Secure for production AND staging
+    # Cookie lifetime intentionally matches the refresh token — JWT `exp` (30 min)
+    # is the real expiry enforced server-side. Keeping the cookie alive lets the
+    # frontend middleware see "has a session" and trigger silent refresh on 401.
+    # Without this, the cookie auto-deletes at 30 min and middleware hard-redirects
+    # to /login before the refresh interceptor ever runs.
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
         secure=is_secure,
         samesite="lax",
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         path="/",
     )
     response.set_cookie(

@@ -107,7 +107,7 @@ interface JobJsonLdProps {
 export function JobPostingJsonLd(props: JobJsonLdProps) {
   const salary: Record<string, unknown> = {
     "@type": "MonetaryAmount",
-    currency: "USD",
+    currency: "IQD",
   };
 
   if (props.jobType === "fixed" && props.fixedPrice) {
@@ -202,7 +202,7 @@ export function ServiceJsonLd(props: ServiceJsonLdProps) {
           offers: {
             "@type": "Offer",
             price: props.price,
-            priceCurrency: props.priceCurrency || "USD",
+            priceCurrency: props.priceCurrency || "IQD",
             availability: "https://schema.org/InStock",
           },
         }),
@@ -264,7 +264,7 @@ export function PersonJsonLd(props: PersonJsonLdProps) {
             priceSpecification: {
               "@type": "UnitPriceSpecification",
               price: props.hourlyRate,
-              priceCurrency: "USD",
+              priceCurrency: "IQD",
               unitCode: "HUR",
             },
           },
