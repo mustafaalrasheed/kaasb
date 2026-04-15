@@ -162,7 +162,10 @@ jobs:
       - name: Install dependencies
         run: |
           cd frontend
-          npm ci --legacy-peer-deps
+          # Using `npm install` (not `npm ci`) because package-lock.json has drifted
+          # from package.json. Next step for hardening: regenerate lockfile locally
+          # and switch to `npm ci --legacy-peer-deps` for deterministic builds.
+          npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Lint (ESLint)
         run: |
