@@ -1,0 +1,45 @@
+name: Regenerate Frontend Lockfile
+
+# Manually-triggered one-shot to regenerate frontend/package-lock.json when it
+# has drifted from package.json. Commits the refreshed lockfile directly to main.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    name: Regenerate package-lock.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Regenerate lockfile
+        run: |
+          cd frontend
+          rm -f package-lock.json
+          npm install --legacy-peer-deps --package-lock-only --no-audit --no-fund
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet frontend/package-lock.json; then
+            echo "Lockfile already up to date."
+            exit 0
+          fi
+          git add frontend/package-lock.json
+          git commit -m "chore(deps): regenerate frontend package-lock.json
+
+          Aligns lockfile with package.json for deterministic npm ci installs."
+          git push origin HEAD:main
