@@ -11,12 +11,23 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
-/** Build a full URL for backend-hosted assets (avatars, uploads, etc.) */
-export function backendUrl(path: string): string {
-  return `${BACKEND_URL}${path}`;
+/**
+ * Build a URL for backend-hosted assets (avatars, uploads, etc.).
+ *
+ * - Empty/null path → "" (caller renders a placeholder)
+ * - Absolute URL (http://, https://, data:) → returned unchanged (e.g. Google OAuth avatars)
+ * - Relative path + NEXT_PUBLIC_BACKEND_URL set → prefixed (useful in local dev where
+ *   frontend :3000 and backend :8000 are different origins)
+ * - Relative path + no env var → returned as-is so the browser resolves to the current
+ *   origin (production: nginx routes /uploads/ to the backend on the same origin)
+ */
+export function backendUrl(path: string | null | undefined): string {
+  if (!path) return "";
+  if (/^(https?:|data:|blob:)/i.test(path)) return path;
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return BACKEND_URL ? `${BACKEND_URL}${normalized}` : normalized;
 }
 
 /**
