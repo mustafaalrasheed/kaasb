@@ -131,6 +131,16 @@ async def list_my_gigs(
     return await svc.list_my_gigs(current_user)
 
 
+@router.get("/my/{gig_id}", response_model=GigOut, summary="Get my gig by id (any status)")
+async def get_my_gig(
+    gig_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    svc = GigService(db)
+    return await svc.get_gig_by_id_for_owner(gig_id, current_user)
+
+
 @router.get("/orders/buying", response_model=list[GigOrderOut], summary="Orders I placed as client")
 async def my_orders_as_client(
     current_user: User = Depends(get_current_user),

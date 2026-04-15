@@ -46,6 +46,8 @@ export const gigsApi = {
 
   myGigs: () => api.get("/gigs/my"),
 
+  getMine: (gigId: string) => api.get(`/gigs/my/${gigId}`),
+
   // Orders
   placeOrder: (data: { gig_id: string; package_id: string; requirements?: string }) =>
     api.post("/gigs/orders", data),
