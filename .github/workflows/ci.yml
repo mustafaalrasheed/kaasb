@@ -162,7 +162,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd frontend
-          npm install --legacy-peer-deps
+          npm ci --legacy-peer-deps
 
       - name: Lint (ESLint)
         run: |
