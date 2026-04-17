@@ -38,7 +38,17 @@ function scheduleRefresh() {
       await authApi.refresh();
       scheduleRefresh(); // reschedule after successful refresh
     } catch {
-      // Refresh failed — user will be signed out on next 401
+      // Refresh failed — retry once more in 30s before giving up.
+      // Covers transient network blips and server restarts that would
+      // otherwise silently kill the session until the next hard 401.
+      _refreshTimer = setTimeout(async () => {
+        try {
+          await authApi.refresh();
+          scheduleRefresh();
+        } catch {
+          // Truly expired — next API call's 401 interceptor handles redirect
+        }
+      }, 30_000);
     }
   }, refreshIn * 1000);
 }

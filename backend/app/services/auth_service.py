@@ -410,6 +410,14 @@ class AuthService(BaseService):
 
         return user
 
+    # Grace period (seconds) for recently-rotated refresh tokens.
+    # During rotation, the old token is revoked and a new one issued. If a
+    # concurrent request (e.g. notification poll) races with the refresh, it
+    # may re-send the old token before the browser stores the new cookie.
+    # Instead of hard-failing (which logs the user out), we detect this race
+    # and issue fresh tokens from the same session.
+    _ROTATION_GRACE_SECONDS = 60
+
     async def refresh_tokens(
         self,
         refresh_token: str,
@@ -422,7 +430,6 @@ class AuthService(BaseService):
         result = await self.db.execute(
             select(RefreshToken).where(
                 RefreshToken.token_hash == token_hash,
-                RefreshToken.revoked.is_(False),
                 RefreshToken.expires_at > datetime.now(UTC),
             )
         )
@@ -432,6 +439,33 @@ class AuthService(BaseService):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired refresh token",
             )
+
+        # Handle rotation race: token was JUST revoked by a concurrent refresh.
+        # Find the replacement token (same user, created right after revocation)
+        # and use it instead of failing outright.
+        if stored_token.revoked:
+            grace_cutoff = datetime.now(UTC) - timedelta(seconds=self._ROTATION_GRACE_SECONDS)
+            if stored_token.updated_at < grace_cutoff:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired refresh token",
+                )
+            # Within grace window — find the newest active token for this user
+            latest_result = await self.db.execute(
+                select(RefreshToken).where(
+                    RefreshToken.user_id == stored_token.user_id,
+                    RefreshToken.revoked.is_(False),
+                    RefreshToken.expires_at > datetime.now(UTC),
+                ).order_by(RefreshToken.created_at.desc()).limit(1)
+            )
+            replacement = latest_result.scalar_one_or_none()
+            if not replacement:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired refresh token",
+                )
+            logger.info("Rotation grace: reusing replacement token for user=%s", stored_token.user_id)
+            stored_token = replacement
 
         payload = decode_token(refresh_token)
 
