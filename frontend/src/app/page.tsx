@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { FaqJsonLd } from "@/components/seo/json-ld";
+import { HeroCta } from "./_components/hero-cta";
 import {
   SITE_NAME,
   SITE_URL,
@@ -197,21 +198,12 @@ export default async function HomePage() {
                 : "Kaasb connects businesses with talented freelancers across Iraq and the Middle East. Post a job, review proposals, and hire the best — all in one place."}
             </p>
             <div className="mt-10 flex flex-col sm:flex-row gap-4">
-              {isLoggedIn ? (
-                <Link
-                  href={dashboardHref}
-                  className="btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"
-                >
-                  {ar ? "الذهاب إلى لوحتي" : "Open Dashboard"}
-                </Link>
-              ) : (
-                <Link
-                  href="/auth/register"
-                  className="btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"
-                >
-                  {ar ? "ابدأ مجاناً" : "Get Started Free"}
-                </Link>
-              )}
+              <HeroCta
+                ar={ar}
+                ssrLoggedIn={isLoggedIn}
+                ssrDashboardHref={dashboardHref}
+                variant="hero"
+              />
               <Link
                 href="/jobs"
                 className="btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"
@@ -293,20 +285,12 @@ export default async function HomePage() {
               : "Join thousands of freelancers and businesses on Kaasb."}
           </p>
           <div className="mt-8 flex justify-center gap-4">
-            {isLoggedIn ? (
-              <Link href={dashboardHref} className="btn-primary text-lg px-8 py-3">
-                {ar ? "الذهاب إلى لوحتي" : "Go to Dashboard"}
-              </Link>
-            ) : (
-              <>
-                <Link href="/auth/register" className="btn-primary text-lg px-8 py-3">
-                  {ar ? "سجّل كمستقل" : "Sign Up as Freelancer"}
-                </Link>
-                <Link href="/auth/register" className="btn-secondary text-lg px-8 py-3">
-                  {ar ? "وظّف مستقلاً" : "Hire a Freelancer"}
-                </Link>
-              </>
-            )}
+            <HeroCta
+              ar={ar}
+              ssrLoggedIn={isLoggedIn}
+              ssrDashboardHref={dashboardHref}
+              variant="cta"
+            />
           </div>
         </div>
       </section>

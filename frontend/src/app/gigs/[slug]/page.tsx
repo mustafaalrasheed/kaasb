@@ -55,6 +55,8 @@ const t = {
   ar: {
     loading: "جارٍ التحميل...",
     error: "تعذّر تحميل الخدمة. يرجى المحاولة مرة أخرى.",
+    timeout: "انتهت مهلة التحميل. تحقّق من اتصالك بالإنترنت ثم أعد المحاولة.",
+    retry: "إعادة المحاولة",
     notFound: "الخدمة غير موجودة",
     backToGigs: "العودة إلى الخدمات",
     description: "وصف الخدمة",
@@ -85,6 +87,8 @@ const t = {
   en: {
     loading: "Loading...",
     error: "Failed to load this gig. Please try again.",
+    timeout: "Loading timed out. Check your connection and try again.",
+    retry: "Try again",
     notFound: "Gig not found",
     backToGigs: "Back to Services",
     description: "About This Gig",
@@ -115,6 +119,43 @@ const t = {
 };
 
 const TIER_KEYS = ["basic", "standard", "premium"] as const;
+
+// ---- Skeleton (shown during initial load + retries) ----
+
+function GigDetailSkeleton() {
+  return (
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-pulse">
+      <div className="h-4 w-32 bg-gray-200 rounded mb-6" />
+      <div className="flex flex-col lg:flex-row gap-8">
+        <div className="flex-1 min-w-0 space-y-6">
+          <div className="h-8 w-3/4 bg-gray-200 rounded" />
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gray-200" />
+            <div className="space-y-2">
+              <div className="h-3 w-32 bg-gray-200 rounded" />
+              <div className="h-3 w-20 bg-gray-200 rounded" />
+            </div>
+          </div>
+          <div className="aspect-video rounded-xl bg-gray-200" />
+          <div className="card p-6 space-y-3">
+            <div className="h-4 w-40 bg-gray-200 rounded" />
+            <div className="h-3 w-full bg-gray-200 rounded" />
+            <div className="h-3 w-5/6 bg-gray-200 rounded" />
+            <div className="h-3 w-4/6 bg-gray-200 rounded" />
+          </div>
+        </div>
+        <div className="w-full lg:w-[340px] shrink-0">
+          <div className="card p-5 space-y-4">
+            <div className="h-5 w-2/3 bg-gray-200 rounded" />
+            <div className="h-3 w-full bg-gray-200 rounded" />
+            <div className="h-3 w-3/4 bg-gray-200 rounded" />
+            <div className="h-10 w-full bg-gray-200 rounded" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ---- Image Carousel ----
 
@@ -269,45 +310,99 @@ export default function GigDetailPage() {
   const [gig, setGig] = useState<GigDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
   const [activePackageTier, setActivePackageTier] = useState<"basic" | "standard" | "premium">("basic");
   const [showOrderModal, setShowOrderModal] = useState(false);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const res = await gigsApi.getBySlug(slug);
-        const data = res.data?.data || res.data;
-        setGig(data);
-        // Default to first available tier
-        if (data?.packages?.length > 0) {
-          setActivePackageTier(data.packages[0].tier);
+    let cancelled = false;
+
+    // Retry with exponential backoff. Hard cap at 8s total so the spinner
+    // never runs indefinitely — matches the "clear error feedback" best
+    // practice the user requested.
+    async function loadWithRetry() {
+      const controller = new AbortController();
+      const hardTimeout = setTimeout(() => controller.abort(), 8000);
+      const attempts = [0, 500, 1500]; // 3 tries: immediate, +0.5s, +1.5s
+
+      let lastErr: unknown = null;
+      for (let i = 0; i < attempts.length; i++) {
+        if (cancelled) return;
+        if (attempts[i] > 0) {
+          await new Promise((r) => setTimeout(r, attempts[i]));
+          if (cancelled || controller.signal.aborted) break;
         }
-      } catch (err: unknown) {
-        const axiosErr = err as { response?: { status?: number } };
-        setError(axiosErr?.response?.status === 404 ? str.notFound : str.error);
-      } finally {
-        setIsLoading(false);
+        try {
+          const res = await gigsApi.getBySlug(slug);
+          clearTimeout(hardTimeout);
+          if (cancelled) return;
+          const data = res.data?.data || res.data;
+          setGig(data);
+          if (data?.packages?.length > 0) {
+            setActivePackageTier(data.packages[0].tier);
+          }
+          setError("");
+          setIsLoading(false);
+          return;
+        } catch (err: unknown) {
+          lastErr = err;
+          const status = (err as { response?: { status?: number } })?.response?.status;
+          // Don't retry on definitive 4xx — the gig genuinely isn't available.
+          if (status === 404 || status === 403 || status === 401) break;
+          if (controller.signal.aborted) break;
+        }
       }
+
+      clearTimeout(hardTimeout);
+      if (cancelled) return;
+      const status = (lastErr as { response?: { status?: number } })?.response?.status;
+      if (status === 404) setError(str.notFound);
+      else if (controller.signal.aborted) setError(str.timeout);
+      else setError(str.error);
+      setIsLoading(false);
     }
-    if (slug) load();
-  }, [slug, locale]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    if (slug) {
+      setIsLoading(true);
+      setError("");
+      loadWithRetry();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, locale, reloadTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <p className="text-gray-500">{str.loading}</p>
-      </div>
-    );
+    return <GigDetailSkeleton />;
   }
 
   if (error || !gig) {
+    const isNotFound = error === str.notFound;
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-center">
-        <div>
-          <p className="text-xl font-semibold text-gray-900">{error || str.notFound}</p>
-          <Link href="/gigs" className="mt-4 inline-block text-brand-500 hover:text-brand-600">
-            {str.backToGigs}
-          </Link>
+      <div className="min-h-[60vh] flex items-center justify-center text-center px-4">
+        <div className="max-w-md">
+          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d={isNotFound
+                  ? "M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  : "M12 9v2m0 4h.01M4.93 19h14.14a2 2 0 001.74-3l-7.07-12.25a2 2 0 00-3.48 0L3.19 16a2 2 0 001.74 3z"} />
+            </svg>
+          </div>
+          <p className="text-lg font-semibold text-gray-900">{error || str.notFound}</p>
+          <div className="mt-4 flex items-center justify-center gap-3">
+            {!isNotFound && (
+              <button
+                onClick={() => setReloadTick((n) => n + 1)}
+                className="btn-primary py-2 px-5 text-sm"
+              >
+                {str.retry}
+              </button>
+            )}
+            <Link href="/gigs" className="text-brand-500 hover:text-brand-600 text-sm">
+              {str.backToGigs}
+            </Link>
+          </div>
         </div>
       </div>
     );

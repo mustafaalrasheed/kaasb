@@ -160,9 +160,16 @@ class GigService(BaseService):
             raise NotFoundError("Gig")
         if gig.status != GigStatus.ACTIVE:
             raise NotFoundError("Gig")
-        # Increment impressions (fire and forget — don't await commit)
+        # Increment impressions via a bulk UPDATE. synchronize_session=False is
+        # critical: without it, SQLAlchemy expires the in-memory `gig` instance
+        # (same row is in the identity map), and FastAPI's response serializer
+        # then tries to lazily refresh expired columns — triggering a
+        # MissingGreenlet error because that IO happens outside the async ctx.
         await self.db.execute(
-            update(Gig).where(Gig.id == gig.id).values(impressions=Gig.impressions + 1)
+            update(Gig)
+            .where(Gig.id == gig.id)
+            .values(impressions=Gig.impressions + 1)
+            .execution_options(synchronize_session=False)
         )
         await self.db.commit()
         return gig
@@ -461,9 +468,13 @@ class GigService(BaseService):
         )
         self.db.add(order)
 
-        # Increment order count on gig
+        # Increment order count on gig — synchronize_session=False to avoid
+        # expiring the in-memory `gig` instance (same identity-map row).
         await self.db.execute(
-            update(Gig).where(Gig.id == gig.id).values(orders_count=Gig.orders_count + 1)
+            update(Gig)
+            .where(Gig.id == gig.id)
+            .values(orders_count=Gig.orders_count + 1)
+            .execution_options(synchronize_session=False)
         )
 
         # Flush to get order.id before initiating payment
