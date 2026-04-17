@@ -83,6 +83,7 @@ class MessageDetail(BaseModel):
     id: uuid.UUID
     content: str
     is_read: bool
+    read_at: datetime | None = None
     is_system: bool
     sender: MessageUserInfo
     sender_role: SenderRole
@@ -90,6 +91,17 @@ class MessageDetail(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PresenceInfo(BaseModel):
+    """Online/last-seen status for a single user."""
+    user_id: uuid.UUID
+    is_online: bool
+    last_seen_at: datetime | None = None
+
+
+class PresenceListResponse(BaseModel):
+    users: list[PresenceInfo]
 
 
 class MessageListResponse(BaseModel):

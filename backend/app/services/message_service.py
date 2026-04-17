@@ -309,7 +309,36 @@ class MessageService(BaseService):
             conversation.unread_one = 0
         else:
             conversation.unread_two = 0
+
+        # Mark messages from the OTHER participant as read. We only stamp
+        # rows that are currently unread so idempotent re-fetches don't
+        # repeatedly bump read_at. RETURNING gives us the ids so we can
+        # push a read-receipt WS event to the sender (see below).
+        now = datetime.now(UTC)
+        newly_read_result = await self.db.execute(
+            update(Message)
+            .where(
+                Message.conversation_id == conversation_id,
+                Message.sender_id != user.id,
+                Message.is_read.is_(False),
+            )
+            .values(is_read=True, read_at=now)
+            .returning(Message.id)
+        )
+        newly_read_ids = [row.id for row in newly_read_result]
         await self.db.flush()
+
+        # Notify the sender that their messages were read (✓ → ✓✓).
+        # Other participant = not the reader.
+        if newly_read_ids:
+            other_id = conversation.get_other_id(user.id)
+            asyncio.create_task(_push_read_receipt(
+                recipient_id=other_id,
+                conversation_id=conversation.id,
+                reader_id=user.id,
+                message_ids=[str(mid) for mid in newly_read_ids],
+                read_at=now,
+            ))
 
         stmt = (
             select(Message)
@@ -344,6 +373,26 @@ class MessageService(BaseService):
         if not conversation:
             raise NotFoundError("Conversation")
         return conversation
+
+
+async def _push_read_receipt(
+    recipient_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    reader_id: uuid.UUID,
+    message_ids: list[str],
+    read_at: datetime,
+) -> None:
+    """Notify the original sender that their messages have been read."""
+    from app.services.websocket_manager import manager as ws_manager
+    await ws_manager.send_to_user(recipient_id, {
+        "type": "messages_read",
+        "data": {
+            "conversation_id": str(conversation_id),
+            "reader_id": str(reader_id),
+            "message_ids": message_ids,
+            "read_at": read_at.isoformat(),
+        },
+    })
 
 
 def _ws_payload_for(

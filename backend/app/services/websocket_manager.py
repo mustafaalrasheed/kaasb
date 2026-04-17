@@ -75,14 +75,20 @@ class ConnectionManager:
         if uid not in self._connections:
             self._connections[uid] = []
         self._connections[uid].append(websocket)
+        # Mark presence after the connection is registered so a racing
+        # is_online() check never sees "online but no connection".
+        from app.services.presence import mark_online
+        await mark_online(user_id)
 
-    def disconnect(self, user_id: uuid.UUID, websocket: WebSocket) -> None:
-        """Remove a WebSocket connection."""
+    async def disconnect(self, user_id: uuid.UUID, websocket: WebSocket) -> None:
+        """Remove a WebSocket connection. Marks offline if it was the last one."""
         uid = str(user_id)
         if uid in self._connections:
             self._connections[uid] = [ws for ws in self._connections[uid] if ws != websocket]
             if not self._connections[uid]:
                 del self._connections[uid]
+        from app.services.presence import mark_offline
+        await mark_offline(user_id)
 
     def is_online(self, user_id: uuid.UUID) -> bool:
         """Check if a user has any active connections on this worker."""

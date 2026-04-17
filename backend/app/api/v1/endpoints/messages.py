@@ -5,6 +5,7 @@ Kaasb Platform - Message Endpoints
 import uuid
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
@@ -21,8 +22,15 @@ from app.schemas.message import (
     MessageDetail,
     MessageListResponse,
     MessageUserInfo,
+    PresenceInfo,
+    PresenceListResponse,
 )
 from app.services.message_service import MessageService
+from app.services.presence import get_online
+
+# Cap presence batch size — callers should only ask about users they can see
+# (conversation partners), so this is a soft DoS guard.
+_PRESENCE_BATCH_MAX = 100
 
 
 def _serialize_conversation(
@@ -138,3 +146,46 @@ async def send_message(
     """Send a message in an existing conversation."""
     service = MessageService(db)
     return await service.send_message(current_user, conversation_id, data)
+
+
+# === Presence ===
+
+@router.get(
+    "/presence",
+    response_model=PresenceListResponse,
+    summary="Batch presence lookup",
+)
+async def presence(
+    user_ids: list[uuid.UUID] = Query(..., alias="user_ids"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Batch online/last-seen lookup. Clients call this when rendering the
+    conversation list to show the green dot + "Last seen" subtitle.
+
+    No authorization check on which users you can query — presence is
+    low-stakes info that's already implicitly exposed by "message me" flows.
+    """
+    ids = user_ids[:_PRESENCE_BATCH_MAX]
+    online = await get_online(ids)
+
+    # Fetch last_seen_at for offline users only — online ones are online now.
+    offline_ids = [u for u in ids if u not in online]
+    last_seen_map: dict[uuid.UUID, object] = {}
+    if offline_ids:
+        rows = await db.execute(
+            select(User.id, User.last_seen_at).where(User.id.in_(offline_ids))
+        )
+        last_seen_map = {row.id: row.last_seen_at for row in rows}
+
+    return PresenceListResponse(
+        users=[
+            PresenceInfo(
+                user_id=uid,
+                is_online=uid in online,
+                last_seen_at=last_seen_map.get(uid),  # type: ignore[arg-type]
+            )
+            for uid in ids
+        ]
+    )

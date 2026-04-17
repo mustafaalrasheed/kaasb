@@ -8,25 +8,65 @@ Auth flow:
   3. Server redeems ticket, establishes persistent connection
 
 Events pushed by the server (JSON):
-  {"type": "message",      "data": {conversation_id, id, content, sender_id, created_at}}
-  {"type": "notification", "data": {id, title, message, type, link_type, link_id, created_at}}
+  {"type": "message",        "data": {conversation_id, id, content, sender_id, sender_role,
+                                       is_system, attachments, created_at}}
+  {"type": "messages_read",  "data": {conversation_id, reader_id, message_ids, read_at}}
+  {"type": "typing",         "data": {conversation_id, user_id}}
+  {"type": "notification",   "data": {id, title, message, type, link_type, link_id, created_at}}
   {"type": "ping"}
 
-Client must respond to {"type": "ping"} with {"type": "pong"} to keep connection alive.
+Events accepted from the client:
+  {"type": "pong"}                                 — heartbeat reply
+  {"type": "typing", "conversation_id": "<uuid>"}  — signal user is typing
 
-Per-worker limitation: connections are tracked in-process memory.
-Multi-worker real-time requires Redis pub/sub (tracked in known issues).
+Typing events are ephemeral (never persisted) and are rate-limited to at most
+one relay per conversation per second, per connection.
 """
 
 import logging
+import time
+import uuid
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 
+from app.core.database import async_session
+from app.models.message import Conversation
 from app.services.websocket_manager import manager, redeem_ws_ticket
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["WebSocket"])
+
+# Minimum seconds between relayed typing events per conversation per WS.
+# Clients are expected to heartbeat typing every ~3s, so 1s gives slack
+# without letting a misbehaving client fan out dozens/sec.
+_TYPING_MIN_INTERVAL_SECONDS = 1.0
+
+
+async def _resolve_other_participant(
+    user_id: uuid.UUID, conversation_id: uuid.UUID,
+) -> uuid.UUID | None:
+    """
+    Return the OTHER participant's UUID if ``user_id`` is a participant,
+    else None. Runs one cheap query; result is cached per connection.
+    """
+    async with async_session() as db:
+        result = await db.execute(
+            select(
+                Conversation.participant_one_id,
+                Conversation.participant_two_id,
+            ).where(Conversation.id == conversation_id)
+        )
+        row = result.first()
+        if not row:
+            return None
+        p1, p2 = row.participant_one_id, row.participant_two_id
+        if user_id == p1:
+            return p2
+        if user_id == p2:
+            return p1
+        return None
 
 
 @router.websocket("/ws")
@@ -50,15 +90,58 @@ async def websocket_endpoint(
     await manager.connect(user_id, websocket)
     logger.info("WebSocket connected: user_id=%s", user_id)
 
+    # Per-connection caches:
+    #   other_participant[conv_id] = the other user's UUID (populated on first
+    #     typing event for that conversation, then reused).
+    #   last_typing_emit[conv_id] = monotonic timestamp of last relayed typing
+    #     event, used to rate-limit downstream broadcasts.
+    other_participant: dict[uuid.UUID, uuid.UUID] = {}
+    last_typing_emit: dict[uuid.UUID, float] = {}
+
     try:
         while True:
             data = await websocket.receive_json()
-            if data.get("type") == "pong":
-                pass  # Heartbeat acknowledged
+            msg_type = data.get("type")
+
+            if msg_type == "pong":
+                continue  # Heartbeat acknowledged
+
+            if msg_type == "typing":
+                raw_conv = data.get("conversation_id")
+                if not raw_conv:
+                    continue
+                try:
+                    conv_id = uuid.UUID(raw_conv)
+                except (ValueError, TypeError):
+                    continue
+
+                # Rate-limit per conversation
+                now = time.monotonic()
+                last = last_typing_emit.get(conv_id, 0.0)
+                if now - last < _TYPING_MIN_INTERVAL_SECONDS:
+                    continue
+
+                # Resolve + cache the other participant (validates membership)
+                other_id = other_participant.get(conv_id)
+                if other_id is None:
+                    other_id = await _resolve_other_participant(user_id, conv_id)
+                    if other_id is None:
+                        continue  # Not a participant, silently drop
+                    other_participant[conv_id] = other_id
+
+                last_typing_emit[conv_id] = now
+                await manager.send_to_user(other_id, {
+                    "type": "typing",
+                    "data": {
+                        "conversation_id": str(conv_id),
+                        "user_id": str(user_id),
+                    },
+                })
+
     except WebSocketDisconnect:
         pass
     except Exception as exc:
         logger.warning("WebSocket error for user %s: %s", user_id, exc)
     finally:
-        manager.disconnect(user_id, websocket)
+        await manager.disconnect(user_id, websocket)
         logger.info("WebSocket disconnected: user_id=%s", user_id)

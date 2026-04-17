@@ -139,6 +139,10 @@ class Message(BaseModel):
     # === Content ===
     content: Mapped[str] = mapped_column(Text, nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Timestamp read by the recipient — powers ✓ vs ✓✓ UI. Null until read.
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Attachments: list of {url, filename, mime_type, size_bytes}.

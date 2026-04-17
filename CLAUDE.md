@@ -281,8 +281,8 @@ alembic upgrade head
 alembic check   # must show "No new upgrade operations detected"
 ```
 
-**Migration chain** (21 migrations, linear):
-`25c8a4c` → `1f80b6c` → `40dda09` → `8708878` → `ae6a5c3` → `b3f9e2a` → `c7d4e8f` → `d1a2b3c` → `e2b3c4d` → `f3a4b5c6d7e8` (legal_compliance) → `a1b2c3d4e5f6` (gig_marketplace) → `b2c3d4e5f6a7` (qi_card_only) → `c3d4e5f6a7b8` (phone_otp) → `d4e5f6a7b8c9` (schema_drift_fix) → `e5f6a7b8c9d0` (social_ids_nullable_password_iqd) → `f1a2b3c4d5e6` (gig_review_audit + notification_types) → `f2a3b4c5d6e7` (gig_needs_revision + revision_note) → `g3b4c5d6e7f8` (gig_order_payment_wiring) → `h4c5d6e7f8g9` (refresh_tokens session_metadata) → `i5d6e7f8g9h0` (chat_system_phase1: conversation_type, order_id, sender_role, is_system, attachments)
+**Migration chain** (22 migrations, linear):
+`25c8a4c` → `1f80b6c` → `40dda09` → `8708878` → `ae6a5c3` → `b3f9e2a` → `c7d4e8f` → `d1a2b3c` → `e2b3c4d` → `f3a4b5c6d7e8` (legal_compliance) → `a1b2c3d4e5f6` (gig_marketplace) → `b2c3d4e5f6a7` (qi_card_only) → `c3d4e5f6a7b8` (phone_otp) → `d4e5f6a7b8c9` (schema_drift_fix) → `e5f6a7b8c9d0` (social_ids_nullable_password_iqd) → `f1a2b3c4d5e6` (gig_review_audit + notification_types) → `f2a3b4c5d6e7` (gig_needs_revision + revision_note) → `g3b4c5d6e7f8` (gig_order_payment_wiring) → `h4c5d6e7f8g9` (refresh_tokens session_metadata) → `i5d6e7f8g9h0` (chat_system_phase1: conversation_type, order_id, sender_role, is_system, attachments) → `j6e7f8g9h0i1` (chat_system_phase3: messages.read_at, users.last_seen_at)
 
 **Enum creation** (idempotent pattern):
 ```python
@@ -397,6 +397,7 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 
 | Date | Change |
 |------|--------|
+| 2026-04-17 | Chat system Phase 3: migration j6e7f8g9h0i1 (messages.read_at, users.last_seen_at); Redis-backed presence service at `app/services/presence.py` with multi-connection counter; `GET /messages/presence` batch endpoint; read receipts wired into `get_messages` (updates read_at, pushes `messages_read` WS event to sender); typing indicators via inbound WS `typing` events with per-conversation membership cache + 1s rate limit |
 | 2026-04-17 | Chat system Phase 1+2: migration i5d6e7f8g9h0 (ConversationType enum, SenderRole enum, conversations.order_id, messages.is_system + attachments JSONB); domain event bus at `app/services/events.py` (MessageSentEvent); message_service decoupled from notifications (publishes events instead); message_subscribers.py handles notification + WS push with own DB sessions; support threads and system messages first-class |
 | 2026-04-15 | CI history cleaned (134+ failed/skipped runs deleted → 72/72 green); regenerated frontend package-lock.json (21 drifted packages); switched CI to `npm ci --legacy-peer-deps` for deterministic builds; added reusable regenerate-lockfile.yml workflow |
 | 2026-04-15 | Active Sessions feature: migration h4c5d6e7f8g9 (ip_address + last_used_at on refresh_tokens); GET/DELETE /auth/sessions endpoints; device/IP metadata captured on login/social/refresh; Active Sessions UI in /dashboard/settings with per-device revoke |

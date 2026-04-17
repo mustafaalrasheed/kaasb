@@ -99,6 +99,11 @@ class User(BaseModel):
     last_login: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Updated when the user's last WebSocket disconnects — powers "Last seen"
+    # fallback UI. Live "online now" state is held in Redis (see presence service).
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # === Login attempt tracking ===
