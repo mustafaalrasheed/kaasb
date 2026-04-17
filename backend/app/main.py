@@ -173,6 +173,10 @@ async def lifespan(app: FastAPI):
     from app.services.websocket_manager import manager as ws_manager
     subscriber_task = asyncio.create_task(ws_manager.start_redis_subscriber())
 
+    # Register in-process domain event subscribers (chat → notifications + WS push)
+    from app.services.message_subscribers import register_message_subscribers
+    register_message_subscribers()
+
     logger.info(
         "%s v%s started in %s mode",
         settings.APP_NAME, settings.APP_VERSION, settings.ENVIRONMENT,

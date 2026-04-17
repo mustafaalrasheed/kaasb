@@ -9,11 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
 from app.core.database import get_db
+from app.models.message import Conversation
 from app.models.user import User
 from app.schemas.message import (
     ConversationCreate,
     ConversationJobInfo,
     ConversationListResponse,
+    ConversationOrderInfo,
     ConversationSummary,
     MessageCreate,
     MessageDetail,
@@ -21,6 +23,36 @@ from app.schemas.message import (
     MessageUserInfo,
 )
 from app.services.message_service import MessageService
+
+
+def _serialize_conversation(
+    c: Conversation, current_user_id: uuid.UUID,
+) -> ConversationSummary:
+    if current_user_id == c.participant_one_id:
+        other = c.participant_two
+        unread = c.unread_one
+    else:
+        other = c.participant_one
+        unread = c.unread_two
+
+    return ConversationSummary(
+        id=c.id,
+        conversation_type=c.conversation_type,
+        other_user=MessageUserInfo(
+            id=other.id,
+            username=other.username,
+            first_name=other.first_name,
+            last_name=other.last_name,
+            avatar_url=other.avatar_url,
+        ),
+        job=ConversationJobInfo(id=c.job.id, title=c.job.title) if c.job else None,
+        order=ConversationOrderInfo(id=c.order.id, status=c.order.status.value) if c.order else None,
+        last_message_text=c.last_message_text,
+        last_message_at=c.last_message_at,
+        message_count=c.message_count,
+        unread_count=unread,
+        created_at=c.created_at,
+    )
 
 router = APIRouter(prefix="/messages", tags=["Messages"])
 
@@ -42,28 +74,9 @@ async def list_conversations(
     service = MessageService(db)
     result = await service.get_conversations(current_user, page, page_size)
 
-    # Serialize conversations with other_user enrichment
-    conversations = []
-    for c in result["conversations"]:
-        other = c._other_user
-        conversations.append(
-            ConversationSummary(
-                id=c.id,
-                other_user=MessageUserInfo(
-                    id=other.id,
-                    username=other.username,
-                    first_name=other.first_name,
-                    last_name=other.last_name,
-                    avatar_url=other.avatar_url,
-                ),
-                job=ConversationJobInfo(id=c.job.id, title=c.job.title) if c.job else None,
-                last_message_text=c.last_message_text,
-                last_message_at=c.last_message_at,
-                message_count=c.message_count,
-                unread_count=c._unread_count,
-                created_at=c.created_at,
-            )
-        )
+    conversations = [
+        _serialize_conversation(c, current_user.id) for c in result["conversations"]
+    ]
 
     return ConversationListResponse(
         conversations=conversations,
@@ -88,31 +101,7 @@ async def start_conversation(
     """Start a new conversation with another user."""
     service = MessageService(db)
     c = await service.start_conversation(current_user, data)
-
-    # Determine other user
-    if current_user.id == c.participant_one_id:
-        other = c.participant_two
-        unread = c.unread_one
-    else:
-        other = c.participant_one
-        unread = c.unread_two
-
-    return ConversationSummary(
-        id=c.id,
-        other_user=MessageUserInfo(
-            id=other.id,
-            username=other.username,
-            first_name=other.first_name,
-            last_name=other.last_name,
-            avatar_url=other.avatar_url,
-        ),
-        job=ConversationJobInfo(id=c.job.id, title=c.job.title) if c.job else None,
-        last_message_text=c.last_message_text,
-        last_message_at=c.last_message_at,
-        message_count=c.message_count,
-        unread_count=unread,
-        created_at=c.created_at,
-    )
+    return _serialize_conversation(c, current_user.id)
 
 
 # === Messages ===
