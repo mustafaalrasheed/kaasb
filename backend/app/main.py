@@ -8,7 +8,7 @@ import json
 import logging
 import logging.handlers
 import sys
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 import sentry_sdk
@@ -186,10 +186,11 @@ async def lifespan(app: FastAPI):
 
     # === Shutdown ===
     subscriber_task.cancel()
-    try:
+    # suppress is a sync CM — valid around `await`. async-with was a mypy error
+    # because AbstractContextManager has no __aenter__; ruff SIM105 otherwise
+    # flags the equivalent try/except/pass.
+    with suppress(asyncio.CancelledError):
         await subscriber_task
-    except asyncio.CancelledError:
-        pass
     await engine.dispose()
     logger.info("%s shutting down...", settings.APP_NAME)
 

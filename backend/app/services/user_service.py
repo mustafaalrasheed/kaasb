@@ -14,6 +14,7 @@ from app.core.security import hash_password_async, verify_password_async
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.user import PasswordChange, UserProfileUpdate
 from app.services.base import BaseService
+from app.services.presence import get_online
 from app.utils.sanitize import escape_like, sanitize_text, sanitize_url
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,27 @@ class UserService(BaseService):
         user = result.scalar_one_or_none()
         if not user:
             raise NotFoundError("User")
+        await self._overlay_presence([user])
         return user
+
+    async def _overlay_presence(self, users: list[User]) -> None:
+        """
+        Replace each user's stale ``is_online`` DB column with the live Redis
+        value. The DB column is set on login but never cleared on disconnect
+        (a user closing their tab would otherwise show online forever). Redis
+        holds the real-time WS connection counter — see services/presence.py.
+
+        We expunge each user from the session before setting the attribute so
+        the request-scoped get_db() commit at the end of the request does NOT
+        persist a Redis-sourced override back to the DB (which would both
+        stomp the login-set value and cause a write on every read).
+        """
+        if not users:
+            return
+        online = await get_online([u.id for u in users])
+        for u in users:
+            self.db.expunge(u)
+            u.is_online = u.id in online
 
     # === Profile Update ===
 
@@ -187,9 +208,10 @@ class UserService(BaseService):
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
         result = await self.db.execute(stmt)
-        users = result.scalars().all()
+        users = list(result.scalars().all())
+        await self._overlay_presence(users)
 
-        return self.paginated_response(items=list(users), total=total, page=page, page_size=page_size, key="users")
+        return self.paginated_response(items=users, total=total, page=page, page_size=page_size, key="users")
 
     # === Account Management ===
 
