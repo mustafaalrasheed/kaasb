@@ -228,18 +228,33 @@ def test_03_users():
         ok("Profile updated (bio, skills, rate, title, location)")
 
     # --- PUT /users/password ---
+    # Password change rotates all sessions (revokes refresh tokens + bumps
+    # token_version), so the existing access token is invalidated. We must
+    # re-login after each successful change to continue using the API.
     r = raw("PUT", "/users/password", json={
         "current_password": "TestPass123!",
         "new_password": "NewPass456!",
     }, headers=h("freelancer"))
     if r.status_code == 200:
         ok("Password changed")
-        # Restore
+        # Re-login with new password to get fresh tokens
+        lr = raw("POST", "/auth/login", json={
+            "email": TEST_FREELANCER_EMAIL, "password": "NewPass456!",
+        })
+        if lr.status_code == 200:
+            tokens["freelancer"] = lr.json()["access_token"]
+        # Restore original password with fresh token
         raw("PUT", "/users/password", json={
             "current_password": "NewPass456!",
             "new_password": "TestPass123!",
         }, headers=h("freelancer"))
         ok("Password restored")
+        # Re-login again with restored password to refresh token for downstream tests
+        lr = raw("POST", "/auth/login", json={
+            "email": TEST_FREELANCER_EMAIL, "password": "TestPass123!",
+        })
+        if lr.status_code == 200:
+            tokens["freelancer"] = lr.json()["access_token"]
     else:
         info(f"Password change: {r.status_code} {r.text[:100]}")
 
