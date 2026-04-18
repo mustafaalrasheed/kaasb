@@ -6,11 +6,12 @@ Business logic for user profiles, search, and account management.
 import logging
 import uuid
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestError, NotFoundError
 from app.core.security import hash_password_async, verify_password_async
+from app.models.refresh_token import RefreshToken
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.user import PasswordChange, UserProfileUpdate
 from app.services.base import BaseService
@@ -142,8 +143,21 @@ class UserService(BaseService):
             raise BadRequestError("New password must be different from current password")
 
         user.hashed_password = await hash_password_async(data.new_password)
+        # Rotate all sessions: revoke every outstanding refresh token and bump
+        # token_version so issued access tokens fail get_current_user's tv check.
+        # Protects against the case where the user changed password *because*
+        # they suspect a session was compromised.
+        await self.db.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.revoked.is_(False),
+            )
+            .values(revoked=True)
+        )
+        user.token_version += 1
         await self.db.flush()
-        logger.info("Password changed: user=%s", user.id)
+        logger.info("Password changed + sessions rotated: user=%s", user.id)
 
     # === User Search & Listing ===
 

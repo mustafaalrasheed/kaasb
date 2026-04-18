@@ -641,7 +641,18 @@ class AuthService(BaseService):
             raise HTTPException(status_code=404, detail="User not found")
 
         user.hashed_password = await hash_password_async(new_password)
-        user.token_version += 1  # Invalidate all existing sessions
+        # Rotate sessions: bump token_version (invalidates access tokens) AND
+        # revoke all outstanding refresh tokens (otherwise an attacker with a
+        # live refresh token could immediately mint a new access token).
+        await self.db.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.revoked.is_(False),
+            )
+            .values(revoked=True)
+        )
+        user.token_version += 1
         self.db.add(user)
         await self.db.commit()
 
