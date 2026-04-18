@@ -93,13 +93,18 @@ def upgrade() -> None:
         ),
     )
     # Backfill: admin if is_superuser, else primary_role. Cast via text.
+    # lower() is required because the ``userrole`` DB enum stores UPPERCASE
+    # values ('CLIENT','FREELANCER','ADMIN') while the new ``senderrole``
+    # enum stores lowercase — casting uppercase text directly to senderrole
+    # raises "invalid input value for enum senderrole: FREELANCER" on any
+    # non-empty messages table.
     op.execute(
         """
         UPDATE messages m
         SET sender_role = (
             CASE
                 WHEN u.is_superuser THEN 'admin'
-                ELSE u.primary_role::text
+                ELSE lower(u.primary_role::text)
             END
         )::senderrole
         FROM users u
