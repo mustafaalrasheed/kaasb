@@ -5,11 +5,27 @@ import { useSearchParams } from "next/navigation";
 import { messagesApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { useWebSocket } from "@/lib/use-websocket";
-import type { WsMessageData } from "@/lib/use-websocket";
+import type {
+  WsMessageData,
+  WsMessagesReadData,
+  WsTypingData,
+} from "@/lib/use-websocket";
 import { toast } from "sonner";
-import type { ConversationSummary, MessageDetail } from "@/types/message";
+import type {
+  ConversationSummary,
+  MessageDetail,
+  PresenceInfo,
+} from "@/types/message";
 import { useLocale } from "@/providers/locale-provider";
 import { backendUrl } from "@/lib/utils";
+
+// How long a single inbound "typing" event keeps the indicator visible
+// before we consider the user to have stopped typing.
+const TYPING_INDICATOR_MS = 3000;
+
+// Throttle outbound typing heartbeats. Backend hard-caps at 1/sec per
+// conversation anyway, so we match that locally to avoid wasted socket frames.
+const TYPING_EMIT_MIN_MS = 1100;
 
 function MessagesContent() {
   const { user } = useAuthStore();
@@ -25,9 +41,17 @@ function MessagesContent() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [composeRecipient, setComposeRecipient] = useState<string | null>(null);
+
+  // Map of other_user.id → presence. Null last_seen_at means "never seen".
+  const [presence, setPresence] = useState<Record<string, PresenceInfo>>({});
+  // Set of user IDs we've seen a typing event from in the last TYPING_INDICATOR_MS.
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeConvoRef = useRef<ConversationSummary | null>(null);
   activeConvoRef.current = activeConvo;
+  const typingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const lastTypingEmitRef = useRef<number>(0);
 
   // === Data fetching ===
 
@@ -45,17 +69,39 @@ function MessagesContent() {
   const fetchMessages = useCallback(async (convoId: string) => {
     try {
       const res = await messagesApi.getMessages(convoId);
-      setMessages(res.data.messages.reverse()); // Show oldest first
+      setMessages(res.data.messages.reverse()); // oldest first
     } catch {
       toast.error(ar ? "تعذّر تحميل الرسائل" : "Failed to load messages");
     }
   }, [ar]);
 
+  // Batch presence fetch — runs after the conversation list loads and when it
+  // changes (new conversations appear). Listed users' green dots come from
+  // this call; WS events then keep the state fresh without re-polling.
+  const fetchPresence = useCallback(async (convos: ConversationSummary[]) => {
+    const ids = convos.map((c) => c.other_user.id);
+    if (ids.length === 0) return;
+    try {
+      const res = await messagesApi.getPresence(ids);
+      const next: Record<string, PresenceInfo> = {};
+      for (const p of res.data.users as PresenceInfo[]) next[p.user_id] = p;
+      setPresence((prev) => ({ ...prev, ...next }));
+    } catch {
+      // Presence is non-critical — silently skip on failure
+    }
+  }, []);
+
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
 
-  // Auto-open conversation when ?with=<userId> is in the URL (e.g. from "Contact Freelancer")
+  useEffect(() => {
+    if (!loading && conversations.length > 0) {
+      fetchPresence(conversations);
+    }
+  }, [loading, conversations, fetchPresence]);
+
+  // Auto-open conversation when ?with=<userId> is in the URL
   useEffect(() => {
     if (!withUserId || loading) return;
     const existing = conversations.find((c) => c.other_user.id === withUserId);
@@ -82,16 +128,41 @@ function MessagesContent() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Cleanup pending typing timers on unmount
+  useEffect(() => {
+    return () => {
+      const timers = typingTimersRef.current;
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
+
   // === WebSocket (real-time push) ===
 
   const handleWsMessage = useCallback((data: WsMessageData) => {
     const currentConvo = activeConvoRef.current;
+
+    // Seeing a message from a user implies they're online — flip their dot on.
+    if (data.sender_id) {
+      setPresence((prev) => ({
+        ...prev,
+        [data.sender_id]: {
+          user_id: data.sender_id,
+          is_online: true,
+          last_seen_at: prev[data.sender_id]?.last_seen_at ?? null,
+        },
+      }));
+    }
 
     if (currentConvo && data.conversation_id === currentConvo.id) {
       const newMsg: MessageDetail = {
         id: data.id,
         content: data.content,
         is_read: false,
+        read_at: null,
+        is_system: data.is_system ?? false,
+        sender_role: data.sender_role,
+        attachments: data.attachments ?? [],
         sender: {
           id: data.sender_id,
           username: "",
@@ -107,7 +178,49 @@ function MessagesContent() {
     fetchConversations();
   }, [fetchConversations]);
 
-  useWebSocket({ onMessage: handleWsMessage, enabled: !!user });
+  const handleMessagesRead = useCallback((data: WsMessagesReadData) => {
+    // The other participant just opened the convo — flip our own ticks to ✓✓.
+    setMessages((prev) =>
+      prev.map((m) =>
+        data.message_ids.includes(m.id)
+          ? { ...m, is_read: true, read_at: data.read_at }
+          : m
+      )
+    );
+  }, []);
+
+  const handleTyping = useCallback((data: WsTypingData) => {
+    const currentConvo = activeConvoRef.current;
+    if (!currentConvo || currentConvo.id !== data.conversation_id) return;
+    if (data.user_id === user?.id) return;
+
+    setTypingUsers((prev) => {
+      if (prev.has(data.user_id)) return prev;
+      const next = new Set(prev);
+      next.add(data.user_id);
+      return next;
+    });
+
+    const existing = typingTimersRef.current.get(data.user_id);
+    if (existing) clearTimeout(existing);
+    const t = setTimeout(() => {
+      setTypingUsers((prev) => {
+        if (!prev.has(data.user_id)) return prev;
+        const next = new Set(prev);
+        next.delete(data.user_id);
+        return next;
+      });
+      typingTimersRef.current.delete(data.user_id);
+    }, TYPING_INDICATOR_MS);
+    typingTimersRef.current.set(data.user_id, t);
+  }, [user?.id]);
+
+  const { sendTyping } = useWebSocket({
+    onMessage: handleWsMessage,
+    onMessagesRead: handleMessagesRead,
+    onTyping: handleTyping,
+    enabled: !!user,
+  });
 
   // === Send message ===
 
@@ -145,6 +258,10 @@ function MessagesContent() {
         id: `tmp-${Date.now()}`,
         content,
         is_read: true,
+        read_at: null,
+        is_system: false,
+        sender_role: undefined,
+        attachments: [],
         sender: {
           id: user.id,
           username: user.username,
@@ -168,6 +285,15 @@ function MessagesContent() {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setNewMessage(e.target.value);
+    if (!activeConvo) return;
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current < TYPING_EMIT_MIN_MS) return;
+    lastTypingEmitRef.current = now;
+    sendTyping(activeConvo.id);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -197,6 +323,25 @@ function MessagesContent() {
   const avatarLetters = (first: string, last: string) =>
     `${first?.[0] ?? ""}${last?.[0] ?? ""}`.toUpperCase();
 
+  const otherPresenceText = (userId: string): string | null => {
+    const p = presence[userId];
+    if (!p) return null;
+    if (p.is_online) return ar ? "متصل الآن" : "Online";
+    if (!p.last_seen_at) return null;
+    return ar
+      ? `آخر ظهور ${timeAgo(p.last_seen_at)}`
+      : `Last seen ${timeAgo(p.last_seen_at)}`;
+  };
+
+  const conversationTypeBadge = (c: ConversationSummary): string | null => {
+    if (c.conversation_type === "support") return ar ? "الدعم" : "Support";
+    if (c.conversation_type === "order") return ar ? "طلب" : "Order";
+    return null;
+  };
+
+  const activeOtherTyping =
+    activeConvo && typingUsers.has(activeConvo.other_user.id);
+
   return (
     <div className="flex h-[calc(100vh-80px)] bg-white">
       {/* Sidebar: Conversation List */}
@@ -225,60 +370,77 @@ function MessagesContent() {
               {ar ? "لا توجد محادثات بعد" : "No conversations yet"}
             </div>
           ) : (
-            conversations.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => selectConversation(c)}
-                className={`w-full p-3 text-start border-b border-gray-50 hover:bg-gray-50 transition-colors ${
-                  activeConvo?.id === c.id
-                    ? `bg-brand-50 ${ar ? "border-r-2 border-r-brand-500" : "border-l-2 border-l-brand-500"}`
-                    : ""
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="relative shrink-0">
-                    {c.other_user.avatar_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={backendUrl(c.other_user.avatar_url)}
-                        alt=""
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 bg-brand-100 rounded-full flex items-center justify-center text-sm font-semibold text-brand-700">
-                        {avatarLetters(c.other_user.first_name, c.other_user.last_name)}
-                      </div>
-                    )}
-                    {c.unread_count > 0 && (
-                      <span className="absolute -top-0.5 -start-0.5 w-4 h-4 bg-brand-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                        {c.unread_count > 9 ? "9+" : c.unread_count}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0 text-start">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className={`text-sm truncate ${c.unread_count > 0 ? "font-semibold text-gray-900" : "font-medium text-gray-700"}`}>
-                        {c.other_user.first_name} {c.other_user.last_name}
-                      </span>
-                      {c.last_message_at && (
-                        <span className="text-[11px] text-gray-400 shrink-0">
-                          {timeAgo(c.last_message_at)}
+            conversations.map((c) => {
+              const online = presence[c.other_user.id]?.is_online ?? false;
+              const badge = conversationTypeBadge(c);
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => selectConversation(c)}
+                  className={`w-full p-3 text-start border-b border-gray-50 hover:bg-gray-50 transition-colors ${
+                    activeConvo?.id === c.id
+                      ? `bg-brand-50 ${ar ? "border-r-2 border-r-brand-500" : "border-l-2 border-l-brand-500"}`
+                      : ""
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      {c.other_user.avatar_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={backendUrl(c.other_user.avatar_url)}
+                          alt=""
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 bg-brand-100 rounded-full flex items-center justify-center text-sm font-semibold text-brand-700">
+                          {avatarLetters(c.other_user.first_name, c.other_user.last_name)}
+                        </div>
+                      )}
+                      {online && (
+                        <span
+                          className="absolute bottom-0 end-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"
+                          aria-label={ar ? "متصل الآن" : "Online"}
+                        />
+                      )}
+                      {c.unread_count > 0 && (
+                        <span className="absolute -top-0.5 -start-0.5 w-4 h-4 bg-brand-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                          {c.unread_count > 9 ? "9+" : c.unread_count}
                         </span>
                       )}
                     </div>
-                    <p className={`text-xs truncate mt-0.5 ${c.unread_count > 0 ? "text-gray-700" : "text-gray-400"}`}>
-                      {c.last_message_text || (ar ? "لا توجد رسائل" : "No messages")}
-                    </p>
-                    {c.job && (
-                      <p className="text-[10px] text-brand-400 truncate mt-0.5">
-                        {c.job.title}
+
+                    <div className="flex-1 min-w-0 text-start">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className={`text-sm truncate ${c.unread_count > 0 ? "font-semibold text-gray-900" : "font-medium text-gray-700"}`}>
+                          {c.other_user.first_name} {c.other_user.last_name}
+                        </span>
+                        {c.last_message_at && (
+                          <span className="text-[11px] text-gray-400 shrink-0">
+                            {timeAgo(c.last_message_at)}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-xs truncate mt-0.5 ${c.unread_count > 0 ? "text-gray-700" : "text-gray-400"}`}>
+                        {c.last_message_text || (ar ? "لا توجد رسائل" : "No messages")}
                       </p>
-                    )}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {badge && (
+                          <span className="text-[9px] uppercase tracking-wide bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                            {badge}
+                          </span>
+                        )}
+                        {c.job && (
+                          <p className="text-[10px] text-brand-400 truncate">
+                            {c.job.title}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))
+                </button>
+              );
+            })
           )}
         </div>
       </div>
@@ -300,7 +462,7 @@ function MessagesContent() {
               <div className="flex gap-2 items-end">
                 <textarea
                   value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
+                  onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   placeholder={ar ? "اكتب رسالتك..." : "Type a message..."}
                   rows={1}
@@ -324,35 +486,57 @@ function MessagesContent() {
           <>
             {/* Header */}
             <div className="px-5 py-3.5 border-b border-gray-200 bg-white flex items-center gap-3">
-              {activeConvo.other_user.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={backendUrl(activeConvo.other_user.avatar_url)}
-                  alt=""
-                  className="w-9 h-9 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center text-sm font-semibold text-brand-700">
-                  {avatarLetters(activeConvo.other_user.first_name, activeConvo.other_user.last_name)}
-                </div>
-              )}
-              <div>
-                <div className="font-semibold text-gray-900 text-sm">
-                  {activeConvo.other_user.first_name} {activeConvo.other_user.last_name}
-                </div>
-                {activeConvo.job && (
-                  <div className="text-xs text-gray-400">
-                    {ar ? "بشأن:" : "Re:"} {activeConvo.job.title}
+              <div className="relative shrink-0">
+                {activeConvo.other_user.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={backendUrl(activeConvo.other_user.avatar_url)}
+                    alt=""
+                    className="w-9 h-9 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center text-sm font-semibold text-brand-700">
+                    {avatarLetters(activeConvo.other_user.first_name, activeConvo.other_user.last_name)}
                   </div>
                 )}
+                {presence[activeConvo.other_user.id]?.is_online && (
+                  <span className="absolute bottom-0 end-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold text-gray-900 text-sm truncate">
+                  {activeConvo.other_user.first_name} {activeConvo.other_user.last_name}
+                </div>
+                <div className="text-xs text-gray-400 truncate">
+                  {activeOtherTyping
+                    ? (ar ? "يكتب..." : "typing...")
+                    : otherPresenceText(activeConvo.other_user.id) ?? (
+                        activeConvo.job
+                          ? `${ar ? "بشأن:" : "Re:"} ${activeConvo.job.title}`
+                          : ""
+                      )}
+                </div>
               </div>
             </div>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50">
               {messages.map((msg) => {
+                const isSystem = msg.is_system || msg.sender_role === "system";
+                if (isSystem) {
+                  return (
+                    <div key={msg.id} className="flex justify-center">
+                      <div className="max-w-[80%] bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-full text-center whitespace-pre-wrap">
+                        {msg.content}
+                      </div>
+                    </div>
+                  );
+                }
+
                 const isMe = msg.sender.id === user?.id;
                 const isOptimistic = msg.id.startsWith("tmp-");
+                const readByOther = isMe && (msg.is_read || !!msg.read_at);
+                const attachments = msg.attachments ?? [];
                 return (
                   <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                     <div
@@ -363,16 +547,52 @@ function MessagesContent() {
                       } ${isOptimistic ? "opacity-70" : ""}`}
                     >
                       <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                      <p className={`text-[11px] mt-1 ${isMe ? "text-brand-200" : "text-gray-400"}`}>
-                        {new Date(msg.created_at).toLocaleTimeString(ar ? "ar-IQ" : "en-US", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
+                      {attachments.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {attachments.map((a, i) => (
+                            <li key={i}>
+                              <a
+                                href={backendUrl(a.url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`text-xs underline ${isMe ? "text-brand-100" : "text-brand-600"} break-all`}
+                              >
+                                {a.filename || a.url}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className={`flex items-center gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
+                        <span className={`text-[11px] ${isMe ? "text-brand-200" : "text-gray-400"}`}>
+                          {new Date(msg.created_at).toLocaleTimeString(ar ? "ar-IQ" : "en-US", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        {isMe && !isOptimistic && (
+                          <span
+                            className={`text-[11px] ${readByOther ? "text-sky-200" : "text-brand-200/70"}`}
+                            aria-label={readByOther ? (ar ? "مقروءة" : "Read") : (ar ? "تم الإرسال" : "Sent")}
+                            title={readByOther ? (ar ? "مقروءة" : "Read") : (ar ? "تم الإرسال" : "Sent")}
+                          >
+                            {readByOther ? "✓✓" : "✓"}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
               })}
+              {activeOtherTyping && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-2 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" />
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
@@ -381,7 +601,7 @@ function MessagesContent() {
               <div className="flex gap-2 items-end">
                 <textarea
                   value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
+                  onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   placeholder={ar ? "اكتب رسالتك..." : "Type a message..."}
                   rows={1}

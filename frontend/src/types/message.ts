@@ -1,5 +1,8 @@
 // === Message & Conversation Types ===
 
+export type ConversationType = "user" | "order" | "support";
+export type SenderRole = "client" | "freelancer" | "admin" | "system";
+
 export interface MessageUserInfo {
   id: string;
   username: string;
@@ -13,10 +16,24 @@ export interface ConversationJobInfo {
   title: string;
 }
 
+export interface ConversationOrderInfo {
+  id: string;
+  status: string;
+}
+
+export interface MessageAttachment {
+  url: string;
+  filename: string;
+  mime_type?: string;
+  size_bytes?: number;
+}
+
 export interface ConversationSummary {
   id: string;
+  conversation_type?: ConversationType;
   other_user: MessageUserInfo;
   job?: ConversationJobInfo;
+  order?: ConversationOrderInfo;
   last_message_text?: string;
   last_message_at?: string;
   message_count: number;
@@ -28,6 +45,10 @@ export interface MessageDetail {
   id: string;
   content: string;
   is_read: boolean;
+  read_at?: string | null;
+  is_system?: boolean;
+  sender_role?: SenderRole;
+  attachments?: MessageAttachment[];
   sender: MessageUserInfo;
   created_at: string;
 }
@@ -46,4 +67,14 @@ export interface ConversationListResponse {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+export interface PresenceInfo {
+  user_id: string;
+  is_online: boolean;
+  last_seen_at?: string | null;
+}
+
+export interface PresenceListResponse {
+  users: PresenceInfo[];
 }

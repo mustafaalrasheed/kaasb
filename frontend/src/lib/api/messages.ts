@@ -15,4 +15,9 @@ export const messagesApi = {
 
   sendMessage: (conversationId: string, data: { content: string }) =>
     api.post(`/messages/conversations/${conversationId}`, data),
+
+  // Batch presence lookup — used when rendering the conversation list to show
+  // the green dot on online users and a "Last seen ..." subtitle otherwise.
+  getPresence: (userIds: string[]) =>
+    api.get("/messages/presence", { params: { user_ids: userIds } }),
 };

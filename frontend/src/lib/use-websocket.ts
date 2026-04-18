@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { authApi } from "@/lib/api";
+import type { MessageAttachment, SenderRole } from "@/types/message";
 
 const WS_BASE =
   (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000")
@@ -10,6 +11,8 @@ const WS_BASE =
 
 export type WsMessage =
   | { type: "message"; data: WsMessageData }
+  | { type: "messages_read"; data: WsMessagesReadData }
+  | { type: "typing"; data: WsTypingData }
   | { type: "notification"; data: WsNotificationData }
   | { type: "ping" };
 
@@ -20,7 +23,22 @@ export interface WsMessageData {
   sender_id: string;
   sender_name: string;
   sender_avatar?: string;
+  sender_role?: SenderRole;
+  is_system?: boolean;
+  attachments?: MessageAttachment[];
   created_at: string;
+}
+
+export interface WsMessagesReadData {
+  conversation_id: string;
+  reader_id: string;
+  message_ids: string[];
+  read_at: string;
+}
+
+export interface WsTypingData {
+  conversation_id: string;
+  user_id: string;
 }
 
 export interface WsNotificationData {
@@ -35,8 +53,19 @@ export interface WsNotificationData {
 
 interface UseWebSocketOptions {
   onMessage?: (data: WsMessageData) => void;
+  onMessagesRead?: (data: WsMessagesReadData) => void;
+  onTyping?: (data: WsTypingData) => void;
   onNotification?: (data: WsNotificationData) => void;
   enabled?: boolean;
+}
+
+export interface UseWebSocketApi {
+  /**
+   * Send an outbound typing heartbeat. Backend rate-limits to 1/sec per
+   * conversation, so callers don't need to throttle tightly; once-per-keystroke
+   * is fine. No-ops if the socket is not open.
+   */
+  sendTyping: (conversationId: string) => void;
 }
 
 /**
@@ -46,36 +75,39 @@ interface UseWebSocketOptions {
  */
 export function useWebSocket({
   onMessage,
+  onMessagesRead,
+  onTyping,
   onNotification,
   enabled = true,
-}: UseWebSocketOptions) {
+}: UseWebSocketOptions): UseWebSocketApi {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(1000);
   const mountedRef = useRef(true);
 
   const onMessageRef = useRef(onMessage);
+  const onMessagesReadRef = useRef(onMessagesRead);
+  const onTypingRef = useRef(onTyping);
   const onNotificationRef = useRef(onNotification);
   onMessageRef.current = onMessage;
+  onMessagesReadRef.current = onMessagesRead;
+  onTypingRef.current = onTyping;
   onNotificationRef.current = onNotification;
 
   const connect = useCallback(async () => {
     if (!mountedRef.current || !enabled) return;
 
-    // Clean up any existing connection
     if (wsRef.current) {
       wsRef.current.onclose = null;
       wsRef.current.close();
       wsRef.current = null;
     }
 
-    // Get a fresh ticket from the backend
     let ticket: string;
     try {
       const res = await authApi.getWsTicket();
       ticket = res.data.ticket;
     } catch {
-      // Not authenticated or network error — retry after delay
       scheduleReconnect();
       return;
     }
@@ -86,7 +118,7 @@ export function useWebSocket({
     wsRef.current = ws;
 
     ws.onopen = () => {
-      reconnectDelay.current = 1000; // Reset back-off on successful connect
+      reconnectDelay.current = 1000;
     };
 
     ws.onmessage = (event) => {
@@ -101,18 +133,21 @@ export function useWebSocket({
         ws.send(JSON.stringify({ type: "pong" }));
       } else if (parsed.type === "message") {
         onMessageRef.current?.(parsed.data);
+      } else if (parsed.type === "messages_read") {
+        onMessagesReadRef.current?.(parsed.data);
+      } else if (parsed.type === "typing") {
+        onTypingRef.current?.(parsed.data);
       } else if (parsed.type === "notification") {
         onNotificationRef.current?.(parsed.data);
       }
     };
 
     ws.onerror = () => {
-      // onclose will fire after onerror — reconnect is handled there
+      // onclose fires after onerror — reconnect is handled there
     };
 
-    ws.onclose = (_event) => {
+    ws.onclose = () => {
       wsRef.current = null;
-      // 4001 = auth failure (invalid/expired ticket) — still retry after delay
       if (mountedRef.current) {
         scheduleReconnect();
       }
@@ -122,11 +157,16 @@ export function useWebSocket({
   function scheduleReconnect() {
     if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
     reconnectTimer.current = setTimeout(() => {
-      // Exponential back-off: 1s → 2s → 4s → ... → 30s max
       reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000);
       connect();
     }, reconnectDelay.current);
   }
+
+  const sendTyping = useCallback((conversationId: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "typing", conversation_id: conversationId }));
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -143,4 +183,6 @@ export function useWebSocket({
       }
     };
   }, [connect, enabled]);
+
+  return { sendTyping };
 }
