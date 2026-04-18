@@ -64,9 +64,11 @@ async def mark_online(user_id: uuid.UUID) -> None:
     try:
         r = await _get_redis()
         # INCR is atomic. We read the result to know if this is the first conn.
-        count = await r.incr(f"{_CONN_COUNT_PREFIX}{uid}")
+        # redis-py types async returns as T | Awaitable[T] because the same
+        # interface covers both sync and async clients — hence the ignores.
+        count = await r.incr(f"{_CONN_COUNT_PREFIX}{uid}")  # type: ignore[misc]
         if count == 1:
-            await r.sadd(_ONLINE_SET, uid)
+            await r.sadd(_ONLINE_SET, uid)  # type: ignore[misc]
     except Exception as e:
         logger.warning("presence: redis mark_online failed (%s) — using fallback", e)
         await _incr_fallback(uid)
@@ -82,10 +84,10 @@ async def mark_offline(user_id: uuid.UUID) -> bool:
     now_fully_offline = False
     try:
         r = await _get_redis()
-        count = await r.decr(f"{_CONN_COUNT_PREFIX}{uid}")
+        count = await r.decr(f"{_CONN_COUNT_PREFIX}{uid}")  # type: ignore[misc]
         if count <= 0:
-            await r.delete(f"{_CONN_COUNT_PREFIX}{uid}")
-            await r.srem(_ONLINE_SET, uid)
+            await r.delete(f"{_CONN_COUNT_PREFIX}{uid}")  # type: ignore[misc]
+            await r.srem(_ONLINE_SET, uid)  # type: ignore[misc]
             now_fully_offline = True
     except Exception as e:
         logger.warning("presence: redis mark_offline failed (%s) — using fallback", e)
@@ -102,7 +104,7 @@ async def is_online(user_id: uuid.UUID) -> bool:
     uid = str(user_id)
     try:
         r = await _get_redis()
-        return bool(await r.sismember(_ONLINE_SET, uid))
+        return bool(await r.sismember(_ONLINE_SET, uid))  # type: ignore[misc]
     except Exception:
         return uid in _fallback_online
 
@@ -115,7 +117,7 @@ async def get_online(user_ids: list[uuid.UUID]) -> set[uuid.UUID]:
         r = await _get_redis()
         # SMISMEMBER returns a list of 0/1 in the same order as args.
         uids = [str(u) for u in user_ids]
-        flags = await r.smismember(_ONLINE_SET, uids)
+        flags = await r.smismember(_ONLINE_SET, uids)  # type: ignore[misc]
         return {user_ids[i] for i, f in enumerate(flags) if f}
     except Exception:
         return {u for u in user_ids if str(u) in _fallback_online}

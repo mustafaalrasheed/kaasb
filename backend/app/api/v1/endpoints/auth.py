@@ -219,8 +219,12 @@ async def logout(
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke the provided refresh token and clear auth cookies."""
-    service = AuthService(db)
-    await service.logout(current_user, data.refresh_token)
+    # TokenRefresh.refresh_token is optional — browsers send only the httpOnly
+    # cookie (which the frontend clears on its own), so the body may be empty.
+    # Clearing cookies + invalidating any supplied token is enough.
+    if data.refresh_token:
+        service = AuthService(db)
+        await service.logout(current_user, data.refresh_token)
     _clear_auth_cookies(response)
     return {"message": "Logged out successfully"}
 

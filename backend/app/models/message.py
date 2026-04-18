@@ -83,7 +83,14 @@ class Conversation(BaseModel):
 
     # === Kind + context ===
     conversation_type: Mapped[ConversationType] = mapped_column(
-        Enum(ConversationType, name="conversationtype"),
+        # values_callable so SQLAlchemy stores the enum ``.value`` (lowercase,
+        # matching the PG enum type) rather than ``.name`` (UPPERCASE, which
+        # the DB rejects with "invalid input value for enum conversationtype").
+        Enum(
+            ConversationType,
+            name="conversationtype",
+            values_callable=lambda e: [x.value for x in e],
+        ),
         default=ConversationType.USER,
         nullable=False,
         index=True,
@@ -173,7 +180,14 @@ class Message(BaseModel):
 
     # Frozen role of sender at send time — see SenderRole docstring.
     sender_role: Mapped[SenderRole] = mapped_column(
-        Enum(SenderRole, name="senderrole"), nullable=False,
+        # Same values_callable rationale as ConversationType — DB enum values
+        # are lowercase, so SQLAlchemy must bind ``.value`` not ``.name``.
+        Enum(
+            SenderRole,
+            name="senderrole",
+            values_callable=lambda e: [x.value for x in e],
+        ),
+        nullable=False,
     )
 
     def __repr__(self) -> str:

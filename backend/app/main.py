@@ -186,9 +186,10 @@ async def lifespan(app: FastAPI):
 
     # === Shutdown ===
     subscriber_task.cancel()
-    from contextlib import suppress
-    async with suppress(asyncio.CancelledError):
+    try:
         await subscriber_task
+    except asyncio.CancelledError:
+        pass
     await engine.dispose()
     logger.info("%s shutting down...", settings.APP_NAME)
 
