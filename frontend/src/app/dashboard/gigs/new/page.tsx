@@ -62,6 +62,10 @@ const t = {
     tagsLabel: "الكلمات المفتاحية",
     tagsPlaceholder: "مثال: تصميم، شعار، هوية بصرية (افصل بفواصل)",
     tagsHint: "أضف كلمات مفتاحية تساعد العملاء في العثور على خدمتك",
+    imagesLabel: "صور الخدمة (اختياري)",
+    imagesHint: "أضف حتى 5 صور لعرض أعمالك. الصورة الأولى ستكون الصورة الرئيسية.",
+    addImages: "اختيار الصور",
+    imageCount: (n: number) => `${n}/5 صور`,
 
     // Step 2
     pricingTitle: "الباقات",
@@ -122,6 +126,10 @@ const t = {
     tagsLabel: "Tags",
     tagsPlaceholder: "e.g., design, logo, branding (comma separated)",
     tagsHint: "Tags help buyers find your gig in search",
+    imagesLabel: "Gig Images (optional)",
+    imagesHint: "Add up to 5 images to showcase your work. The first image will be the thumbnail.",
+    addImages: "Choose Images",
+    imageCount: (n: number) => `${n}/5 images`,
 
     // Step 2
     pricingTitle: "Packages",
@@ -374,6 +382,8 @@ export default function NewGigPage() {
   const [subcategoryId, setSubcategoryId] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
+  const [images, setImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
 
   // Step 2 — packages
   const [packages, setPackages] = useState<Record<Tier, PackageForm>>({
@@ -403,6 +413,24 @@ export default function NewGigPage() {
       ...prev,
       [tier]: { ...prev[tier], enabled: !prev[tier].enabled },
     }));
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const remaining = 5 - images.length;
+    const toAdd = files.slice(0, remaining);
+    const newImages = [...images, ...toAdd];
+    setImages(newImages);
+    setImagePreviews(newImages.map((f) => URL.createObjectURL(f)));
+    e.target.value = "";
+  };
+
+  const handleImageRemove = (index: number) => {
+    URL.revokeObjectURL(imagePreviews[index]);
+    const newImages = images.filter((_, i) => i !== index);
+    const newPreviews = imagePreviews.filter((_, i) => i !== index);
+    setImages(newImages);
+    setImagePreviews(newPreviews);
   };
 
   const validateStep1 = () => {
@@ -485,7 +513,7 @@ export default function NewGigPage() {
 
       const tagList = tags.split(",").map((t) => t.trim()).filter(Boolean);
 
-      await gigsApi.create({
+      const createRes = await gigsApi.create({
         title: title.trim(),
         description: description.trim(),
         category_id: categoryId,
@@ -493,6 +521,15 @@ export default function NewGigPage() {
         tags: tagList.length > 0 ? tagList : undefined,
         packages: enabledPackages,
       });
+
+      const gigId: string = createRes.data.id;
+      for (const img of images) {
+        try {
+          await gigsApi.uploadImage(gigId, img);
+        } catch {
+          // Non-fatal: gig created, image upload failed silently
+        }
+      }
 
       toast.success(str.submitSuccess);
       router.push("/dashboard/gigs");
@@ -628,6 +665,48 @@ export default function NewGigPage() {
               maxLength={200}
             />
             <p className="mt-1 text-xs text-gray-400">{str.tagsHint}</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{str.imagesLabel}</label>
+            {imagePreviews.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {imagePreviews.map((src, i) => (
+                  <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt="" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => handleImageRemove(i)}
+                      className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-medium"
+                    >
+                      ✕
+                    </button>
+                    {i === 0 && (
+                      <span className="absolute bottom-0 inset-x-0 text-center text-white text-[10px] bg-black/60 py-0.5">
+                        {locale === "ar" ? "رئيسية" : "Main"}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {images.length < 5 && (
+              <label className="inline-flex items-center gap-2 cursor-pointer px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <span>📷</span>
+                <span>{str.addImages}</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="sr-only"
+                  onChange={handleImageSelect}
+                />
+              </label>
+            )}
+            <p className="mt-1.5 text-xs text-gray-400">
+              {str.imageCount(images.length)} · {str.imagesHint}
+            </p>
           </div>
         </div>
       )}

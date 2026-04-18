@@ -343,9 +343,6 @@ function ProposalCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
-        {f.hourly_rate && (
-          <span dir="ltr">{f.hourly_rate.toLocaleString(ar ? "ar-IQ" : "en-US")} {ar ? "د.ع/س" : "IQD/hr"}</span>
-        )}
         {f.avg_rating > 0 && <span>⭐ {f.avg_rating.toFixed(1)} ({f.total_reviews})</span>}
         <span>{f.jobs_completed} {ar ? "مشروع منجز" : "jobs completed"}</span>
         {f.country && <span>📍 {f.country}</span>}

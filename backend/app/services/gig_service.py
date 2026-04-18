@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError, ExternalServiceError, ForbiddenError, NotFoundError
@@ -44,6 +45,7 @@ from app.schemas.gig import (
 from app.services.base import BaseService
 from app.services.notification_service import notify
 from app.services.qi_card_client import USD_TO_IQD, QiCardClient, QiCardError
+from app.utils.files import MAX_GIG_IMAGES, delete_gig_image
 
 logger = logging.getLogger(__name__)
 
@@ -419,6 +421,37 @@ class GigService(BaseService):
             .order_by(Gig.created_at.asc())
         )
         return list(result.scalars().all())
+
+    # ──────────────────────────────────────────
+    # Images
+    # ──────────────────────────────────────────
+
+    async def add_image(self, gig_id: uuid.UUID, user: User, image_url: str) -> Gig:
+        gig = await self.get_gig_by_id_for_owner(gig_id, user)
+        current = list(gig.images or [])
+        if len(current) >= MAX_GIG_IMAGES:
+            raise BadRequestError(f"Maximum {MAX_GIG_IMAGES} images allowed per gig")
+        current.append(image_url)
+        gig.images = current
+        flag_modified(gig, "images")
+        if not gig.thumbnail_url:
+            gig.thumbnail_url = image_url
+        await self.db.commit()
+        return await self._load_gig(gig.id)  # type: ignore[return-value]
+
+    async def remove_image(self, gig_id: uuid.UUID, user: User, index: int) -> Gig:
+        gig = await self.get_gig_by_id_for_owner(gig_id, user)
+        current = list(gig.images or [])
+        if index < 0 or index >= len(current):
+            raise BadRequestError("Image index out of range")
+        removed_url = current.pop(index)
+        gig.images = current
+        flag_modified(gig, "images")
+        if gig.thumbnail_url == removed_url:
+            gig.thumbnail_url = current[0] if current else None
+        await self.db.commit()
+        delete_gig_image(removed_url)
+        return await self._load_gig(gig.id)  # type: ignore[return-value]
 
     # ──────────────────────────────────────────
     # Orders

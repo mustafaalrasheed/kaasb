@@ -146,9 +146,15 @@ class MessageService(BaseService):
             raise ForbiddenError("Not part of this conversation")
 
         attachments = [a.model_dump() for a in data.attachments]
-        return await self._send_message(
+        msg = await self._send_message(
             conversation, sender, data.content, attachments=attachments,
         )
+        # Reload with sender relationship — lazy="raise" blocks implicit load
+        # and FastAPI serializes MessageDetail which requires message.sender.
+        result = await self.db.execute(
+            select(Message).options(selectinload(Message.sender)).where(Message.id == msg.id)
+        )
+        return result.scalar_one()
 
     async def send_system_message(
         self, conversation_id: uuid.UUID, content: str,

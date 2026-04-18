@@ -98,7 +98,6 @@ export default function ProfileClient() {
         skills={profile.skills}
         country={profile.country}
         city={profile.city}
-        hourlyRate={profile.hourly_rate}
         rating={profile.avg_rating}
         reviewCount={profile.total_reviews}
         profileUrl={canonicalUrl(`/profile/${profile.username}`)}
@@ -196,14 +195,6 @@ export default function ProfileClient() {
             {/* Freelancer stats row */}
             {isFreelancer && (
               <div className="mt-4 flex flex-wrap gap-6 text-sm">
-                {profile.hourly_rate && (
-                  <div>
-                    <span className="font-semibold text-gray-900 text-lg" dir="ltr">
-                      ${profile.hourly_rate}
-                    </span>
-                    <span className="text-gray-500">/{ar ? "س" : "hr"}</span>
-                  </div>
-                )}
                 <div>
                   <span className="font-semibold text-gray-900">
                     {profile.avg_rating > 0

@@ -95,7 +95,6 @@ class UserProfile(BaseModel):
     city: str | None = None
     primary_role: str
     title: str | None = None
-    hourly_rate: float | None = None
     skills: list[str] | None = None
     experience_level: str | None = None
     portfolio_url: str | None = None
@@ -118,7 +117,6 @@ class UserProfileUpdate(BaseModel):
     timezone: str | None = Field(None, max_length=50)
     phone: str | None = Field(None, max_length=20)
     title: str | None = Field(None, max_length=200)
-    hourly_rate: float | None = Field(None, ge=5.0, le=500.0)
     skills: list[str] | None = Field(None, max_length=20)
     experience_level: str | None = Field(
         None, pattern=r"^(entry|intermediate|expert)$"

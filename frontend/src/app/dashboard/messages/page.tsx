@@ -343,7 +343,7 @@ function MessagesContent() {
     activeConvo && typingUsers.has(activeConvo.other_user.id);
 
   return (
-    <div className="flex h-[calc(100vh-80px)] bg-white">
+    <div className="flex h-[calc(100vh-160px)] bg-white rounded-lg border border-gray-200 overflow-hidden">
       {/* Sidebar: Conversation List */}
       <div className={`w-72 ${ar ? "border-l" : "border-r"} border-gray-200 flex flex-col shrink-0`}>
         <div className="p-4 border-b border-gray-100">

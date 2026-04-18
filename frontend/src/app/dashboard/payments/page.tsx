@@ -163,10 +163,15 @@ export default function PaymentsPage() {
           <h3 className="font-semibold text-gray-900">
             {ar ? "إضافة حساب Qi Card" : "Add Qi Card Account"}
           </h3>
+          <p className="text-sm text-gray-500">
+            {ar
+              ? "الدفع يتم عبر بوابة Qi Card — لا تحتاج إلى إدخال أي بيانات هنا لإتمام الدفع. رقم الهاتف أدناه اختياري ويُستخدم فقط كتسمية لحسابك."
+              : "Payments go through the Qi Card portal — no details required here to make a payment. The phone number below is optional and used only as an account label for your reference."}
+          </p>
           <div className="flex gap-3 items-end">
             <div className="flex-1">
               <label className="block text-sm text-gray-600 mb-1">
-                {ar ? "رقم الهاتف (اختياري)" : "Phone Number (optional)"}
+                {ar ? "رقم هاتف Qi Card (للتعريف فقط)" : "Qi Card phone number (label only)"}
               </label>
               <input
                 type="tel"

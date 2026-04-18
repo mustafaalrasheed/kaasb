@@ -232,7 +232,6 @@ interface PersonJsonLdProps {
   skills?: string[] | null;
   country?: string | null;
   city?: string | null;
-  hourlyRate?: number | null;
   rating?: number;
   reviewCount?: number;
   profileUrl: string;
@@ -256,17 +255,6 @@ export function PersonJsonLd(props: PersonJsonLdProps) {
             "@type": "PostalAddress",
             addressCountry: props.country,
             ...(props.city && { addressLocality: props.city }),
-          },
-        }),
-        ...(props.hourlyRate && {
-          makesOffer: {
-            "@type": "Offer",
-            priceSpecification: {
-              "@type": "UnitPriceSpecification",
-              price: props.hourlyRate,
-              priceCurrency: "IQD",
-              unitCode: "HUR",
-            },
           },
         }),
         ...(props.reviewCount &&

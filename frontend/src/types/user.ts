@@ -16,7 +16,6 @@ export interface User {
   is_email_verified: boolean;
   is_superuser: boolean;
   title: string | null;
-  hourly_rate: number | null;
   skills: string[] | null;
   experience_level: "entry" | "intermediate" | "expert" | null;
   portfolio_url: string | null;
@@ -50,7 +49,6 @@ export type UserProfile = Pick<
   | "city"
   | "primary_role"
   | "title"
-  | "hourly_rate"
   | "skills"
   | "experience_level"
   | "portfolio_url"

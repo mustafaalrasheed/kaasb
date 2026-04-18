@@ -102,6 +102,70 @@ async def save_avatar(file: UploadFile, user_id: str) -> str:
     return f"/uploads/avatars/{filename}"
 
 
+MAX_GIG_IMAGES = 5
+
+
+async def save_gig_image(file: UploadFile, gig_id: str) -> str:
+    """Save a gig image and return the relative URL path."""
+    filename_check = file.filename or ""
+    if ".." in filename_check or "/" in filename_check or "\\" in filename_check:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    if file.content_type not in settings.ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Allowed: {', '.join(settings.ALLOWED_IMAGE_TYPES)}",
+        )
+
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    chunks = []
+    total_size = 0
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File too large. Maximum size: {settings.MAX_UPLOAD_SIZE_MB}MB",
+            )
+        chunks.append(chunk)
+    contents = b"".join(chunks)
+
+    detected_type = _detect_image_type(contents[:16])
+    if detected_type is None or detected_type not in settings.ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File content does not match a supported image format",
+        )
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename else "jpg"
+    if ext not in ("jpg", "jpeg", "png", "webp"):
+        ext = "jpg"
+    filename = f"{gig_id}_{uuid.uuid4().hex[:8]}.{ext}"
+
+    gig_dir = get_upload_dir("gigs")
+    file_path = gig_dir / filename
+    with file_path.open("wb") as f:
+        f.write(contents)
+
+    return f"/uploads/gigs/{filename}"
+
+
+def delete_gig_image(image_url: str | None) -> None:
+    """Delete a gig image file from disk (safe against path traversal)."""
+    if not image_url:
+        return
+    upload_dir = Path(settings.UPLOAD_DIR).resolve()
+    filename = Path(image_url).name
+    file_path = (upload_dir / "gigs" / filename).resolve()
+    if not str(file_path).startswith(str(upload_dir)):
+        return
+    if file_path.exists():
+        file_path.unlink(missing_ok=True)
+
+
 def delete_avatar(avatar_url: str | None) -> None:
     """Delete an avatar file from disk (safe against path traversal)."""
     if not avatar_url:

@@ -30,7 +30,7 @@ Admin
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import (
@@ -50,6 +50,7 @@ from app.schemas.gig import (
     GigUpdate,
 )
 from app.services.gig_service import GigService
+from app.utils.files import save_gig_image
 
 router = APIRouter(prefix="/gigs", tags=["Gigs"])
 
@@ -227,6 +228,29 @@ async def resume_gig(
 ):
     svc = GigService(db)
     return await svc.resume_gig(gig_id, current_user)
+
+
+@router.post("/{gig_id}/images", response_model=GigOut, summary="Upload a gig image (max 5)")
+async def upload_gig_image(
+    gig_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    image_url = await save_gig_image(file, str(gig_id))
+    svc = GigService(db)
+    return await svc.add_image(gig_id, current_user, image_url)
+
+
+@router.delete("/{gig_id}/images/{index}", response_model=GigOut, summary="Remove a gig image by index")
+async def delete_gig_image(
+    gig_id: uuid.UUID,
+    index: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    svc = GigService(db)
+    return await svc.remove_image(gig_id, current_user, index)
 
 
 # ──────────────────────────────────────────────

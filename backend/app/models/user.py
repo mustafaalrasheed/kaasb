@@ -74,7 +74,6 @@ class User(BaseModel):
     title: Mapped[str | None] = mapped_column(
         String(200), nullable=True
     )  # e.g., "Senior Python Developer"
-    hourly_rate: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     skills: Mapped[list[str] | None] = mapped_column(
         ARRAY(String), nullable=True
     )  # ["Python", "FastAPI", "React"]

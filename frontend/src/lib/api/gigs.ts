@@ -59,6 +59,18 @@ export const gigsApi = {
   requestRevision: (orderId: string) => api.post(`/gigs/orders/${orderId}/revision`),
   completeOrder: (orderId: string) => api.post(`/gigs/orders/${orderId}/complete`),
 
+  // Images
+  uploadImage: (gigId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post(`/gigs/${gigId}/images`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
+  deleteImage: (gigId: string, index: number) =>
+    api.delete(`/gigs/${gigId}/images/${index}`),
+
   // Admin
   pendingReview: () => api.get("/gigs/admin/pending"),
   approve: (gigId: string) => api.post(`/gigs/admin/${gigId}/approve`),

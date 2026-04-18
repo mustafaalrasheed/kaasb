@@ -19,7 +19,7 @@ Before reading any file, follow these rules:
 | Item | Value |
 |------|-------|
 | Product | Iraqi freelancing marketplace |
-| Stack | FastAPI 0.115.6 · Next.js 15.3.9 · PostgreSQL 16 · Redis 7 |
+| Stack | FastAPI 0.136.0 · Next.js 15.5.15 · PostgreSQL 16 · Redis 7 |
 | Python | 3.12 / Uvicorn 0.34.0 / Gunicorn 21.2.0 |
 | Frontend | React 19 · TypeScript 5.7.2 · Tailwind 3.4.17 · shadcn/ui |
 | Auth | JWT (httpOnly cookies) + Google OAuth + Facebook + Phone OTP |
@@ -65,7 +65,7 @@ Before reading any file, follow these rules:
 | File | Tables | Key columns |
 |------|--------|-------------|
 | `backend/app/models/base.py` | `BaseModel` | `id` UUID PK, `created_at`, `updated_at` |
-| `backend/app/models/user.py` | `users` | `email`, `username`, `hashed_password` (nullable), `primary_role`, `status`, `google_id`, `facebook_id`, `token_version`, `phone`, `skills[]`, `avg_rating` |
+| `backend/app/models/user.py` | `users` | `email`, `username`, `hashed_password` (nullable), `primary_role`, `status`, `google_id`, `facebook_id`, `token_version`, `phone`, `skills[]`, `avg_rating`, `last_seen_at` |
 | `backend/app/models/refresh_token.py` | `refresh_tokens` | `user_id`, `token_hash`, `expires_at`, `revoked_at` |
 | `backend/app/models/phone_otp.py` | `phone_otps` | `phone`, `otp_hash` (SHA-256), `expires_at` (10min), `is_used`, `attempts` (locked at ≥5) |
 | `backend/app/models/job.py` | `jobs` | `title`, `category`, `job_type`, `status`, `client_id`, `freelancer_id`, `proposal_count` |
@@ -73,7 +73,7 @@ Before reading any file, follow these rules:
 | `backend/app/models/contract.py` | `contracts`, `milestones` | `client_id`, `freelancer_id`, `status`, `total_amount` |
 | `backend/app/models/gig.py` | `gigs`, `gig_packages`, `gig_orders`, `gig_categories`, `gig_subcategories` | `slug`, `status` (pending_review/active/rejected/paused/draft), `freelancer_id`, `category_id`, `rejection_reason`, `reviewed_by_id` (FK→users), `reviewed_at` |
 | `backend/app/models/payment.py` | `transactions`, `escrows`, `payment_accounts` | `escrow.status` (pending/funded/released/refunded/disputed), `currency="IQD"` |
-| `backend/app/models/message.py` | `conversations`, `messages` | `participant_one_id`, `participant_two_id`, `last_message_at` |
+| `backend/app/models/message.py` | `conversations`, `messages` | `participant_one_id`, `participant_two_id`, `last_message_at`, `conversation_type` (USER/ORDER/SUPPORT), `order_id`; messages: `sender_role` (CLIENT/FREELANCER/ADMIN/SYSTEM), `is_system`, `attachments` JSONB, `read_at` |
 | `backend/app/models/notification.py` | `notifications` | `user_id`, `type` (enum), `is_read`, `link_type`, `link_id`, `actor_id`. Types include: proposal_*, contract_*, milestone_*, payment_*, review_received, new_message, **gig_approved, gig_rejected, gig_submitted**, system_alert |
 | `backend/app/models/review.py` | `reviews` | `contract_id`, `reviewer_id`, `reviewee_id`, `rating` (1–5), UNIQUE per contract per party |
 | `backend/app/models/report.py` | `reports` | `reporter_id`, `report_type`, `target_id`, `reason`, `status` |
@@ -82,7 +82,7 @@ Before reading any file, follow these rules:
 
 | File | Purpose | Key methods |
 |------|---------|-------------|
-| `backend/app/services/auth_service.py` | Register, login, tokens, social, OTP | `register`, `login`, `refresh_token`, `social_login`, `send_phone_otp`, `verify_phone_otp`, `forgot_password`, `reset_password` |
+| `backend/app/services/auth_service.py` | Register, login, tokens, social, OTP | `register`, `login`, `refresh_token`, `social_login`, `send_phone_otp`, `verify_phone_otp`, `forgot_password`, `reset_password`, `change_password` — password change/reset revokes ALL live refresh tokens + bumps `token_version` |
 | `backend/app/services/user_service.py` | Profile CRUD, directory | `get_user`, `update_profile`, `list_freelancers` |
 | `backend/app/services/job_service.py` | Job CRUD, search | `create_job`, `update_job`, `search_jobs`, `get_job` |
 | `backend/app/services/proposal_service.py` | Proposal lifecycle | `submit_proposal`, `accept_proposal`, `reject_proposal`, `withdraw_proposal` |
@@ -383,12 +383,12 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 
 | # | Issue | Priority | Added |
 |---|-------|----------|-------|
-| 1 | **WebSocket per-worker** — real-time push only reaches clients on same Gunicorn worker. 5s polling fallback covers cross-worker. Fix: Redis pub/sub. | High | 2026-04-04 |
+| 1 | ~~**WebSocket per-worker**~~ — **RESOLVED** 2026-04-14: Redis pub/sub (psubscribe) bridges all workers. | ~~High~~ Closed | 2026-04-04 |
 | 2 | **QiCard refunds** — no refund API in QiCard v0. `refund_payment()` raises `QiCardError` to force manual flow via merchant portal. | Medium | 2026-04-04 |
 | 3 | **QiCard payouts** — no payout API. Admin pays via QiCard dashboard then clicks "Mark Paid" in Kaasb admin. | Medium | 2026-04-04 |
 | 4 | **Phone OTP (beta)** — OTP delivered via email. To go live: set `TWILIO_*` env vars and switch `email_service.send_phone_otp` → Twilio in `auth_service.send_phone_otp`. | High | 2026-04-04 |
 | 5 | **USD_TO_IQD rate** — hardcoded as `1310.0` in `backend/app/services/qi_card_client.py:60`. Needs live rate API or manual update mechanism. | Medium | 2026-04-04 |
-| 6 | **Gig orders → QiCard** — `POST /gigs/orders` exists but payment initiation not wired. Escrow not created on order placement. | Medium | 2026-04-04 |
+| 6 | ~~**Gig orders → QiCard**~~ — **RESOLVED** 2026-04-14: `place_order` creates Escrow + Transaction; `complete_order` releases escrow (migration g3b4c5d6e7f8). | ~~Medium~~ Closed | 2026-04-04 |
 | 7 | **i18n translation files unused** — `src/messages/ar.json` and `en.json` exist as reference but not imported at runtime (all translations are inline ternaries). | Low | 2026-04-04 |
 
 ---
@@ -397,6 +397,9 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 
 | Date | Change |
 |------|--------|
+| 2026-04-18 | Gig image upload built end-to-end: `save_gig_image()`+`delete_gig_image()` in files.py (max 5, magic-byte validated); `add_image()`+`remove_image()` on GigService (flag_modified for ARRAY); `POST /gigs/{id}/images` + `DELETE /gigs/{id}/images/{index}` endpoints; `uploadImage()`+`deleteImage()` in frontend gigsApi; image picker UI with local preview in new-gig Step 1; images uploaded sequentially after gig creation before redirect |
+| 2026-04-18 | hourly_rate fully removed (model, schema, service, endpoint, 6 frontend files); hero CTA invisible-button bug fixed (dropped blank placeholder, now falls through to correct SSR state during auth loading); Qi Card account setup label clarified (explains phone is a local label, not sent to API); sort-by-rate options removed from freelancer search |
+| 2026-04-18 | Security hardening: session rotation on password change/reset (revoke all refresh tokens + bump token_version); CVE dep bumps — starlette 0.49.1, fastapi 0.136, python-jose 3.4.0, pytest 9.0.3, black 26.3.1, pytest-asyncio 1.3.0, Pillow 12.2, axios 1.12.2, Next.js 15.5.15; admin support inbox (admins read/reply to SUPPORT conversations; participant check relaxed for superusers); CI + deploy green on main (d53bbbd) |
 | 2026-04-17 | Chat system Phase 3: migration j6e7f8g9h0i1 (messages.read_at, users.last_seen_at); Redis-backed presence service at `app/services/presence.py` with multi-connection counter; `GET /messages/presence` batch endpoint; read receipts wired into `get_messages` (updates read_at, pushes `messages_read` WS event to sender); typing indicators via inbound WS `typing` events with per-conversation membership cache + 1s rate limit |
 | 2026-04-17 | Chat system Phase 1+2: migration i5d6e7f8g9h0 (ConversationType enum, SenderRole enum, conversations.order_id, messages.is_system + attachments JSONB); domain event bus at `app/services/events.py` (MessageSentEvent); message_service decoupled from notifications (publishes events instead); message_subscribers.py handles notification + WS push with own DB sessions; support threads and system messages first-class |
 | 2026-04-15 | CI history cleaned (134+ failed/skipped runs deleted → 72/72 green); regenerated frontend package-lock.json (21 drifted packages); switched CI to `npm ci --legacy-peer-deps` for deterministic builds; added reusable regenerate-lockfile.yml workflow |

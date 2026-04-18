@@ -14,8 +14,8 @@ const sidebarLinks = [
   { href: "/dashboard", labelAr: "نظرة عامة", labelEn: "Overview", icon: "📊", roles: ["client", "freelancer"] },
   { href: "/dashboard/contracts", labelAr: "العقود", labelEn: "Contracts", icon: "📝", roles: ["client", "freelancer"] },
   { href: "/dashboard/payments", labelAr: "المدفوعات", labelEn: "Payments", icon: "💰", roles: ["client", "freelancer"] },
-  { href: "/dashboard/messages", labelAr: "الرسائل", labelEn: "Messages", icon: "💬", roles: ["client", "freelancer"] },
-  { href: "/dashboard/notifications", labelAr: "الإشعارات", labelEn: "Notifications", icon: "🔔", roles: ["client", "freelancer"] },
+  { href: "/dashboard/messages", labelAr: "الرسائل", labelEn: "Messages", icon: "💬", roles: ["client", "freelancer", "admin"] },
+  { href: "/dashboard/notifications", labelAr: "الإشعارات", labelEn: "Notifications", icon: "🔔", roles: ["client", "freelancer", "admin"] },
   { href: "/dashboard/reviews", labelAr: "التقييمات", labelEn: "Reviews", icon: "⭐", roles: ["client", "freelancer"] },
   // Client-only
   { href: "/dashboard/my-jobs", labelAr: "وظائفي", labelEn: "My Jobs", icon: "📋", roles: ["client"] },

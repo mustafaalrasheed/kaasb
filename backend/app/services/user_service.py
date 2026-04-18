@@ -97,7 +97,7 @@ class UserService(BaseService):
 
         # Validate freelancer-specific fields
         if user.primary_role != UserRole.FREELANCER:
-            freelancer_fields = {"title", "hourly_rate", "skills", "experience_level", "portfolio_url"}
+            freelancer_fields = {"title", "skills", "experience_level", "portfolio_url"}
             invalid = freelancer_fields & set(update_data.keys())
             if invalid:
                 raise BadRequestError(
@@ -166,10 +166,8 @@ class UserService(BaseService):
         query: str | None = None,
         skills: list[str] | None = None,
         experience_level: str | None = None,
-        min_rate: float | None = None,
-        max_rate: float | None = None,
         country: str | None = None,
-        sort_by: str = "rating",  # rating, rate_low, rate_high, newest
+        sort_by: str = "rating",  # rating, newest
         page: int = 1,
         page_size: int = 20,
     ) -> dict:
@@ -195,10 +193,6 @@ class UserService(BaseService):
             filters.append(User.skills.overlap(skills))
         if experience_level:
             filters.append(User.experience_level == experience_level)
-        if min_rate is not None:
-            filters.append(User.hourly_rate >= min_rate)
-        if max_rate is not None:
-            filters.append(User.hourly_rate <= max_rate)
         if country:
             filters.append(User.country.ilike(f"%{escape_like(country[:100])}%"))
 
@@ -210,11 +204,7 @@ class UserService(BaseService):
         # Data query with sorting
         stmt = select(User).where(*filters)
 
-        if sort_by == "rate_low":
-            stmt = stmt.order_by(User.hourly_rate.asc().nullslast())
-        elif sort_by == "rate_high":
-            stmt = stmt.order_by(User.hourly_rate.desc().nullslast())
-        elif sort_by == "newest":
+        if sort_by == "newest":
             stmt = stmt.order_by(User.created_at.desc())
         else:  # rating (default)
             stmt = stmt.order_by(User.avg_rating.desc(), User.total_reviews.desc())

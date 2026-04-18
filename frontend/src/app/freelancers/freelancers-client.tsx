@@ -10,15 +10,11 @@ import { useLocale } from "@/providers/locale-provider";
 
 const SORT_OPTIONS_AR = [
   { value: "rating", label: "الأعلى تقييماً" },
-  { value: "rate_low", label: "السعر: الأقل أولاً" },
-  { value: "rate_high", label: "السعر: الأعلى أولاً" },
   { value: "newest", label: "الأحدث" },
 ];
 
 const SORT_OPTIONS_EN = [
   { value: "rating", label: "Highest Rated" },
-  { value: "rate_low", label: "Rate: Low to High" },
-  { value: "rate_high", label: "Rate: High to Low" },
   { value: "newest", label: "Newest" },
 ];
 
@@ -235,9 +231,6 @@ function FreelancerCard({ user, ar }: { user: UserProfile; ar: boolean }) {
               <p className="text-sm text-gray-600 truncate">{user.title}</p>
             )}
             <div className="mt-1 flex items-center gap-3 text-sm text-gray-500">
-              {user.hourly_rate && (
-                <span dir="ltr">${user.hourly_rate}/hr</span>
-              )}
               {user.avg_rating > 0 && (
                 <span>
                   ⭐ {user.avg_rating.toFixed(1)} ({user.total_reviews})

@@ -45,10 +45,8 @@ async def search_freelancers(
     experience_level: str | None = Query(
         None, pattern=r"^(entry|intermediate|expert)$"
     ),
-    min_rate: float | None = Query(None, ge=0),
-    max_rate: float | None = Query(None, le=1000),
     country: str | None = Query(None),
-    sort_by: str = Query("rating", pattern=r"^(rating|rate_low|rate_high|newest)$"),
+    sort_by: str = Query("rating", pattern=r"^(rating|newest)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
@@ -59,9 +57,8 @@ async def search_freelancers(
     - **q**: Text search across name, title, bio
     - **skills**: Comma-separated list (e.g., "Python,React,Design")
     - **experience_level**: entry, intermediate, or expert
-    - **min_rate / max_rate**: Hourly rate range
     - **country**: Filter by country
-    - **sort_by**: rating (default), rate_low, rate_high, newest
+    - **sort_by**: rating (default), newest
     """
     service = UserService(db)
     skills_list = [s.strip() for s in skills.split(",")] if skills else None
@@ -70,8 +67,6 @@ async def search_freelancers(
         query=q,
         skills=skills_list,
         experience_level=experience_level,
-        min_rate=min_rate,
-        max_rate=max_rate,
         country=country,
         sort_by=sort_by,
         page=page,

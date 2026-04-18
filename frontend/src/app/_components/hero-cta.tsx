@@ -36,22 +36,12 @@ export function HeroCta({
     setMounted(true);
   }, []);
 
+  // While loading: keep showing whatever SSR said (prevents flash to wrong state).
+  // Once resolved, switch to the authoritative client-side value.
   const resolvedLoggedIn = mounted && !isLoading ? isAuthenticated : ssrLoggedIn;
   const dashboardHref = mounted && !isLoading && user
     ? (user.is_superuser ? "/admin" : "/dashboard")
     : ssrDashboardHref;
-
-  // While the client auth state is unresolved AND the SSR hint says "not
-  // logged in" (likely stale because access_token has a 30-min TTL while
-  // refresh_token has 7 days), render a neutral placeholder so the user
-  // never sees the wrong CTA briefly.
-  const unresolved = mounted && isLoading && !ssrLoggedIn;
-  if (unresolved) {
-    const placeholderClass = variant === "hero"
-      ? "h-[52px] w-48 rounded-lg bg-white/30 animate-pulse"
-      : "h-[52px] w-48 rounded-lg bg-gray-200 animate-pulse";
-    return <div className={placeholderClass} aria-hidden="true" />;
-  }
 
   const className = variant === "hero"
     ? "btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"

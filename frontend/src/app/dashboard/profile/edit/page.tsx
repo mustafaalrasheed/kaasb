@@ -54,7 +54,6 @@ export default function EditProfilePage() {
     timezone: "",
     phone: "",
     title: "",
-    hourly_rate: "",
     experience_level: "",
     portfolio_url: "",
     skills: [] as string[],
@@ -70,7 +69,6 @@ export default function EditProfilePage() {
         timezone: user.timezone || "",
         phone: user.phone || "",
         title: user.title || "",
-        hourly_rate: user.hourly_rate?.toString() || "",
         experience_level: user.experience_level || "",
         portfolio_url: user.portfolio_url || "",
         skills: user.skills || [],
@@ -155,7 +153,6 @@ export default function EditProfilePage() {
 
       if (isFreelancer) {
         if (form.title) payload.title = form.title;
-        if (form.hourly_rate) payload.hourly_rate = parseFloat(form.hourly_rate);
         if (form.experience_level) payload.experience_level = form.experience_level;
         if (form.portfolio_url) payload.portfolio_url = form.portfolio_url;
         if (form.skills.length > 0) payload.skills = form.skills;
@@ -355,24 +352,6 @@ export default function EditProfilePage() {
                   className="input-field"
                   placeholder={ar ? "مثال: مطور Python متقدم" : "e.g. Senior Python Developer"}
                   maxLength={200}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {ar ? "سعر الساعة (د.ع)" : "Hourly Rate (IQD)"}
-                </label>
-                <input
-                  name="hourly_rate"
-                  type="number"
-                  value={form.hourly_rate}
-                  onChange={handleChange}
-                  className="input-field"
-                  placeholder="25000"
-                  min={5}
-                  max={500}
-                  step={0.5}
-                  dir="ltr"
                 />
               </div>
 

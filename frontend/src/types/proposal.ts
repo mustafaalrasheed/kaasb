@@ -6,7 +6,6 @@ export interface ProposalFreelancerInfo {
   display_name: string | null;
   avatar_url: string | null;
   title: string | null;
-  hourly_rate: number | null;
   country: string | null;
   experience_level: string | null;
   skills: string[] | null;
