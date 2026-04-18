@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_admin
 from app.core.database import get_db
+from app.models.message import Conversation
 from app.models.user import User
 from app.schemas.admin import (
     AdminEscrowInfo,
@@ -21,7 +22,15 @@ from app.schemas.admin import (
     AdminUserStatusUpdate,
     PlatformStats,
 )
+from app.schemas.message import (
+    ConversationJobInfo,
+    ConversationListResponse,
+    ConversationOrderInfo,
+    ConversationSummary,
+    MessageUserInfo,
+)
 from app.services.admin_service import AdminService
+from app.services.message_service import MessageService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -178,3 +187,73 @@ async def list_transactions(
     """List all platform transactions."""
     service = AdminService(db)
     return await service.list_transactions_admin(type, status, page, page_size)
+
+
+# === Support Inbox ===
+
+def _serialize_support_conversation(c: Conversation) -> ConversationSummary:
+    """
+    Serialize a SUPPORT conversation for the admin inbox.
+    The inbox is admin-centric, so we show the non-admin participant as
+    the "other_user" regardless of which admin is p1/p2.
+    """
+    p1, p2 = c.participant_one, c.participant_two
+    if p1.is_superuser and not p2.is_superuser:
+        other, unread = p2, c.unread_two
+    elif p2.is_superuser and not p1.is_superuser:
+        other, unread = p1, c.unread_one
+    else:
+        # Fallback: neither or both are admins. Show whichever side has more
+        # pending messages for the admin to answer.
+        other = p2 if c.unread_one >= c.unread_two else p1
+        unread = max(c.unread_one, c.unread_two)
+
+    return ConversationSummary(
+        id=c.id,
+        conversation_type=c.conversation_type,
+        other_user=MessageUserInfo(
+            id=other.id,
+            username=other.username,
+            first_name=other.first_name,
+            last_name=other.last_name,
+            avatar_url=other.avatar_url,
+        ),
+        job=ConversationJobInfo(id=c.job.id, title=c.job.title) if c.job else None,
+        order=ConversationOrderInfo(id=c.order.id, status=c.order.status.value) if c.order else None,
+        last_message_text=c.last_message_text,
+        last_message_at=c.last_message_at,
+        message_count=c.message_count,
+        unread_count=unread,
+        created_at=c.created_at,
+    )
+
+
+@router.get(
+    "/support/conversations",
+    response_model=ConversationListResponse,
+    summary="List support conversations",
+)
+async def list_support_conversations(
+    only_unread: bool = Query(False, description="Only threads with pending messages"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List every SUPPORT conversation on the platform. Used by the admin
+    support inbox to triage tickets across all admins — not scoped to the
+    calling admin's own participant threads.
+    """
+    service = MessageService(db)
+    result = await service.list_support_conversations(page, page_size, only_unread)
+    conversations = [
+        _serialize_support_conversation(c) for c in result["conversations"]
+    ]
+    return ConversationListResponse(
+        conversations=conversations,
+        total=result["total"],
+        page=result["page"],
+        page_size=result["page_size"],
+        total_pages=result["total_pages"],
+    )

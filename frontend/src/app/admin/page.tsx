@@ -13,6 +13,7 @@ import { JobsTab } from "./tabs/jobs-tab";
 import { GigsTab } from "./tabs/gigs-tab";
 import { TransactionsTab } from "./tabs/transactions-tab";
 import { PayoutsTab } from "./tabs/payouts-tab";
+import { SupportTab } from "./tabs/support-tab";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -61,7 +62,7 @@ interface PendingGig {
   packages: { tier: string; price: number; delivery_days: number; name: string }[];
 }
 
-type Tab = "stats" | "users" | "jobs" | "gigs" | "transactions" | "payouts";
+type Tab = "stats" | "users" | "jobs" | "gigs" | "transactions" | "payouts" | "support";
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -317,6 +318,7 @@ function AdminPageContent() {
     },
     { value: "transactions", label: ar ? "💳 المعاملات" : "💳 Transactions" },
     { value: "payouts", label: ar ? "💸 المدفوعات المعلقة" : "💸 Pending Payouts" },
+    { value: "support", label: ar ? "🛟 الدعم" : "🛟 Support" },
   ];
 
   // ─── Render ───────────────────────────────────────────────────────────────────
@@ -434,6 +436,10 @@ function AdminPageContent() {
             dateLocale={dateLocale}
             onRelease={handleReleaseEscrow}
           />
+        )}
+
+        {tab === "support" && (
+          <SupportTab ar={ar} dateLocale={dateLocale} />
         )}
       </div>
     </div>

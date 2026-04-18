@@ -131,7 +131,18 @@ class MessageService(BaseService):
         """Send a message in an existing conversation."""
         conversation = await self._get_conversation(conversation_id)
 
-        if sender.id not in (conversation.participant_one_id, conversation.participant_two_id):
+        is_participant = sender.id in (
+            conversation.participant_one_id, conversation.participant_two_id,
+        )
+        # Admins can reply in any SUPPORT thread from the admin inbox even if
+        # they weren't the originally-addressed admin. Their message is still
+        # attributed to them via sender_id; the original admin stays the
+        # participant so the requester keeps their "other user" view stable.
+        is_admin_on_support = (
+            sender.is_superuser
+            and conversation.conversation_type == ConversationType.SUPPORT
+        )
+        if not is_participant and not is_admin_on_support:
             raise ForbiddenError("Not part of this conversation")
 
         attachments = [a.model_dump() for a in data.attachments]
@@ -291,6 +302,49 @@ class MessageService(BaseService):
 
         return self.paginated_response(items=enriched, total=total, page=page, page_size=page_size, key="conversations")
 
+    async def list_support_conversations(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        only_unread: bool = False,
+    ) -> dict:
+        """
+        Admin-only: list every SUPPORT conversation on the platform regardless
+        of which admin is a participant, so the support inbox can surface
+        tickets addressed to other admins (or admins who've left).
+        """
+        page_size = self.clamp_page_size(page_size)
+        stmt = (
+            select(Conversation)
+            .options(
+                selectinload(Conversation.participant_one),
+                selectinload(Conversation.participant_two),
+                selectinload(Conversation.job),
+                selectinload(Conversation.order),
+            )
+            .where(Conversation.conversation_type == ConversationType.SUPPORT)
+        )
+        if only_unread:
+            # "Unread" for the inbox = whichever side still has unread > 0.
+            # We surface threads where the user side has pending messages the
+            # admin side hasn't answered yet.
+            stmt = stmt.where(
+                or_(Conversation.unread_one > 0, Conversation.unread_two > 0)
+            )
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await self.db.execute(count_stmt)).scalar() or 0
+
+        stmt = stmt.order_by(Conversation.last_message_at.desc().nullslast())
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+
+        result = await self.db.execute(stmt)
+        conversations = list(result.scalars().unique().all())
+
+        return self.paginated_response(
+            items=conversations, total=total, page=page, page_size=page_size, key="conversations",
+        )
+
     async def get_messages(
         self,
         user: User,
@@ -302,43 +356,55 @@ class MessageService(BaseService):
         page_size = self.clamp_page_size(page_size)
         conversation = await self._get_conversation(conversation_id)
 
-        if user.id not in (conversation.participant_one_id, conversation.participant_two_id):
+        is_participant = user.id in (
+            conversation.participant_one_id, conversation.participant_two_id,
+        )
+        is_admin_on_support = (
+            user.is_superuser
+            and conversation.conversation_type == ConversationType.SUPPORT
+        )
+        if not is_participant and not is_admin_on_support:
             raise ForbiddenError("Not part of this conversation")
 
+        # Only clear unread for a participant. A non-participant admin viewing
+        # a support thread through the inbox must not zero-out the originally
+        # addressed admin's unread counter.
         if user.id == conversation.participant_one_id:
             conversation.unread_one = 0
-        else:
+        elif user.id == conversation.participant_two_id:
             conversation.unread_two = 0
 
         # Mark messages from the OTHER participant as read. We only stamp
         # rows that are currently unread so idempotent re-fetches don't
         # repeatedly bump read_at. RETURNING gives us the ids so we can
         # push a read-receipt WS event to the sender (see below).
+        # Skip for a non-participant admin — the real participant hasn't seen
+        # them yet, so we must not forge a read receipt on their behalf.
         now = datetime.now(UTC)
-        newly_read_result = await self.db.execute(
-            update(Message)
-            .where(
-                Message.conversation_id == conversation_id,
-                Message.sender_id != user.id,
-                Message.is_read.is_(False),
+        if is_participant:
+            newly_read_result = await self.db.execute(
+                update(Message)
+                .where(
+                    Message.conversation_id == conversation_id,
+                    Message.sender_id != user.id,
+                    Message.is_read.is_(False),
+                )
+                .values(is_read=True, read_at=now)
+                .returning(Message.id)
             )
-            .values(is_read=True, read_at=now)
-            .returning(Message.id)
-        )
-        newly_read_ids = [row.id for row in newly_read_result]
-        await self.db.flush()
+            newly_read_ids = [row.id for row in newly_read_result]
+            await self.db.flush()
 
-        # Notify the sender that their messages were read (✓ → ✓✓).
-        # Other participant = not the reader.
-        if newly_read_ids:
-            other_id = conversation.get_other_id(user.id)
-            asyncio.create_task(_push_read_receipt(
-                recipient_id=other_id,
-                conversation_id=conversation.id,
-                reader_id=user.id,
-                message_ids=[str(mid) for mid in newly_read_ids],
-                read_at=now,
-            ))
+            # Notify the sender that their messages were read (✓ → ✓✓).
+            if newly_read_ids:
+                other_id = conversation.get_other_id(user.id)
+                asyncio.create_task(_push_read_receipt(
+                    recipient_id=other_id,
+                    conversation_id=conversation.id,
+                    reader_id=user.id,
+                    message_ids=[str(mid) for mid in newly_read_ids],
+                    read_at=now,
+                ))
 
         stmt = (
             select(Message)

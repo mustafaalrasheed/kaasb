@@ -37,4 +37,10 @@ export const adminApi = {
 
   rejectGig: (gigId: string, reason: string) =>
     api.post(`/gigs/admin/${gigId}/reject`, null, { params: { reason } }),
+
+  getSupportConversations: (params?: {
+    only_unread?: boolean;
+    page?: number;
+    page_size?: number;
+  }) => api.get("/admin/support/conversations", { params }),
 };
