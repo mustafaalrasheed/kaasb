@@ -4,6 +4,7 @@ Kaasb Platform - Admin Schemas
 
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -108,9 +109,10 @@ class AdminEscrowFreelancerInfo(BaseModel):
 
 class AdminEscrowInfo(BaseModel):
     escrow_id: uuid.UUID
-    contract_id: uuid.UUID
-    milestone_id: uuid.UUID
-    milestone_title: str
+    contract_id: Optional[uuid.UUID] = None
+    gig_order_id: Optional[uuid.UUID] = None
+    milestone_id: Optional[uuid.UUID] = None
+    milestone_title: Optional[str] = None
     amount: float
     platform_fee: float
     freelancer_amount: float
