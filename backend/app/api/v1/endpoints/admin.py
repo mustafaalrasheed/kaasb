@@ -194,17 +194,22 @@ async def list_transactions(
 def _serialize_support_conversation(c: Conversation) -> ConversationSummary:
     """
     Serialize a SUPPORT conversation for the admin inbox.
-    The inbox is admin-centric, so we show the non-admin participant as
-    the "other_user" regardless of which admin is p1/p2.
+    The inbox is admin-centric: show the non-admin as "other_user" and report
+    the ADMIN's unread count (messages from the user the admin hasn't seen).
+
+    unread_one = messages sent by p2 that p1 hasn't read yet.
+    unread_two = messages sent by p1 that p2 hasn't read yet.
+    So "admin's unread" = unread_one when admin IS p1, unread_two when admin IS p2.
     """
     p1, p2 = c.participant_one, c.participant_two
     if p1.is_superuser and not p2.is_superuser:
-        other, unread = p2, c.unread_two
+        other = p2
+        unread = c.unread_one  # admin is p1 → their pile is unread_one
     elif p2.is_superuser and not p1.is_superuser:
-        other, unread = p1, c.unread_one
+        other = p1
+        unread = c.unread_two  # admin is p2 → their pile is unread_two
     else:
-        # Fallback: neither or both are admins. Show whichever side has more
-        # pending messages for the admin to answer.
+        # Fallback: neither or both are admins.
         other = p2 if c.unread_one >= c.unread_two else p1
         unread = max(c.unread_one, c.unread_two)
 

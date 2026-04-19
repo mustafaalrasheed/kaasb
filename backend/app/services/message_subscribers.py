@@ -48,17 +48,19 @@ async def _push_message_over_ws(event: MessageSentEvent) -> None:
 
 async def _create_notification_for_message(event: MessageSentEvent) -> None:
     """
-    Insert an in-app notification for the message recipient, but only for
-    kinds of conversations where it makes sense. Support threads use their
-    own admin inbox and skip the bell.
+    Insert an in-app notification for the message recipient.
+    All conversation types notify the recipient, including SUPPORT so that
+    admins get a bell when a user opens a support ticket.
     """
     if event.is_system:
         return
-    if event.conversation_type == ConversationType.SUPPORT:
-        return
 
-    # Truncate to fit notification.title (100 chars) — keep preview compact.
-    title = f"رسالة من {event.sender_first_name}"[:100]
+    if event.conversation_type == ConversationType.SUPPORT:
+        # Bilingual prefix so the admin's bell is clearly a support request.
+        title = f"دعم / Support — {event.sender_first_name}"[:100]
+    else:
+        title = f"رسالة من {event.sender_first_name}"[:100]
+
     body = event.content[:200]
 
     async with async_session() as db:

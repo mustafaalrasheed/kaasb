@@ -25,7 +25,7 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.models.message import ConversationType, SenderRole
@@ -49,7 +49,7 @@ class MessageSentEvent:
     content: str
     is_system: bool
     attachments: list[dict[str, Any]] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 Event = MessageSentEvent  # Union alias for when we add more event types.

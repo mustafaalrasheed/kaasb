@@ -20,6 +20,7 @@ WS Ticket flow (solves httpOnly cookie problem):
 import asyncio
 import json
 import logging
+import os
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -37,6 +38,12 @@ _WS_CHANNEL_PREFIX = "kaasb:ws:"
 # Redis key prefix + TTL for WS tickets
 _TICKET_PREFIX = "kaasb:ws_ticket:"
 _TICKET_TTL_SECONDS = 60
+
+# Unique per worker process — used to suppress self-echo from Redis pub/sub.
+# When worker A publishes to Redis, ALL subscribers (including A itself) receive
+# the message. We tag outgoing envelopes with this ID so the subscriber can
+# skip messages it already delivered locally via _deliver_local.
+_WORKER_ID = str(os.getpid())
 
 _redis: aioredis.Redis | None = None
 
@@ -118,10 +125,13 @@ class ConnectionManager:
         uid = str(user_id)
         # (a) Deliver to this worker's connections immediately
         await self._deliver_local(uid, data)
-        # (b) Publish to Redis for other workers
+        # (b) Publish to Redis for other workers.
+        # Wrap with worker ID so our own subscriber skips it — we already
+        # delivered locally above and don't want to send twice.
         try:
             r = await _get_redis()
-            await r.publish(f"{_WS_CHANNEL_PREFIX}{uid}", json.dumps(data))
+            envelope = json.dumps({"_w": _WORKER_ID, "d": data})
+            await r.publish(f"{_WS_CHANNEL_PREFIX}{uid}", envelope)
         except Exception as e:
             logger.warning("Redis publish error for user %s: %s", uid, e)
 
@@ -144,11 +154,16 @@ class ConnectionManager:
                     channel: str = raw["channel"]
                     uid = channel.removeprefix(_WS_CHANNEL_PREFIX)
                     try:
-                        payload: dict[str, Any] = json.loads(raw["data"])
+                        outer: dict[str, Any] = json.loads(raw["data"])
                     except (json.JSONDecodeError, TypeError):
                         continue
+                    # Skip messages published by THIS worker — it already
+                    # delivered them locally in send_to_user._deliver_local.
+                    if outer.get("_w") == _WORKER_ID:
+                        continue
+                    # Extract actual payload (support both enveloped and legacy).
+                    payload: dict[str, Any] = outer.get("d", outer)
                     # Only deliver to connections on THIS worker
-                    # (the publishing worker already delivered via _deliver_local)
                     if uid in self._connections:
                         await self._deliver_local(uid, payload)
 

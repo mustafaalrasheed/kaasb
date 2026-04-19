@@ -116,11 +116,13 @@ function MessagesContent() {
   useEffect(() => {
     if (!activeConvo) return;
     fetchMessages(activeConvo.id);
+    // 30s fallback poll — catches messages sent while WS was reconnecting.
+    // WebSocket push handles real-time delivery; this is just a safety net.
     const interval = setInterval(() => {
       if (!document.hidden && activeConvoRef.current) {
         fetchMessages(activeConvoRef.current.id);
       }
-    }, 5000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [activeConvo?.id, fetchMessages]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -253,9 +255,10 @@ function MessagesContent() {
     if (!activeConvo) return;
     setNewMessage("");
 
+    const tmpId = `tmp-${Date.now()}`;
     if (user) {
       const optimistic: MessageDetail = {
-        id: `tmp-${Date.now()}`,
+        id: tmpId,
         content,
         is_read: true,
         read_at: null,
@@ -276,11 +279,14 @@ function MessagesContent() {
 
     try {
       setSending(true);
-      await messagesApi.sendMessage(activeConvo.id, { content });
+      const res = await messagesApi.sendMessage(activeConvo.id, { content });
+      const realMsg = res.data as MessageDetail;
+      // Swap the optimistic placeholder for the confirmed server message.
+      setMessages((prev) => prev.map((m) => m.id === tmpId ? realMsg : m));
       fetchConversations();
     } catch {
       toast.error(ar ? "تعذّر إرسال الرسالة" : "Failed to send message");
-      setMessages((prev) => prev.filter((m) => !m.id.startsWith("tmp-")));
+      setMessages((prev) => prev.filter((m) => m.id !== tmpId));
       setNewMessage(content);
     } finally {
       setSending(false);
@@ -468,6 +474,11 @@ function MessagesContent() {
                   rows={1}
                   className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                   style={{ minHeight: "42px", maxHeight: "120px" }}
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    el.style.height = "auto";
+                    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+                  }}
                 />
                 <button
                   onClick={handleSend}
