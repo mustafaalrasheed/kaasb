@@ -22,7 +22,7 @@ from app.models.contract import (
 from app.models.job import Job, JobStatus
 from app.models.notification import NotificationType
 from app.models.proposal import Proposal
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.schemas.contract import (
     ContractCreate,
     MilestoneReview,

@@ -753,6 +753,7 @@ class AuthService(BaseService):
 
         if has_twilio and settings.TWILIO_WHATSAPP_NUMBER.strip():
             import asyncio as _asyncio
+
             from twilio.rest import Client as TwilioClient  # noqa: PLC0415
 
             def _send_whatsapp() -> None:
@@ -768,6 +769,7 @@ class AuthService(BaseService):
 
         elif has_twilio and settings.TWILIO_PHONE_NUMBER.strip():
             import asyncio as _asyncio
+
             from twilio.rest import Client as TwilioClient  # noqa: PLC0415
 
             def _send_sms() -> None:

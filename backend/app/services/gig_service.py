@@ -28,6 +28,7 @@ from app.models.gig import (
     GigPackage,
     GigStatus,
 )
+from app.models.message import Conversation, ConversationType
 from app.models.notification import NotificationType
 from app.models.payment import (
     Escrow,
@@ -44,7 +45,6 @@ from app.schemas.gig import (
     GigSearchParams,
     GigUpdate,
 )
-from app.models.message import Conversation, ConversationType
 from app.services.base import BaseService
 from app.services.notification_service import notify_background
 from app.services.qi_card_client import USD_TO_IQD, QiCardClient, QiCardError
