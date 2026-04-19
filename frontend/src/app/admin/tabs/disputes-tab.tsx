@@ -28,6 +28,7 @@ export function DisputesTab({ ar, dateLocale }: DisputesTabProps) {
   const [orders, setOrders] = useState<DisputedOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<DisputedOrder | null>(null);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   // Order conversation view
   const [chatMessages, setChatMessages] = useState<MessageDetail[]>([]);
@@ -123,8 +124,12 @@ export function DisputesTab({ ar, dateLocale }: DisputesTabProps) {
       </div>
 
       <div className="flex h-[70vh]">
-        {/* Dispute list */}
-        <div className={`w-80 shrink-0 ${ar ? "border-l" : "border-r"} border-gray-200 overflow-y-auto`}>
+        {/* Dispute list — hidden on mobile when detail panel is open */}
+        <div className={`
+          shrink-0 ${ar ? "border-l" : "border-r"} border-gray-200 overflow-y-auto
+          w-full md:w-80
+          ${mobileDetailOpen ? "hidden md:block" : "block"}
+        `}>
           {loading ? (
             <div className="p-4 space-y-3">
               {[1, 2, 3].map((i) => (
@@ -145,7 +150,7 @@ export function DisputesTab({ ar, dateLocale }: DisputesTabProps) {
             orders.map((o) => (
               <button
                 key={o.id}
-                onClick={() => { setSelected(o); setShowChat(false); }}
+                onClick={() => { setSelected(o); setShowChat(false); setMobileDetailOpen(true); }}
                 className={`w-full p-3 text-start border-b border-gray-50 hover:bg-gray-50 transition-colors ${
                   selected?.id === o.id ? "bg-orange-50" : ""
                 }`}
@@ -172,14 +177,27 @@ export function DisputesTab({ ar, dateLocale }: DisputesTabProps) {
           )}
         </div>
 
-        {/* Detail panel */}
-        <div className="flex-1 flex flex-col min-w-0 bg-gray-50 overflow-y-auto">
+        {/* Detail panel — hidden on mobile when list is shown */}
+        <div className={`
+          flex-1 flex flex-col min-w-0 bg-gray-50 overflow-y-auto
+          ${mobileDetailOpen ? "block" : "hidden md:flex"}
+        `}>
           {!selected ? (
             <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
               {ar ? "اختر نزاعاً للمراجعة" : "Select a dispute to review"}
             </div>
           ) : (
             <div className="p-5 space-y-4">
+              {/* Back button — mobile only */}
+              <button
+                onClick={() => setMobileDetailOpen(false)}
+                className="md:hidden flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 mb-2"
+              >
+                <svg className={`w-4 h-4 ${ar ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                {ar ? "رجوع إلى القائمة" : "Back to list"}
+              </button>
               {/* Order summary */}
               <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
                 <h3 className="font-semibold text-gray-900">
@@ -280,7 +298,7 @@ export function DisputesTab({ ar, dateLocale }: DisputesTabProps) {
                       ×
                     </button>
                   </div>
-                  <div className="p-3 space-y-2 max-h-80 overflow-y-auto">
+                  <div className="p-3 space-y-2 max-h-80 overflow-y-auto" dir="ltr">
                     {chatLoading ? (
                       <p className="text-center text-sm text-gray-400 py-4">
                         {ar ? "جاري التحميل..." : "Loading..."}

@@ -74,9 +74,9 @@ function AdminPageContent() {
   const { locale } = useLocale();
   const ar = locale === "ar";
 
-  const [tab, setTab] = useState<Tab>((searchParams.get("tab") as Tab) || "stats");
+  // Derive tab from URL so refresh always restores the correct tab
+  const tab: Tab = (searchParams.get("tab") as Tab) || "stats";
   const switchTab = useCallback((t: Tab) => {
-    setTab(t);
     router.replace(`/admin?tab=${t}`, { scroll: false });
   }, [router]);
 

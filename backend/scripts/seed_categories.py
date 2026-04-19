@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import select
 from app.core.database import async_session as async_session_factory
-from app.models.gig import GigCategory, GigSubcategory
+from app.models.gig import Category, Subcategory
 
 
 CATEGORIES = [
@@ -144,12 +144,12 @@ async def seed_categories() -> None:
         for cat_data in CATEGORIES:
             # Check if category already exists
             result = await db.execute(
-                select(GigCategory).where(GigCategory.slug == cat_data["slug"])
+                select(Category).where(Category.slug == cat_data["slug"])
             )
             cat = result.scalar_one_or_none()
 
             if not cat:
-                cat = GigCategory(
+                cat = Category(
                     name_en=cat_data["name_en"],
                     name_ar=cat_data["name_ar"],
                     slug=cat_data["slug"],
@@ -167,10 +167,10 @@ async def seed_categories() -> None:
             for sub_data in cat_data.get("subcategories", []):
                 sub_slug = cat_data["slug"] + "-" + sub_data["name_en"].lower().replace(" ", "-").replace("/", "-").replace("&", "and")
                 sub_result = await db.execute(
-                    select(GigSubcategory).where(GigSubcategory.slug == sub_slug)
+                    select(Subcategory).where(Subcategory.slug == sub_slug)
                 )
                 if not sub_result.scalar_one_or_none():
-                    sub = GigSubcategory(
+                    sub = Subcategory(
                         category_id=cat.id,
                         name_en=sub_data["name_en"],
                         name_ar=sub_data["name_ar"],
