@@ -31,6 +31,7 @@ def upgrade() -> None:
     # to lowercase (Python model standard). Idempotent: only renames if uppercase
     # label exists, so safe to run on both fresh CI databases and production.
     for old, new in [
+        ("PENDING", "pending"),
         ("FUNDED", "funded"),
         ("RELEASED", "released"),
         ("REFUNDED", "refunded"),
