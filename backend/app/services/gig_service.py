@@ -622,37 +622,21 @@ class GigService(BaseService):
             raise BadRequestError("Order must be delivered to complete")
         order.status = GigOrderStatus.COMPLETED
         order.completed_at = datetime.now(UTC)
+        await self.db.flush()
 
-        # Release escrow to freelancer
-        result = await self.db.execute(
-            select(Escrow).where(
+        # Release escrow via PaymentService so the lock, fee transaction, and
+        # freelancer notification are handled consistently with contract milestones.
+        escrow_result = await self.db.execute(
+            select(Escrow.id).where(
                 Escrow.gig_order_id == order_id,
                 Escrow.status == EscrowStatus.FUNDED,
             )
         )
-        escrow = result.scalar_one_or_none()
-        if escrow:
-            settings = get_settings()
-            escrow.status = EscrowStatus.RELEASED
-            escrow.released_at = datetime.now(UTC)
-
-            # Record the release transaction
-            release_txn = Transaction(
-                transaction_type=TransactionType.ESCROW_RELEASE,
-                status=TransactionStatus.COMPLETED,
-                amount=escrow.freelancer_amount,
-                currency=settings.QI_CARD_CURRENCY,
-                platform_fee=0,
-                net_amount=escrow.freelancer_amount,
-                payer_id=order.client_id,
-                payee_id=order.freelancer_id,
-                provider=PaymentProvider.QI_CARD,
-                description=f"Escrow released for gig order {order_id}",
-                completed_at=datetime.now(UTC),
-            )
-            self.db.add(release_txn)
-            await self.db.flush()
-            escrow.release_transaction_id = release_txn.id
+        escrow_id = escrow_result.scalar_one_or_none()
+        if escrow_id:
+            from app.services.payment_service import PaymentService
+            payment_svc = PaymentService(self.db)
+            await payment_svc.release_escrow_by_id(escrow_id)
         else:
             logger.warning("complete_order: no funded escrow found for order %s", order_id)
 

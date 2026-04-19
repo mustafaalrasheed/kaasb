@@ -275,12 +275,14 @@ class PaymentService(BaseService):
         Marks the escrow as FUNDED and transaction as COMPLETED.
         order_id is our "escrow-<milestone_id>" string.
         """
+        # with_for_update ensures duplicate Qi Card success redirects (which do
+        # happen in practice) are serialised — only the first one processes.
         result = await self.db.execute(
             select(Transaction).where(
                 Transaction.external_transaction_id == order_id,
                 Transaction.provider == PaymentProvider.QI_CARD,
                 Transaction.transaction_type == TransactionType.ESCROW_FUND,
-            )
+            ).with_for_update()
         )
         transaction = result.scalar_one_or_none()
         if not transaction:
@@ -346,33 +348,28 @@ class PaymentService(BaseService):
         logger.info("Qi Card payment failed/cancelled: order_id=%s", order_id)
         return True
 
-    # === Escrow: Release (called when milestone approved) ===
+    # === Escrow: Release (called when milestone approved or gig order completed) ===
 
-    async def release_escrow(
-        self, milestone_id: uuid.UUID
-    ) -> EscrowReleaseResponse | None:
-        """Release escrow funds to freelancer after milestone approval."""
-        result = await self.db.execute(
-            select(Escrow).where(
-                Escrow.milestone_id == milestone_id,
-                Escrow.status == EscrowStatus.FUNDED,
-            ).with_for_update()
-        )
-        escrow = result.scalar_one_or_none()
-        if not escrow:
-            return None
-
-        # Platform fee transaction
+    async def _release_locked_escrow(self, escrow: Escrow) -> EscrowReleaseResponse:
+        """
+        Internal: create ledger transactions and mark an already-locked escrow as
+        RELEASED. Caller must have acquired with_for_update() on the escrow row
+        before calling this method.
+        """
+        # Platform fee transaction — platform earns the fee (net_amount = platform_fee).
+        # Note: net_amount must be > 0 per DB constraint; platform_fee is always > 0
+        # because of the ck_escrow_fee_non_negative + ck_escrow_freelancer_le_total
+        # constraints which guarantee platform_fee = amount - freelancer_amount > 0.
         fee_tx = Transaction(
             transaction_type=TransactionType.PLATFORM_FEE,
             status=TransactionStatus.COMPLETED,
             amount=escrow.platform_fee,
             currency=escrow.currency,
             platform_fee=escrow.platform_fee,
-            net_amount=0,
+            net_amount=escrow.platform_fee,  # was 0 — violated net_amount > 0 constraint
             payer_id=escrow.freelancer_id,
             contract_id=escrow.contract_id,
-            milestone_id=milestone_id,
+            milestone_id=escrow.milestone_id,
             description=f"Platform fee ({settings.PLATFORM_FEE_PERCENT}%)",
             completed_at=datetime.now(UTC),
         )
@@ -389,10 +386,10 @@ class PaymentService(BaseService):
             payer_id=escrow.client_id,
             payee_id=escrow.freelancer_id,
             contract_id=escrow.contract_id,
-            milestone_id=milestone_id,
+            milestone_id=escrow.milestone_id,
             provider=PaymentProvider.QI_CARD,
             external_transaction_id=f"release_{uuid.uuid4().hex[:12]}",
-            description="Milestone payment released to freelancer balance",
+            description="Payment released to freelancer balance",
             completed_at=datetime.now(UTC),
         )
         self.db.add(release_tx)
@@ -401,15 +398,13 @@ class PaymentService(BaseService):
         escrow.status = EscrowStatus.RELEASED
         escrow.released_at = datetime.now(UTC)
         escrow.release_transaction_id = release_tx.id
+        await self.db.flush()
 
-        try:
-            await self.db.flush()
-        except SQLAlchemyError:
-            raise
+        logger.info(
+            "Escrow released: escrow=%s milestone=%s amount=%s",
+            escrow.id, escrow.milestone_id, escrow.freelancer_amount,
+        )
 
-        logger.info("Escrow released: milestone=%s amount=%s", milestone_id, escrow.freelancer_amount)
-
-        # Notify freelancer of payment
         await notify(
             self.db,
             user_id=escrow.freelancer_id,
@@ -423,12 +418,45 @@ class PaymentService(BaseService):
 
         return EscrowReleaseResponse(
             escrow_id=escrow.id,
-            milestone_id=milestone_id,
+            milestone_id=escrow.milestone_id,
             amount=escrow.amount,
             freelancer_amount=escrow.freelancer_amount,
             status="released",
             message=f"${escrow.freelancer_amount:.2f} added to freelancer balance",
         )
+
+    async def release_escrow(
+        self, milestone_id: uuid.UUID
+    ) -> EscrowReleaseResponse | None:
+        """Release escrow funds to freelancer after milestone approval."""
+        result = await self.db.execute(
+            select(Escrow).where(
+                Escrow.milestone_id == milestone_id,
+                Escrow.status == EscrowStatus.FUNDED,
+            ).with_for_update()
+        )
+        escrow = result.scalar_one_or_none()
+        if not escrow:
+            return None
+        return await self._release_locked_escrow(escrow)
+
+    async def release_escrow_by_id(
+        self, escrow_id: uuid.UUID
+    ) -> EscrowReleaseResponse | None:
+        """
+        Release escrow by its primary key. Used by admin manual payout and gig
+        order completion — works for both contract-milestone and gig-order escrows.
+        """
+        result = await self.db.execute(
+            select(Escrow).where(
+                Escrow.id == escrow_id,
+                Escrow.status == EscrowStatus.FUNDED,
+            ).with_for_update()
+        )
+        escrow = result.scalar_one_or_none()
+        if not escrow:
+            return None
+        return await self._release_locked_escrow(escrow)
 
     # === Escrow: Refund ===
 
@@ -440,7 +468,7 @@ class PaymentService(BaseService):
             select(Escrow).where(
                 Escrow.milestone_id == milestone_id,
                 Escrow.status == EscrowStatus.FUNDED,
-            )
+            ).with_for_update()
         )
         escrow = result.scalar_one_or_none()
         if not escrow:
@@ -674,6 +702,17 @@ class PaymentService(BaseService):
         )
         total_fees = fees_result.scalar() or 0.0
 
+        # Subtract paid-out (completed or processing) amounts from earned to get
+        # the balance actually available for withdrawal.
+        paid_out_result = await self.db.execute(
+            select(func.coalesce(func.sum(Transaction.amount), 0.0)).where(
+                Transaction.payee_id == user.id,
+                Transaction.transaction_type == TransactionType.PAYOUT,
+                Transaction.status.in_([TransactionStatus.COMPLETED, TransactionStatus.PROCESSING]),
+            )
+        )
+        total_paid_out = paid_out_result.scalar() or 0.0
+
         count_result = await self.db.execute(
             select(func.count()).where(
                 (Transaction.payer_id == user.id) | (Transaction.payee_id == user.id)
@@ -687,7 +726,7 @@ class PaymentService(BaseService):
             "total_earned": total_earned,
             "total_spent": total_spent,
             "pending_escrow": pending_escrow,
-            "available_balance": total_earned,
+            "available_balance": max(0.0, round(total_earned - total_paid_out, 2)),
             "total_platform_fees": total_fees,
             "transaction_count": tx_count,
             "payment_accounts": accounts,

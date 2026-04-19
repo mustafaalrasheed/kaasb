@@ -231,7 +231,7 @@ class Escrow(BaseModel):
     # === Status ===
     status: Mapped[EscrowStatus] = mapped_column(
         Enum(EscrowStatus),
-        default=EscrowStatus.FUNDED,
+        default=EscrowStatus.PENDING,
         nullable=False,
         index=True,
     )

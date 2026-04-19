@@ -299,19 +299,30 @@ class AdminService(BaseService):
     # === Escrow Payout Management ===
 
     async def list_funded_escrows(self) -> list[dict]:
-        """List all funded escrows awaiting admin manual payout via Qi Card."""
+        """
+        List all funded escrows awaiting admin manual payout via Qi Card.
+        Includes both contract-milestone escrows and gig-order escrows.
+        """
         stmt = (
-            select(Escrow, User, Milestone)
+            select(Escrow, User)
             .join(User, User.id == Escrow.freelancer_id)
-            .join(Milestone, Milestone.id == Escrow.milestone_id)
             .where(Escrow.status == EscrowStatus.FUNDED)
             .order_by(Escrow.funded_at.asc())
         )
         result = await self.db.execute(stmt)
         rows = result.all()
 
-        # Fetch Qi Card phones for all freelancers in one query
-        freelancer_ids = [row[1].id for row in rows]
+        # Batch-load milestones for contract-based escrows (gig orders have milestone_id=None)
+        milestone_ids = [r[0].milestone_id for r in rows if r[0].milestone_id]
+        milestone_map: dict[uuid.UUID, Milestone] = {}
+        if milestone_ids:
+            ms_result = await self.db.execute(
+                select(Milestone).where(Milestone.id.in_(milestone_ids))
+            )
+            milestone_map = {m.id: m for m in ms_result.scalars().all()}
+
+        # Batch-load Qi Card phones for all freelancers
+        freelancer_ids = [r[1].id for r in rows]
         qi_phones: dict[uuid.UUID, str | None] = {}
         if freelancer_ids:
             accounts_result = await self.db.execute(
@@ -324,12 +335,14 @@ class AdminService(BaseService):
                 qi_phones[user_id] = phone
 
         escrows = []
-        for escrow, freelancer, milestone in rows:
+        for escrow, freelancer in rows:
+            milestone = milestone_map.get(escrow.milestone_id) if escrow.milestone_id else None
             escrows.append({
                 "escrow_id": escrow.id,
                 "contract_id": escrow.contract_id,
+                "gig_order_id": escrow.gig_order_id,
                 "milestone_id": escrow.milestone_id,
-                "milestone_title": milestone.title,
+                "milestone_title": milestone.title if milestone else None,
                 "amount": float(escrow.amount),
                 "platform_fee": float(escrow.platform_fee),
                 "freelancer_amount": float(escrow.freelancer_amount),
@@ -346,27 +359,20 @@ class AdminService(BaseService):
         return escrows
 
     async def release_escrow_admin(self, escrow_id: uuid.UUID) -> dict:
-        """Admin marks a funded escrow as released after sending manual Qi Card payout."""
-        result = await self.db.execute(
-            select(Escrow).where(
-                Escrow.id == escrow_id,
-                Escrow.status == EscrowStatus.FUNDED,
-            )
-        )
-        escrow = result.scalar_one_or_none()
-        if not escrow:
-            raise NotFoundError("Funded escrow")
-
+        """
+        Admin marks a funded escrow as released after sending manual Qi Card payout.
+        Works for both contract-milestone and gig-order escrows.
+        """
         payment_service = PaymentService(self.db)
-        release_result = await payment_service.release_escrow(escrow.milestone_id)
+        release_result = await payment_service.release_escrow_by_id(escrow_id)
         if not release_result:
-            raise BadRequestError("Failed to release escrow")
+            raise NotFoundError("Funded escrow")
 
         return {
             "escrow_id": str(escrow_id),
             "status": "released",
-            "freelancer_amount": float(escrow.freelancer_amount),
-            "currency": escrow.currency,
+            "freelancer_amount": release_result.freelancer_amount,
+            "currency": "IQD",
         }
 
     # === Transaction Overview ===

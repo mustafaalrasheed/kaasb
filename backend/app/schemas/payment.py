@@ -55,7 +55,7 @@ class EscrowFundResponse(BaseModel):
 
 class EscrowReleaseResponse(BaseModel):
     escrow_id: uuid.UUID
-    milestone_id: uuid.UUID
+    milestone_id: uuid.UUID | None = None  # None for gig-order escrows
     amount: float
     freelancer_amount: float
     status: str
