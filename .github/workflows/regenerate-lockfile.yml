@@ -1,12 +1,13 @@
 name: Regenerate Frontend Lockfile
 
 # Manually-triggered one-shot to regenerate frontend/package-lock.json when it
-# has drifted from package.json. Commits the refreshed lockfile directly to main.
+# has drifted from package.json. Opens a PR so branch protection is satisfied.
 on:
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   regenerate:
@@ -35,16 +36,25 @@ jobs:
         with:
           name: package-lock
           path: frontend/package-lock.json
-          retention-days: 1
+          retention-days: 7
 
-      - name: Commit refreshed lockfile to main
+      - name: Open PR with refreshed lockfile
         run: |
           if git diff --quiet frontend/package-lock.json; then
             echo "Lockfile unchanged — nothing to commit."
             exit 0
           fi
+          BRANCH="chore/regenerate-lockfile-$(date +%Y%m%d-%H%M%S)"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add frontend/package-lock.json
           git commit -m "chore(deps): regenerate frontend/package-lock.json"
-          git push origin HEAD:main
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore(deps): regenerate frontend/package-lock.json" \
+            --body "Automated lockfile regeneration via workflow_dispatch. Merge after CI passes." \
+            --base main \
+            --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

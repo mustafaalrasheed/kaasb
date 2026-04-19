@@ -19,12 +19,7 @@ import type {
 import { useLocale } from "@/providers/locale-provider";
 import { backendUrl } from "@/lib/utils";
 
-// How long a single inbound "typing" event keeps the indicator visible
-// before we consider the user to have stopped typing.
 const TYPING_INDICATOR_MS = 3000;
-
-// Throttle outbound typing heartbeats. Backend hard-caps at 1/sec per
-// conversation anyway, so we match that locally to avoid wasted socket frames.
 const TYPING_EMIT_MIN_MS = 1100;
 
 function MessagesContent() {
@@ -44,10 +39,10 @@ function MessagesContent() {
   const [supportModal, setSupportModal] = useState(false);
   const [supportMsg, setSupportMsg] = useState("");
   const [supportSending, setSupportSending] = useState(false);
+  // Mobile: whether the chat panel is shown (vs the conversation list)
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
-  // Map of other_user.id → presence. Null last_seen_at means "never seen".
   const [presence, setPresence] = useState<Record<string, PresenceInfo>>({});
-  // Set of user IDs we've seen a typing event from in the last TYPING_INDICATOR_MS.
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -55,6 +50,8 @@ function MessagesContent() {
   activeConvoRef.current = activeConvo;
   const typingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const lastTypingEmitRef = useRef<number>(0);
+  // AbortController for in-flight message fetches — cancel stale ones on convo switch
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
   // === Data fetching ===
 
@@ -70,17 +67,22 @@ function MessagesContent() {
   }, [ar]);
 
   const fetchMessages = useCallback(async (convoId: string) => {
+    // Cancel any previous in-flight fetch
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
     try {
       const res = await messagesApi.getMessages(convoId);
-      setMessages(res.data.messages.reverse()); // oldest first
-    } catch {
+      // If this fetch was superseded, discard results
+      if (controller.signal.aborted) return;
+      setMessages(res.data.messages.reverse());
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "CanceledError") return;
+      if (controller.signal.aborted) return;
       toast.error(ar ? "تعذّر تحميل الرسائل" : "Failed to load messages");
     }
   }, [ar]);
 
-  // Batch presence fetch — runs after the conversation list loads and when it
-  // changes (new conversations appear). Listed users' green dots come from
-  // this call; WS events then keep the state fresh without re-polling.
   const fetchPresence = useCallback(async (convos: ConversationSummary[]) => {
     const ids = convos.map((c) => c.other_user.id);
     if (ids.length === 0) return;
@@ -90,7 +92,7 @@ function MessagesContent() {
       for (const p of res.data.users as PresenceInfo[]) next[p.user_id] = p;
       setPresence((prev) => ({ ...prev, ...next }));
     } catch {
-      // Presence is non-critical — silently skip on failure
+      // Presence is non-critical
     }
   }, []);
 
@@ -104,7 +106,6 @@ function MessagesContent() {
     }
   }, [loading, conversations, fetchPresence]);
 
-  // Auto-open conversation when ?with=<userId> is in the URL
   useEffect(() => {
     if (!withUserId || loading) return;
     const existing = conversations.find((c) => c.other_user.id === withUserId);
@@ -119,8 +120,6 @@ function MessagesContent() {
   useEffect(() => {
     if (!activeConvo) return;
     fetchMessages(activeConvo.id);
-    // 30s fallback poll — catches messages sent while WS was reconnecting.
-    // WebSocket push handles real-time delivery; this is just a safety net.
     const interval = setInterval(() => {
       if (!document.hidden && activeConvoRef.current) {
         fetchMessages(activeConvoRef.current.id);
@@ -133,21 +132,20 @@ function MessagesContent() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Cleanup pending typing timers on unmount
   useEffect(() => {
     return () => {
+      fetchAbortRef.current?.abort();
       const timers = typingTimersRef.current;
       for (const t of timers.values()) clearTimeout(t);
       timers.clear();
     };
   }, []);
 
-  // === WebSocket (real-time push) ===
+  // === WebSocket ===
 
   const handleWsMessage = useCallback((data: WsMessageData) => {
     const currentConvo = activeConvoRef.current;
 
-    // Seeing a message from a user implies they're online — flip their dot on.
     if (data.sender_id) {
       setPresence((prev) => ({
         ...prev,
@@ -184,7 +182,6 @@ function MessagesContent() {
   }, [fetchConversations]);
 
   const handleMessagesRead = useCallback((data: WsMessagesReadData) => {
-    // The other participant just opened the convo — flip our own ticks to ✓✓.
     setMessages((prev) =>
       prev.map((m) =>
         data.message_ids.includes(m.id)
@@ -254,7 +251,6 @@ function MessagesContent() {
     if (!newMessage.trim() || sending) return;
     const content = newMessage.trim();
 
-    // Compose mode: no existing conversation with this user — start one
     if (!activeConvo && composeRecipient) {
       setSending(true);
       setNewMessage("");
@@ -305,7 +301,6 @@ function MessagesContent() {
       setSending(true);
       const res = await messagesApi.sendMessage(activeConvo.id, { content });
       const realMsg = res.data as MessageDetail;
-      // Swap the optimistic placeholder for the confirmed server message.
       setMessages((prev) => prev.map((m) => m.id === tmpId ? realMsg : m));
       fetchConversations();
     } catch {
@@ -335,9 +330,14 @@ function MessagesContent() {
 
   const selectConversation = (c: ConversationSummary) => {
     setActiveConvo(c);
+    setMobileChatOpen(true);
     setConversations((prev) =>
       prev.map((conv) => (conv.id === c.id ? { ...conv, unread_count: 0 } : conv))
     );
+  };
+
+  const handleMobileBack = () => {
+    setMobileChatOpen(false);
   };
 
   const timeAgo = (date: string) => {
@@ -372,10 +372,19 @@ function MessagesContent() {
   const activeOtherTyping =
     activeConvo && typingUsers.has(activeConvo.other_user.id);
 
+  // Sidebar border: physical classes since flex order already handles RTL side
+  const sidebarBorder = ar ? "border-l border-l-gray-200" : "border-r border-r-gray-200";
+
   return (
     <div className="flex h-[calc(100vh-160px)] bg-white rounded-lg border border-gray-200 overflow-hidden">
-      {/* Sidebar: Conversation List */}
-      <div className={`w-72 ${ar ? "border-l" : "border-r"} border-gray-200 flex flex-col shrink-0`}>
+      {/* Sidebar: Conversation List — hidden on mobile when chat is open */}
+      <div
+        className={`
+          ${sidebarBorder} flex flex-col shrink-0
+          w-full md:w-72
+          ${mobileChatOpen ? "hidden md:flex" : "flex"}
+        `}
+      >
         <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
           <h2 className="font-bold text-gray-900 text-base">
             {ar ? "الرسائل" : "Messages"}
@@ -410,12 +419,13 @@ function MessagesContent() {
             conversations.map((c) => {
               const online = presence[c.other_user.id]?.is_online ?? false;
               const badge = conversationTypeBadge(c);
+              const isActive = activeConvo?.id === c.id;
               return (
                 <button
                   key={c.id}
                   onClick={() => selectConversation(c)}
                   className={`w-full p-3 text-start border-b border-gray-50 hover:bg-gray-50 transition-colors ${
-                    activeConvo?.id === c.id
+                    isActive
                       ? `bg-brand-50 ${ar ? "border-r-2 border-r-brand-500" : "border-l-2 border-l-brand-500"}`
                       : ""
                   }`}
@@ -482,52 +492,58 @@ function MessagesContent() {
         </div>
       </div>
 
-      {/* Chat View */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Chat View — hidden on mobile when list is shown */}
+      <div
+        className={`
+          flex-1 flex flex-col min-w-0
+          ${mobileChatOpen ? "flex" : "hidden md:flex"}
+        `}
+      >
         {!activeConvo && composeRecipient ? (
           <>
-            <div className="px-5 py-3.5 border-b border-gray-200 bg-white">
-              <div className="font-semibold text-gray-900 text-sm">
-                {ar ? "محادثة جديدة" : "New conversation"}
-              </div>
-              <div className="text-xs text-gray-400">
-                {ar ? "اكتب رسالتك الأولى لبدء المحادثة" : "Type your first message to start chatting"}
+            <div className="px-5 py-3.5 border-b border-gray-200 bg-white flex items-center gap-3">
+              <button
+                onClick={handleMobileBack}
+                className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-600"
+                aria-label={ar ? "رجوع" : "Back"}
+              >
+                <svg className={`w-5 h-5 ${ar ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <div className="font-semibold text-gray-900 text-sm">
+                  {ar ? "محادثة جديدة" : "New conversation"}
+                </div>
+                <div className="text-xs text-gray-400">
+                  {ar ? "اكتب رسالتك الأولى لبدء المحادثة" : "Type your first message to start chatting"}
+                </div>
               </div>
             </div>
             <div className="flex-1 bg-gray-50" />
-            <div className="px-4 py-3 border-t border-gray-200 bg-white">
-              <div className="flex gap-2 items-end">
-                <textarea
-                  value={newMessage}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder={ar ? "اكتب رسالتك..." : "Type a message..."}
-                  rows={1}
-                  className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                  style={{ minHeight: "42px", maxHeight: "120px" }}
-                  onInput={(e) => {
-                    const el = e.currentTarget;
-                    el.style.height = "auto";
-                    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-                  }}
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={!newMessage.trim() || sending}
-                  className="shrink-0 w-10 h-10 flex items-center justify-center bg-brand-500 text-white rounded-xl hover:bg-brand-600 disabled:opacity-40 transition-colors"
-                  aria-label={ar ? "إرسال" : "Send"}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
-              </div>
-            </div>
+            <MessageInput
+              ar={ar}
+              value={newMessage}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onSend={handleSend}
+              sending={sending}
+            />
           </>
         ) : activeConvo ? (
           <>
             {/* Header */}
-            <div className="px-5 py-3.5 border-b border-gray-200 bg-white flex items-center gap-3">
+            <div className="px-4 py-3.5 border-b border-gray-200 bg-white flex items-center gap-3">
+              {/* Back button — mobile only */}
+              <button
+                onClick={handleMobileBack}
+                className="md:hidden shrink-0 p-1.5 rounded-lg hover:bg-gray-100 text-gray-600"
+                aria-label={ar ? "رجوع" : "Back"}
+              >
+                <svg className={`w-5 h-5 ${ar ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
               <div className="relative shrink-0">
                 {activeConvo.other_user.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -545,7 +561,7 @@ function MessagesContent() {
                   <span className="absolute bottom-0 end-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full" />
                 )}
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="font-semibold text-gray-900 text-sm truncate">
                   {activeConvo.other_user.first_name} {activeConvo.other_user.last_name}
                 </div>
@@ -561,14 +577,14 @@ function MessagesContent() {
               </div>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50">
+            {/* Messages — always LTR for bubble positioning; text uses dir=auto */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50" dir="ltr">
               {messages.map((msg) => {
                 const isSystem = msg.is_system || msg.sender_role === "system";
                 if (isSystem) {
                   return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="max-w-[80%] bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-full text-center whitespace-pre-wrap">
+                      <div className="max-w-[80%] bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-full text-center whitespace-pre-wrap" dir="auto">
                         {msg.content}
                       </div>
                     </div>
@@ -588,7 +604,7 @@ function MessagesContent() {
                           : "bg-white text-gray-900 border border-gray-200 rounded-bl-sm"
                       } ${isOptimistic ? "opacity-70" : ""}`}
                     >
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed" dir="auto">{msg.content}</p>
                       {attachments.length > 0 && (
                         <ul className="mt-2 space-y-1">
                           {attachments.map((a, i) => (
@@ -638,38 +654,14 @@ function MessagesContent() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input */}
-            <div className="px-4 py-3 border-t border-gray-200 bg-white">
-              <div className="flex gap-2 items-end">
-                <textarea
-                  value={newMessage}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder={ar ? "اكتب رسالتك..." : "Type a message..."}
-                  rows={1}
-                  className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                  style={{ minHeight: "42px", maxHeight: "120px" }}
-                  onInput={(e) => {
-                    const el = e.currentTarget;
-                    el.style.height = "auto";
-                    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-                  }}
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={!newMessage.trim() || sending}
-                  className="shrink-0 w-10 h-10 flex items-center justify-center bg-brand-500 text-white rounded-xl hover:bg-brand-600 disabled:opacity-40 transition-colors"
-                  aria-label={ar ? "إرسال" : "Send"}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
-              </div>
-              <p className="text-[10px] text-gray-400 mt-1.5 text-center">
-                {ar ? "Enter للإرسال · Shift+Enter لسطر جديد" : "Enter to send · Shift+Enter for new line"}
-              </p>
-            </div>
+            <MessageInput
+              ar={ar}
+              value={newMessage}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onSend={handleSend}
+              sending={sending}
+            />
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
@@ -681,6 +673,7 @@ function MessagesContent() {
           </div>
         )}
       </div>
+
       {/* Contact Support Modal */}
       {supportModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -698,6 +691,7 @@ function MessagesContent() {
               onChange={(e) => setSupportMsg(e.target.value)}
               placeholder={ar ? "اكتب رسالتك..." : "Describe your issue..."}
               rows={4}
+              dir="auto"
               className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent mb-4"
             />
             <div className="flex gap-2 justify-end">
@@ -718,6 +712,64 @@ function MessagesContent() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Extracted to avoid duplication between compose and active-convo modes
+function MessageInput({
+  ar,
+  value,
+  onChange,
+  onKeyDown,
+  onSend,
+  sending,
+}: {
+  ar: boolean;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  onSend: () => void;
+  sending: boolean;
+}) {
+  return (
+    <div className="px-4 py-3 border-t border-gray-200 bg-white">
+      <div className="flex gap-2 items-end">
+        <textarea
+          value={value}
+          onChange={onChange}
+          onKeyDown={onKeyDown}
+          placeholder={ar ? "اكتب رسالتك..." : "Type a message..."}
+          rows={1}
+          dir="auto"
+          className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+          style={{ minHeight: "42px", maxHeight: "120px" }}
+          onInput={(e) => {
+            const el = e.currentTarget;
+            el.style.height = "auto";
+            el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+          }}
+        />
+        <button
+          onClick={onSend}
+          disabled={!value.trim() || sending}
+          className="shrink-0 w-10 h-10 flex items-center justify-center bg-brand-500 text-white rounded-xl hover:bg-brand-600 disabled:opacity-40 transition-colors"
+          aria-label={ar ? "إرسال" : "Send"}
+        >
+          {/* Arrow flips in RTL via the parent dir attribute */}
+          <svg
+            className={`w-5 h-5 ${ar ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+          </svg>
+        </button>
+      </div>
+      <p className="text-[10px] text-gray-400 mt-1.5 text-center">
+        {ar ? "Enter للإرسال · Shift+Enter لسطر جديد" : "Enter to send · Shift+Enter for new line"}
+      </p>
     </div>
   );
 }
