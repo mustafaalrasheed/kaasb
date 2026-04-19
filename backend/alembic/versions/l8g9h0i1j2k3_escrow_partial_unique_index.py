@@ -18,7 +18,6 @@ Fix:
   so a new PENDING escrow can be created after a failed payment.
 """
 
-import sqlalchemy as sa
 from alembic import op
 
 revision = "l8g9h0i1j2k3"
@@ -28,15 +27,63 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Drop existing full unique constraints
-    op.drop_constraint("uq_escrow_milestone", "escrows", type_="unique")
-    op.drop_constraint("uq_escrow_gig_order", "escrows", type_="unique")
+    # Normalize escrowstatus enum values from uppercase (initial migration legacy)
+    # to lowercase (Python model standard). Idempotent: only renames if uppercase
+    # label exists, so safe to run on both fresh CI databases and production.
+    for old, new in [
+        ("FUNDED", "funded"),
+        ("RELEASED", "released"),
+        ("REFUNDED", "refunded"),
+        ("DISPUTED", "disputed"),
+    ]:
+        op.execute(
+            f"""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM pg_enum e
+                    JOIN pg_type t ON e.enumtypid = t.oid
+                    WHERE t.typname = 'escrowstatus' AND e.enumlabel = '{old}'
+                ) THEN
+                    ALTER TYPE escrowstatus RENAME VALUE '{old}' TO '{new}';
+                END IF;
+            END $$;
+            """
+        )
+
+    # Drop existing full unique constraints (may not exist on all environments)
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'uq_escrow_milestone' AND conrelid = 'escrows'::regclass
+            ) THEN
+                ALTER TABLE escrows DROP CONSTRAINT uq_escrow_milestone;
+            END IF;
+        END $$;
+        """
+    )
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'uq_escrow_gig_order' AND conrelid = 'escrows'::regclass
+            ) THEN
+                ALTER TABLE escrows DROP CONSTRAINT uq_escrow_gig_order;
+            END IF;
+        END $$;
+        """
+    )
 
     # Create partial unique indexes — only enforce uniqueness for active escrows.
     # RELEASED, REFUNDED, DISPUTED escrows do not block new PENDING escrows.
     op.execute(
         """
-        CREATE UNIQUE INDEX uq_escrow_milestone_active
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_escrow_milestone_active
         ON escrows (milestone_id)
         WHERE milestone_id IS NOT NULL
           AND status IN ('pending', 'funded')
@@ -44,7 +91,7 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE UNIQUE INDEX uq_escrow_gig_order_active
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_escrow_gig_order_active
         ON escrows (gig_order_id)
         WHERE gig_order_id IS NOT NULL
           AND status IN ('pending', 'funded')
