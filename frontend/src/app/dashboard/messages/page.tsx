@@ -41,6 +41,9 @@ function MessagesContent() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [composeRecipient, setComposeRecipient] = useState<string | null>(null);
+  const [supportModal, setSupportModal] = useState(false);
+  const [supportMsg, setSupportMsg] = useState("");
+  const [supportSending, setSupportSending] = useState(false);
 
   // Map of other_user.id → presence. Null last_seen_at means "never seen".
   const [presence, setPresence] = useState<Record<string, PresenceInfo>>({});
@@ -217,6 +220,27 @@ function MessagesContent() {
     typingTimersRef.current.set(data.user_id, t);
   }, [user?.id]);
 
+  const handleContactSupport = async () => {
+    if (!supportMsg.trim() || supportSending) return;
+    setSupportSending(true);
+    try {
+      const res = await messagesApi.contactSupport(supportMsg.trim());
+      const convo = res.data as ConversationSummary;
+      setSupportModal(false);
+      setSupportMsg("");
+      setConversations((prev) => {
+        const exists = prev.find((c) => c.id === convo.id);
+        return exists ? prev : [convo, ...prev];
+      });
+      selectConversation(convo);
+      toast.success(ar ? "تم إرسال رسالتك للدعم" : "Support message sent");
+    } catch {
+      toast.error(ar ? "تعذّر التواصل مع الدعم" : "Failed to contact support");
+    } finally {
+      setSupportSending(false);
+    }
+  };
+
   const { sendTyping } = useWebSocket({
     onMessage: handleWsMessage,
     onMessagesRead: handleMessagesRead,
@@ -352,10 +376,17 @@ function MessagesContent() {
     <div className="flex h-[calc(100vh-160px)] bg-white rounded-lg border border-gray-200 overflow-hidden">
       {/* Sidebar: Conversation List */}
       <div className={`w-72 ${ar ? "border-l" : "border-r"} border-gray-200 flex flex-col shrink-0`}>
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
           <h2 className="font-bold text-gray-900 text-base">
             {ar ? "الرسائل" : "Messages"}
           </h2>
+          <button
+            onClick={() => setSupportModal(true)}
+            className="shrink-0 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded-lg transition-colors"
+            title={ar ? "تواصل مع الدعم" : "Contact Support"}
+          >
+            {ar ? "الدعم" : "Support"}
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -650,6 +681,43 @@ function MessagesContent() {
           </div>
         )}
       </div>
+      {/* Contact Support Modal */}
+      {supportModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h3 className="font-bold text-gray-900 mb-1">
+              {ar ? "تواصل مع الدعم" : "Contact Support"}
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              {ar
+                ? "سيرد عليك فريق الدعم في أقرب وقت ممكن."
+                : "Our support team will reply as soon as possible."}
+            </p>
+            <textarea
+              value={supportMsg}
+              onChange={(e) => setSupportMsg(e.target.value)}
+              placeholder={ar ? "اكتب رسالتك..." : "Describe your issue..."}
+              rows={4}
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent mb-4"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setSupportModal(false); setSupportMsg(""); }}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {ar ? "إلغاء" : "Cancel"}
+              </button>
+              <button
+                onClick={handleContactSupport}
+                disabled={!supportMsg.trim() || supportSending}
+                className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-40 transition-colors"
+              >
+                {supportSending ? "..." : (ar ? "إرسال" : "Send")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

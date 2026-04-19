@@ -214,8 +214,10 @@ class Escrow(BaseModel):
 
     __tablename__ = "escrows"
     __table_args__ = (
-        UniqueConstraint("milestone_id", name="uq_escrow_milestone"),
-        UniqueConstraint("gig_order_id", name="uq_escrow_gig_order"),
+        # Uniqueness for active escrows is enforced by partial unique indexes
+        # (uq_escrow_milestone_active, uq_escrow_gig_order_active) created in
+        # migration l8g9h0i1j2k3.  Full UNIQUE constraints were removed to allow
+        # retrying payment after a REFUNDED/FAILED escrow on the same milestone/order.
         CheckConstraint("amount > 0", name="ck_escrow_amount_positive"),
         CheckConstraint("platform_fee >= 0", name="ck_escrow_fee_non_negative"),
         CheckConstraint("freelancer_amount > 0", name="ck_escrow_freelancer_amount_positive"),

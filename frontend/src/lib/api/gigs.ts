@@ -59,6 +59,17 @@ export const gigsApi = {
   requestRevision: (orderId: string) => api.post(`/gigs/orders/${orderId}/revision`),
   completeOrder: (orderId: string) => api.post(`/gigs/orders/${orderId}/complete`),
 
+  raiseDispute: (orderId: string, reason: string) =>
+    api.post(`/gigs/orders/${orderId}/dispute`, { reason }),
+
+  // Admin dispute management
+  listDisputedOrders: () => api.get("/gigs/admin/disputes"),
+  resolveDispute: (orderId: string, resolution: "release" | "refund", adminNote?: string) =>
+    api.post(`/gigs/admin/orders/${orderId}/resolve-dispute`, {
+      resolution,
+      admin_note: adminNote ?? "",
+    }),
+
   // Images
   uploadImage: (gigId: string, file: File) => {
     const form = new FormData();

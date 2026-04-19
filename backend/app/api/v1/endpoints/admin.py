@@ -22,11 +22,13 @@ from app.schemas.admin import (
     AdminUserStatusUpdate,
     PlatformStats,
 )
+from app.core.exceptions import NotFoundError
 from app.schemas.message import (
     ConversationJobInfo,
     ConversationListResponse,
     ConversationOrderInfo,
     ConversationSummary,
+    MessageListResponse,
     MessageUserInfo,
 )
 from app.services.admin_service import AdminService
@@ -262,3 +264,27 @@ async def list_support_conversations(
         page_size=result["page_size"],
         total_pages=result["total_pages"],
     )
+
+
+@router.get(
+    "/orders/{order_id}/conversation",
+    response_model=MessageListResponse,
+    summary="Get order conversation for dispute review",
+)
+async def get_order_conversation(
+    order_id: uuid.UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin: fetch the client-freelancer chat for a given order.
+    Used when reviewing disputes to see full conversation history.
+    Admin presence does NOT mark messages as read or emit read receipts.
+    """
+    service = MessageService(db)
+    conv = await service.get_order_conversation(order_id)
+    if not conv:
+        raise NotFoundError("Order conversation")
+    return await service.get_messages(admin, conv.id, page, page_size)

@@ -88,11 +88,13 @@ class Settings(BaseSettings):
     FACEBOOK_APP_ID: str = ""    # Facebook App ID (from Meta for Developers)
     FACEBOOK_APP_SECRET: str = ""  # Facebook App Secret (for token verification)
 
-    # === Twilio (SMS OTP — production) ===
-    # Leave empty to use email-based OTP delivery (beta mode)
-    TWILIO_ACCOUNT_SID: str = ""   # From https://console.twilio.com
-    TWILIO_AUTH_TOKEN: str = ""    # From https://console.twilio.com
-    TWILIO_PHONE_NUMBER: str = ""  # Twilio phone number, e.g. +1XXXXXXXXXX
+    # === Twilio (SMS + WhatsApp OTP — production) ===
+    # Leave all empty to fall back to email-based OTP delivery (beta mode).
+    # Priority: WhatsApp (if TWILIO_WHATSAPP_NUMBER set) → SMS (if TWILIO_PHONE_NUMBER set) → email.
+    TWILIO_ACCOUNT_SID: str = ""        # From https://console.twilio.com
+    TWILIO_AUTH_TOKEN: str = ""         # From https://console.twilio.com
+    TWILIO_PHONE_NUMBER: str = ""       # Twilio SMS number, e.g. +1XXXXXXXXXX
+    TWILIO_WHATSAPP_NUMBER: str = ""    # Twilio WhatsApp sender, e.g. whatsapp:+14155238886
 
     model_config = {
         "env_file": ".env",
@@ -120,15 +122,14 @@ class Settings(BaseSettings):
                 raise ValueError("QI_CARD_API_KEY must be set when QI_CARD_SANDBOX is False")
             if not self.RESEND_API_KEY:
                 logger.warning("RESEND_API_KEY not set — transactional emails will not be sent")
-            # Auto-add domain to CORS origins in production
+            # In production: replace dev origins with production-only origins.
+            # Previously this only appended, leaving localhost:3000 in the CORS allowlist,
+            # which lets any local process send credentialed requests to the prod API.
             if self.DOMAIN and self.DOMAIN != "localhost":
-                prod_origins = [
+                self.CORS_ORIGINS = [
                     f"https://{self.DOMAIN}",
                     f"https://www.{self.DOMAIN}",
                 ]
-                for origin in prod_origins:
-                    if origin not in self.CORS_ORIGINS:
-                        self.CORS_ORIGINS.append(origin)
 
         return self
 

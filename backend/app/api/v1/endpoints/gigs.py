@@ -30,7 +30,7 @@ Admin
 
 import uuid
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import (
@@ -313,6 +313,62 @@ async def complete_order(
 # ──────────────────────────────────────────────
 # Admin
 # ──────────────────────────────────────────────
+
+@router.post(
+    "/orders/{order_id}/dispute",
+    response_model=GigOrderOut,
+    summary="Raise a dispute on an order (client only)",
+)
+async def raise_dispute(
+    order_id: uuid.UUID,
+    reason: str = Body(..., min_length=20, max_length=2000, embed=True,
+                       description="Detailed reason for the dispute"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Client raises a dispute on an in-progress or delivered order.
+    The escrow is frozen and an admin is notified for manual review.
+    """
+    svc = GigService(db)
+    return await svc.raise_dispute(order_id, current_user, reason)
+
+
+@router.get(
+    "/admin/disputes",
+    response_model=list[GigOrderOut],
+    summary="Admin: list disputed orders",
+)
+async def list_disputed_orders(
+    _admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin view: all orders currently in DISPUTED state."""
+    svc = GigService(db)
+    return await svc.list_disputed_orders()
+
+
+@router.post(
+    "/admin/orders/{order_id}/resolve-dispute",
+    response_model=GigOrderOut,
+    summary="Admin: resolve a disputed order",
+)
+async def resolve_dispute(
+    order_id: uuid.UUID,
+    resolution: str = Body(..., pattern="^(release|refund)$", embed=True,
+                           description="'release' pays the freelancer, 'refund' returns money to client"),
+    admin_note: str = Body("", max_length=1000, embed=True),
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin resolves a dispute.
+    - resolution=release → pays freelancer, marks order COMPLETED
+    - resolution=refund  → refunds client, marks order CANCELLED
+    """
+    svc = GigService(db)
+    return await svc.resolve_dispute(order_id, admin, resolution, admin_note)
+
 
 @router.post("/admin/{gig_id}/approve", response_model=GigOut, summary="Admin: approve gig")
 async def approve_gig(

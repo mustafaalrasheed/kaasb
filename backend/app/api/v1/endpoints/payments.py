@@ -146,24 +146,26 @@ async def request_payout(
 )
 async def qi_card_success(
     CartID: str = Query(..., description="Our order_id returned by Qi Card"),  # noqa: N803
+    sig: str = Query("", description="HMAC-SHA256 signature of order_id"),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Qi Card redirects here on successful payment: successUrl?CartID=<order_id>
-    Confirms the escrow in the database then redirects the user to the result page.
+    Qi Card redirects here on successful payment: successUrl?sig=<hmac>&CartID=<order_id>
+    The sig is verified before confirming the payment — prevents users from faking
+    payment by hitting this URL directly with a known order_id.
     """
     settings = get_settings()
     logger.info("Qi Card success redirect: CartID=%s", CartID)
 
     service = PaymentService(db)
-    success = await service.confirm_qi_card_payment(order_id=CartID)
+    success = await service.confirm_qi_card_payment(order_id=CartID, sig=sig)
 
     if success:
         return RedirectResponse(
             url=f"https://{settings.DOMAIN}/payment/result?status=success&order={CartID}",
             status_code=302,
         )
-    # Payment not found or already processed — redirect with error status
+    # Signature invalid, payment not found, or already processed
     return RedirectResponse(
         url=f"https://{settings.DOMAIN}/payment/result?status=error&order={CartID}",
         status_code=302,
@@ -177,15 +179,16 @@ async def qi_card_success(
 )
 async def qi_card_failure(
     CartID: str = Query("", description="Our order_id returned by Qi Card"),  # noqa: N803
+    sig: str = Query("", description="HMAC-SHA256 signature of order_id"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Qi Card redirects here on failed payment: failureUrl?CartID=<order_id>"""
+    """Qi Card redirects here on failed payment: failureUrl?sig=<hmac>&CartID=<order_id>"""
     settings = get_settings()
     logger.info("Qi Card failure redirect: CartID=%s", CartID)
 
     if CartID:
         service = PaymentService(db)
-        await service.handle_qi_card_payment_failed(order_id=CartID)
+        await service.handle_qi_card_payment_failed(order_id=CartID, sig=sig)
 
     return RedirectResponse(
         url=f"https://{settings.DOMAIN}/payment/result?status=failed&order={CartID}",
@@ -200,15 +203,16 @@ async def qi_card_failure(
 )
 async def qi_card_cancel(
     CartID: str = Query("", description="Our order_id returned by Qi Card"),  # noqa: N803
+    sig: str = Query("", description="HMAC-SHA256 signature of order_id"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Qi Card redirects here on cancelled payment: cancelUrl?CartID=<order_id>"""
+    """Qi Card redirects here on cancelled payment: cancelUrl?sig=<hmac>&CartID=<order_id>"""
     settings = get_settings()
     logger.info("Qi Card cancel redirect: CartID=%s", CartID)
 
     if CartID:
         service = PaymentService(db)
-        await service.handle_qi_card_payment_failed(order_id=CartID)
+        await service.handle_qi_card_payment_failed(order_id=CartID, sig=sig)
 
     return RedirectResponse(
         url=f"https://{settings.DOMAIN}/payment/result?status=cancelled&order={CartID}",

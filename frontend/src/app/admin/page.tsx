@@ -14,6 +14,7 @@ import { GigsTab } from "./tabs/gigs-tab";
 import { TransactionsTab } from "./tabs/transactions-tab";
 import { PayoutsTab } from "./tabs/payouts-tab";
 import { SupportTab } from "./tabs/support-tab";
+import { DisputesTab } from "./tabs/disputes-tab";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ interface PendingGig {
   packages: { tier: string; price: number; delivery_days: number; name: string }[];
 }
 
-type Tab = "stats" | "users" | "jobs" | "gigs" | "transactions" | "payouts" | "support";
+type Tab = "stats" | "users" | "jobs" | "gigs" | "transactions" | "payouts" | "disputes" | "support";
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -318,6 +319,7 @@ function AdminPageContent() {
     },
     { value: "transactions", label: ar ? "💳 المعاملات" : "💳 Transactions" },
     { value: "payouts", label: ar ? "💸 المدفوعات المعلقة" : "💸 Pending Payouts" },
+    { value: "disputes", label: ar ? "⚠️ النزاعات" : "⚠️ Disputes" },
     { value: "support", label: ar ? "🛟 الدعم" : "🛟 Support" },
   ];
 
@@ -436,6 +438,10 @@ function AdminPageContent() {
             dateLocale={dateLocale}
             onRelease={handleReleaseEscrow}
           />
+        )}
+
+        {tab === "disputes" && (
+          <DisputesTab ar={ar} dateLocale={dateLocale} />
         )}
 
         {tab === "support" && (

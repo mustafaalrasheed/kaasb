@@ -20,4 +20,8 @@ export const messagesApi = {
   // the green dot on online users and a "Last seen ..." subtitle otherwise.
   getPresence: (userIds: string[]) =>
     api.get("/messages/presence", { params: { user_ids: userIds } }),
+
+  // Contact support — no admin ID required; backend finds one automatically.
+  contactSupport: (message: string, orderId?: string) =>
+    api.post("/messages/support", { message, order_id: orderId ?? null }),
 };

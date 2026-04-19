@@ -5,11 +5,12 @@ Business logic for user registration, login, and token management.
 
 import hashlib
 import logging
-import random
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
+import redis.asyncio as aioredis
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,19 @@ settings = get_settings()
 
 # Used to ensure login takes constant time even when user is not found
 DUMMY_HASH = "$2b$12$cGxpy3DvsqCEOfFbQdFt3./4QtwFLMnWFh8nB3cRKeGcW6olQmPK6"
+
+_redis_client: aioredis.Redis | None = None
+
+
+async def _get_redis() -> aioredis.Redis | None:
+    """Lazily create a shared Redis client. Returns None if Redis is unavailable."""
+    global _redis_client
+    if _redis_client is None:
+        try:
+            _redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        except Exception:
+            logger.warning("Redis unavailable in auth_service — token blacklist disabled")
+    return _redis_client
 
 
 def _mask_email(email: str) -> str:
@@ -636,6 +650,21 @@ class AuthService(BaseService):
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+        # Single-use enforcement: check if this jti has already been used.
+        # Without this, an attacker who intercepts the reset email can replay the token
+        # repeatedly within its 60-minute window to override the legitimate user's password.
+        jti = payload.get("jti")
+        redis = await _get_redis()
+        if jti and redis:
+            try:
+                already_used = await redis.get(f"used_reset_jti:{jti}")
+                if already_used:
+                    raise HTTPException(status_code=400, detail="Password reset link has already been used")
+            except HTTPException:
+                raise
+            except Exception:
+                pass  # Redis down: allow the reset (availability > strict single-use when infra is degraded)
+
         user = await self._get_user_by_id(payload["sub"])
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -655,6 +684,15 @@ class AuthService(BaseService):
         user.token_version += 1
         self.db.add(user)
         await self.db.commit()
+
+        # Blacklist the jti so this token cannot be replayed
+        if jti and redis:
+            try:
+                exp = payload.get("exp", 0)
+                ttl = max(1, int(exp - datetime.now(UTC).timestamp()))
+                await redis.setex(f"used_reset_jti:{jti}", ttl, "1")
+            except Exception:
+                pass  # Non-fatal: token_version bump already limits damage
 
     async def _get_user_by_email(self, email: str):
         result = await self.db.execute(select(User).where(User.email == email))
@@ -690,8 +728,8 @@ class AuthService(BaseService):
                 detail="Too many OTP requests. Please wait 10 minutes and try again.",
             )
 
-        # Generate 6-digit OTP
-        otp = str(random.randint(100000, 999999))
+        # Generate 6-digit OTP using OS CSPRNG (not random.randint which is predictable)
+        otp = str(secrets.randbelow(900000) + 100000)
         otp_hash = hashlib.sha256(otp.encode()).hexdigest()
 
         phone_otp = PhoneOtp(
@@ -702,16 +740,47 @@ class AuthService(BaseService):
         self.db.add(phone_otp)
         await self.db.flush()
 
-        # Production: Twilio SMS. Beta fallback: deliver via user's email.
-        if settings.TWILIO_ACCOUNT_SID.strip() and settings.TWILIO_AUTH_TOKEN.strip() and settings.TWILIO_PHONE_NUMBER.strip():
+        # OTP delivery priority:
+        #   1. WhatsApp (TWILIO_WHATSAPP_NUMBER set)  — best UX for Iraqi market
+        #   2. SMS      (TWILIO_PHONE_NUMBER set)     — fallback
+        #   3. Email                                  — beta / infra not configured yet
+        # Twilio SDK is synchronous — run in thread pool to avoid blocking the event loop.
+        has_twilio = bool(
+            settings.TWILIO_ACCOUNT_SID.strip()
+            and settings.TWILIO_AUTH_TOKEN.strip()
+        )
+        otp_body = f"Kaasb رمز التحقق: {otp}\nصالح لمدة 10 دقائق. لا تشاركه مع أحد."
+
+        if has_twilio and settings.TWILIO_WHATSAPP_NUMBER.strip():
+            import asyncio as _asyncio
             from twilio.rest import Client as TwilioClient  # noqa: PLC0415
-            twilio = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-            twilio.messages.create(
-                body=f"Kaasb رمز التحقق: {otp}\nصالح لمدة 10 دقائق. لا تشاركه مع أحد.",
-                from_=settings.TWILIO_PHONE_NUMBER,
-                to=phone,
-            )
+
+            def _send_whatsapp() -> None:
+                TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN).messages.create(
+                    body=otp_body,
+                    from_=settings.TWILIO_WHATSAPP_NUMBER.strip(),
+                    to=f"whatsapp:{phone}",
+                )
+
+            loop = _asyncio.get_running_loop()
+            await loop.run_in_executor(None, _send_whatsapp)
+            logger.info("Phone OTP sent via WhatsApp to user=%s (phone=***%s)", user.id, phone[-4:])
+
+        elif has_twilio and settings.TWILIO_PHONE_NUMBER.strip():
+            import asyncio as _asyncio
+            from twilio.rest import Client as TwilioClient  # noqa: PLC0415
+
+            def _send_sms() -> None:
+                TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN).messages.create(
+                    body=otp_body,
+                    from_=settings.TWILIO_PHONE_NUMBER.strip(),
+                    to=phone,
+                )
+
+            loop = _asyncio.get_running_loop()
+            await loop.run_in_executor(None, _send_sms)
             logger.info("Phone OTP sent via SMS to user=%s (phone=***%s)", user.id, phone[-4:])
+
         else:
             await email_service.send_phone_otp(
                 to_email=user.email,

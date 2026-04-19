@@ -4,7 +4,7 @@ Kaasb Platform - Message Endpoints
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -129,6 +129,30 @@ async def get_messages(
     """Get messages in a conversation. Auto-marks as read."""
     service = MessageService(db)
     return await service.get_messages(current_user, conversation_id, page, page_size)
+
+
+@router.post(
+    "/support",
+    response_model=ConversationSummary,
+    summary="Contact support",
+    status_code=201,
+)
+async def contact_support(
+    message: str = Body(..., min_length=1, max_length=5000, embed=True,
+                        description="First message to the support team"),
+    order_id: uuid.UUID | None = Body(None, embed=True,
+                                      description="Related order ID (optional context)"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Start or resume a support thread with the platform's admin team.
+    Any user can call this — no admin ID required. If a support thread
+    for this user already exists it is reused.
+    """
+    service = MessageService(db)
+    c = await service.contact_support(current_user, message, order_id)
+    return _serialize_conversation(c, current_user.id)
 
 
 @router.post(

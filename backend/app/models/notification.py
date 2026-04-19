@@ -53,6 +53,10 @@ class NotificationType(str, enum.Enum):
     GIG_SUBMITTED = "gig_submitted"
     GIG_NEEDS_REVISION = "gig_needs_revision"
 
+    # Disputes
+    DISPUTE_OPENED = "dispute_opened"
+    DISPUTE_RESOLVED = "dispute_resolved"
+
     # System
     SYSTEM_ALERT = "system_alert"
 

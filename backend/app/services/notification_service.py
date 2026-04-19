@@ -4,6 +4,7 @@ Create and manage in-app notifications.
 """
 
 import asyncio
+import logging
 import uuid
 
 from sqlalchemy import func, select, update
@@ -13,6 +14,8 @@ from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.base import BaseService
 from app.services.websocket_manager import manager
+
+logger = logging.getLogger(__name__)
 
 # Note: Notification queries intentionally do NOT load the user relationship —
 # the endpoint already knows the user from auth context, avoiding wasteful JOINs.
@@ -141,7 +144,7 @@ class NotificationService(BaseService):
         return result.rowcount
 
 
-# === Helper: Send notification from anywhere in the app ===
+# === Notification helpers ===
 
 async def notify(
     db,
@@ -151,7 +154,7 @@ async def notify(
     message: str,
     **kwargs,
 ) -> Notification:
-    """Convenience function to send a notification."""
+    """Send a notification using an existing DB session (in-request context)."""
     service = NotificationService(db)
     return await service.create_notification(
         user_id=user_id,
@@ -160,3 +163,37 @@ async def notify(
         message=message,
         **kwargs,
     )
+
+
+async def notify_background(
+    user_id: uuid.UUID,
+    type: NotificationType,
+    title: str,
+    message: str,
+    **kwargs,
+) -> None:
+    """
+    Send a notification from a background asyncio task using its own DB session.
+
+    Use this instead of notify() when scheduling via asyncio.create_task(), because
+    the request's session may be closed by get_db() before the task executes.
+    Each call opens and commits a dedicated session so there is no shared-state race.
+    """
+    from app.core.database import async_session  # late import avoids circular deps
+
+    try:
+        async with async_session() as session:
+            service = NotificationService(session)
+            await service.create_notification(
+                user_id=user_id,
+                type=type,
+                title=title,
+                message=message,
+                **kwargs,
+            )
+            await session.commit()
+    except Exception as exc:
+        logger.warning(
+            "Background notification failed: user=%s type=%s error=%s",
+            user_id, type.value, exc,
+        )

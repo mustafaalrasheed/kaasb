@@ -4,6 +4,8 @@ Business logic for the Fiverr-style gig marketplace.
 """
 
 import asyncio
+import hashlib
+import hmac as _hmac
 import logging
 import re
 import uuid
@@ -35,15 +37,16 @@ from app.models.payment import (
     TransactionStatus,
     TransactionType,
 )
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserStatus
 from app.schemas.gig import (
     GigCreate,
     GigOrderCreate,
     GigSearchParams,
     GigUpdate,
 )
+from app.models.message import Conversation, ConversationType
 from app.services.base import BaseService
-from app.services.notification_service import notify
+from app.services.notification_service import notify_background
 from app.services.qi_card_client import USD_TO_IQD, QiCardClient, QiCardError
 from app.utils.files import MAX_GIG_IMAGES, delete_gig_image
 
@@ -130,7 +133,7 @@ class GigService(BaseService):
         admin_result = await self.db.execute(
             select(User).where(
                 User.is_superuser == True,  # noqa: E712
-                User.status == "active",
+                User.status == UserStatus.ACTIVE,
             )
         )
         admin_ids = [admin.id for admin in admin_result.scalars().all()]
@@ -144,8 +147,7 @@ class GigService(BaseService):
         loaded_gig = await self._load_gig(gig.id)
 
         for admin_id in admin_ids:
-            asyncio.create_task(notify(
-                self.db,
+            asyncio.create_task(notify_background(
                 user_id=admin_id,
                 type=NotificationType.GIG_SUBMITTED,
                 title="New gig pending review",
@@ -336,8 +338,7 @@ class GigService(BaseService):
         # with notify() on the same AsyncSession causes a 500. Load first, notify after.
         updated_gig = await self._load_gig(gig_id)
 
-        asyncio.create_task(notify(
-            self.db,
+        asyncio.create_task(notify_background(
             user_id=freelancer_id,
             type=NotificationType.GIG_APPROVED,
             title="Your gig was approved",
@@ -365,8 +366,7 @@ class GigService(BaseService):
 
         updated_gig = await self._load_gig(gig_id)
 
-        asyncio.create_task(notify(
-            self.db,
+        asyncio.create_task(notify_background(
             user_id=freelancer_id,
             type=NotificationType.GIG_NEEDS_REVISION,
             title="Your gig needs edits before it can go live",
@@ -397,8 +397,7 @@ class GigService(BaseService):
 
         updated_gig = await self._load_gig(gig_id)
 
-        asyncio.create_task(notify(
-            self.db,
+        asyncio.create_task(notify_background(
             user_id=freelancer_id,
             type=NotificationType.GIG_REJECTED,
             title="Your gig was rejected",
@@ -515,6 +514,14 @@ class GigService(BaseService):
 
         # Initiate Qi Card payment (price is stored in IQD)
         order_ref = f"gig-order-{order.id}"
+        # Sign the order_ref so the success/failure redirects can be verified.
+        # This prevents a client from faking payment by hitting the success URL
+        # directly with their known order_ref (same mitigation as fund_escrow).
+        sig = _hmac.new(
+            settings.SECRET_KEY.encode(),
+            order_ref.encode(),
+            hashlib.sha256,
+        ).hexdigest()
         base = f"https://{settings.DOMAIN}"
         payment_url: str | None = None
 
@@ -525,9 +532,9 @@ class GigService(BaseService):
             qi_result = await qi_card.create_payment(
                 amount_usd=amount_usd,
                 order_id=order_ref,
-                success_url=f"{base}/api/v1/payments/qi-card/success",
-                failure_url=f"{base}/api/v1/payments/qi-card/failure",
-                cancel_url=f"{base}/api/v1/payments/qi-card/cancel",
+                success_url=f"{base}/api/v1/payments/qi-card/success?sig={sig}",
+                failure_url=f"{base}/api/v1/payments/qi-card/failure?sig={sig}",
+                cancel_url=f"{base}/api/v1/payments/qi-card/cancel?sig={sig}",
             )
             payment_url = qi_result.get("link")
         except QiCardError as e:
@@ -642,6 +649,211 @@ class GigService(BaseService):
 
         await self.db.commit()
         return order
+
+    # ──────────────────────────────────────────
+    # Dispute Management
+    # ──────────────────────────────────────────
+
+    async def raise_dispute(
+        self,
+        order_id: uuid.UUID,
+        client: User,
+        reason: str,
+    ) -> GigOrder:
+        """
+        Client raises a dispute on an active or delivered order.
+        Sets the order and its escrow to DISPUTED and notifies the freelancer and admins.
+        """
+        order = await self._get_order(order_id)
+        if str(order.client_id) != str(client.id):
+            raise ForbiddenError("Only the client can raise a dispute")
+
+        allowed_statuses = {
+            GigOrderStatus.IN_PROGRESS,
+            GigOrderStatus.DELIVERED,
+            GigOrderStatus.REVISION_REQUESTED,
+        }
+        if order.status not in allowed_statuses:
+            raise BadRequestError(
+                f"Cannot raise a dispute on an order with status '{order.status.value}'. "
+                "Disputes can only be raised on in-progress or delivered orders."
+            )
+        if order.status == GigOrderStatus.DISPUTED:
+            raise BadRequestError("A dispute has already been raised for this order")
+
+        order.status = GigOrderStatus.DISPUTED
+        order.dispute_reason = reason
+        order.dispute_opened_at = datetime.now(UTC)
+        order.dispute_opened_by = client.id
+
+        # Freeze the escrow so neither party can release or withdraw
+        escrow_result = await self.db.execute(
+            select(Escrow).where(
+                Escrow.gig_order_id == order_id,
+                Escrow.status == EscrowStatus.FUNDED,
+            )
+        )
+        escrow = escrow_result.scalar_one_or_none()
+        if escrow:
+            escrow.status = EscrowStatus.DISPUTED
+
+        await self.db.commit()
+        await self.db.refresh(order)
+
+        # Post a system message in the order's existing conversation (if any)
+        # so both client and freelancer see the dispute event in their chat.
+        order_conv_result = await self.db.execute(
+            select(Conversation).where(
+                Conversation.order_id == order_id,
+                Conversation.conversation_type == ConversationType.ORDER,
+            )
+        )
+        order_conv = order_conv_result.scalar_one_or_none()
+        if order_conv:
+            from app.services.message_service import MessageService
+            msg_svc = MessageService(self.db)
+            await msg_svc.send_system_message(
+                order_conv.id,
+                f"\u26a0\ufe0f Dispute opened\nReason: {reason[:500]}\n"
+                "The escrow has been frozen. An admin will review and resolve.",
+            )
+            await self.db.commit()
+
+        # Notify freelancer
+        asyncio.create_task(notify_background(
+            user_id=order.freelancer_id,
+            type=NotificationType.DISPUTE_OPENED,
+            title="نزاع تم فتحه على طلبك",
+            message=f"قدّم العميل نزاعاً على الطلب. السبب: {reason[:200]}",
+            link_type="gig_order",
+            link_id=str(order_id),
+            actor_id=client.id,
+        ))
+        # Notify admins
+        admin_result = await self.db.execute(
+            select(User).where(
+                User.is_superuser == True,  # noqa: E712
+                User.status == UserStatus.ACTIVE,
+            )
+        )
+        for admin in admin_result.scalars().all():
+            asyncio.create_task(notify_background(
+                user_id=admin.id,
+                type=NotificationType.DISPUTE_OPENED,
+                title="New dispute opened",
+                message=f"Client raised a dispute on order {order_id}. Reason: {reason[:200]}",
+                link_type="gig_order",
+                link_id=str(order_id),
+                actor_id=client.id,
+            ))
+
+        return order
+
+    async def resolve_dispute(
+        self,
+        order_id: uuid.UUID,
+        admin: User,
+        resolution: str,  # "release" | "refund"
+        admin_note: str = "",
+    ) -> GigOrder:
+        """
+        Admin resolves a disputed order.
+
+        resolution="release" → escrow released to freelancer, order COMPLETED
+        resolution="refund"  → escrow refunded to client, order CANCELLED
+        """
+        if resolution not in ("release", "refund"):
+            raise BadRequestError("resolution must be 'release' or 'refund'")
+
+        order = await self._get_order(order_id)
+        if order.status != GigOrderStatus.DISPUTED:
+            raise BadRequestError("Order is not in DISPUTED state")
+
+        escrow_result = await self.db.execute(
+            select(Escrow).where(
+                Escrow.gig_order_id == order_id,
+                Escrow.status == EscrowStatus.DISPUTED,
+            )
+        )
+        escrow = escrow_result.scalar_one_or_none()
+
+        if resolution == "release":
+            if escrow:
+                # Re-mark as FUNDED so _release_locked_escrow can process it
+                escrow.status = EscrowStatus.FUNDED
+                await self.db.flush()
+                from app.services.payment_service import PaymentService  # noqa: PLC0415
+                await PaymentService(self.db).release_escrow_by_id(escrow.id)
+            order.status = GigOrderStatus.COMPLETED
+            order.completed_at = datetime.now(UTC)
+            order.dispute_resolution = "released_to_freelancer"
+            notify_client_msg = "تم حل النزاع: تم تحرير المبلغ للمستقل."
+            notify_freelancer_msg = "تم حل النزاع لصالحك: تم تحرير المبلغ."
+        else:  # refund
+            if escrow:
+                from app.services.payment_service import PaymentService  # noqa: PLC0415
+                await PaymentService(self.db).refund_escrow_by_gig_order(order_id)
+            order.status = GigOrderStatus.CANCELLED
+            order.cancellation_reason = f"Dispute resolved: refund to client. {admin_note}"
+            order.cancelled_by = admin.id
+            order.dispute_resolution = "refunded_to_client"
+            notify_client_msg = "تم حل النزاع: تم استرداد المبلغ إليك."
+            notify_freelancer_msg = "تم حل النزاع: تم إرجاع المبلغ للعميل."
+
+        order.dispute_resolved_at = datetime.now(UTC)
+        await self.db.commit()
+        await self.db.refresh(order)
+
+        # Post system message in order conversation
+        order_conv_result = await self.db.execute(
+            select(Conversation).where(
+                Conversation.order_id == order_id,
+                Conversation.conversation_type == ConversationType.ORDER,
+            )
+        )
+        order_conv = order_conv_result.scalar_one_or_none()
+        if order_conv:
+            from app.services.message_service import MessageService
+            msg_svc = MessageService(self.db)
+            resolution_text = (
+                "released to freelancer" if resolution == "release"
+                else "refunded to client"
+            )
+            note_suffix = f"\nAdmin note: {admin_note}" if admin_note else ""
+            await msg_svc.send_system_message(
+                order_conv.id,
+                f"\u2705 Dispute resolved\nOutcome: {resolution_text}{note_suffix}",
+            )
+            await self.db.commit()
+
+        # Notify both parties
+        for user_id, msg in [
+            (order.client_id, notify_client_msg),
+            (order.freelancer_id, notify_freelancer_msg),
+        ]:
+            asyncio.create_task(notify_background(
+                user_id=user_id,
+                type=NotificationType.DISPUTE_RESOLVED,
+                title="تم حل النزاع",
+                message=msg,
+                link_type="gig_order",
+                link_id=str(order_id),
+                actor_id=admin.id,
+            ))
+
+        return order
+
+    async def list_disputed_orders(self) -> list[GigOrder]:
+        """Admin: list all orders currently in DISPUTED status."""
+        result = await self.db.execute(
+            select(GigOrder)
+            .where(GigOrder.status == GigOrderStatus.DISPUTED)
+            .options(
+                selectinload(GigOrder.gig),
+            )
+            .order_by(GigOrder.dispute_opened_at.asc())
+        )
+        return list(result.scalars().all())
 
     # ──────────────────────────────────────────
     # Internal helpers

@@ -43,4 +43,7 @@ export const adminApi = {
     page?: number;
     page_size?: number;
   }) => api.get("/admin/support/conversations", { params }),
+
+  getOrderConversation: (orderId: string, params?: { page?: number; page_size?: number }) =>
+    api.get(`/admin/orders/${orderId}/conversation`, { params }),
 };

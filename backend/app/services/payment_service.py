@@ -14,6 +14,8 @@ Currency:
   - Converted to IQD at time of Qi Card transaction
 """
 
+import hashlib
+import hmac as _hmac
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -26,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError, ConflictError, ExternalServiceError, ForbiddenError, NotFoundError
 from app.models.contract import Contract, Milestone, MilestoneStatus
+from app.models.gig import GigOrder, GigOrderStatus
 from app.models.notification import NotificationType
 from app.models.payment import (
     Escrow,
@@ -63,6 +66,24 @@ class PaymentService(BaseService):
         self.qi_card = QiCardClient()
 
     # === Helpers ===
+
+    def _sign_order_id(self, order_id: str) -> str:
+        """HMAC-SHA256 signature for Qi Card success/failure redirect URLs.
+        Prevents unauthenticated users from faking payment confirmation by
+        directly hitting the success URL with a known order_id.
+        """
+        return _hmac.new(
+            settings.SECRET_KEY.encode(),
+            order_id.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+    def _verify_order_sig(self, order_id: str, sig: str) -> bool:
+        """Constant-time verify of the HMAC signature included in the success URL."""
+        if not sig:
+            return False
+        expected = self._sign_order_id(order_id)
+        return _hmac.compare_digest(expected, sig)
 
     def _calculate_fees(self, amount: float) -> dict:
         """Calculate platform fee and net amount using Decimal for precision."""
@@ -177,11 +198,15 @@ class PaymentService(BaseService):
         fees = self._calculate_fees(milestone.amount)
         order_id = f"escrow-{milestone.id}"
 
-        # Server-controlled redirect URLs — never user-supplied (SSRF protection)
+        # Server-controlled redirect URLs — never user-supplied (SSRF protection).
+        # sig = HMAC(SECRET_KEY, order_id): ties the success URL to our server so
+        # a user cannot bypass Qi Card by hitting the success URL directly with their
+        # known order_id. Qi Card preserves existing query params when appending CartID.
+        sig = self._sign_order_id(order_id)
         base = f"https://{settings.DOMAIN}"
-        success_url = f"{base}/api/v1/payments/qi-card/success"
-        failure_url = f"{base}/api/v1/payments/qi-card/failure"
-        cancel_url  = f"{base}/api/v1/payments/qi-card/cancel"
+        success_url = f"{base}/api/v1/payments/qi-card/success?sig={sig}"
+        failure_url = f"{base}/api/v1/payments/qi-card/failure?sig={sig}"
+        cancel_url  = f"{base}/api/v1/payments/qi-card/cancel?sig={sig}"
 
         # Initiate Qi Card payment
         try:
@@ -269,12 +294,22 @@ class PaymentService(BaseService):
             ),
         )
 
-    async def confirm_qi_card_payment(self, order_id: str) -> bool:
+    async def confirm_qi_card_payment(self, order_id: str, sig: str = "") -> bool:
         """
         Called when Qi Card redirects the browser to successUrl?CartID=<order_id>.
         Marks the escrow as FUNDED and transaction as COMPLETED.
-        order_id is our "escrow-<milestone_id>" string.
+        order_id is our "escrow-<milestone_id>" or "gig-order-<order_id>" string.
+
+        sig must match HMAC(SECRET_KEY, order_id).  Empty sig is rejected so that
+        a user cannot fake payment by hitting this URL directly with their order_id.
         """
+        if not self._verify_order_sig(order_id, sig):
+            logger.warning(
+                "Qi Card success: invalid or missing signature for order_id=%s — possible forgery attempt",
+                order_id,
+            )
+            return False
+
         # with_for_update ensures duplicate Qi Card success redirects (which do
         # happen in practice) are serialised — only the first one processes.
         result = await self.db.execute(
@@ -308,6 +343,22 @@ class PaymentService(BaseService):
             escrow.status = EscrowStatus.FUNDED
             escrow.funded_at = datetime.now(UTC)
 
+        # For gig orders: transition the GigOrder from PENDING → IN_PROGRESS so the
+        # freelancer can start work.  Without this, mark_delivered() always rejects
+        # because it requires IN_PROGRESS, making the entire gig order lifecycle broken.
+        if order_id.startswith("gig-order-"):
+            try:
+                gig_order_id = uuid.UUID(order_id[len("gig-order-"):])
+                go_result = await self.db.execute(
+                    select(GigOrder).where(GigOrder.id == gig_order_id).with_for_update()
+                )
+                gig_order = go_result.scalar_one_or_none()
+                if gig_order and gig_order.status == GigOrderStatus.PENDING:
+                    gig_order.status = GigOrderStatus.IN_PROGRESS
+                    logger.info("GigOrder %s → IN_PROGRESS after payment confirmed", gig_order_id)
+            except (ValueError, AttributeError) as exc:
+                logger.warning("Could not parse gig_order_id from order_id=%s: %s", order_id, exc)
+
         try:
             await self.db.flush()
         except SQLAlchemyError as e:
@@ -320,8 +371,12 @@ class PaymentService(BaseService):
         )
         return True
 
-    async def handle_qi_card_payment_failed(self, order_id: str) -> bool:
+    async def handle_qi_card_payment_failed(self, order_id: str, sig: str = "") -> bool:
         """Mark transaction as FAILED when Qi Card redirects to failureUrl or cancelUrl."""
+        if not self._verify_order_sig(order_id, sig):
+            logger.warning("Qi Card failure/cancel: invalid signature for order_id=%s", order_id)
+            return False
+
         result = await self.db.execute(
             select(Transaction).where(
                 Transaction.external_transaction_id == order_id,
@@ -459,6 +514,49 @@ class PaymentService(BaseService):
         return await self._release_locked_escrow(escrow)
 
     # === Escrow: Refund ===
+
+    async def refund_escrow_by_gig_order(
+        self, gig_order_id: uuid.UUID, reason: str = "Dispute resolved: refund to client"
+    ) -> bool:
+        """Refund a gig-order escrow (used by dispute resolution)."""
+        result = await self.db.execute(
+            select(Escrow).where(
+                Escrow.gig_order_id == gig_order_id,
+                Escrow.status.in_([EscrowStatus.FUNDED, EscrowStatus.DISPUTED]),
+            ).with_for_update()
+        )
+        escrow = result.scalar_one_or_none()
+        if not escrow:
+            return False
+
+        refund_tx = Transaction(
+            transaction_type=TransactionType.ESCROW_REFUND,
+            status=TransactionStatus.PROCESSING,  # Manual Qi Card portal refund required
+            amount=escrow.amount,
+            currency=escrow.currency,
+            platform_fee=0,
+            net_amount=escrow.amount,
+            payee_id=escrow.client_id,
+            provider=PaymentProvider.QI_CARD,
+            external_transaction_id=f"refund_{uuid.uuid4().hex[:12]}",
+            description=reason,
+        )
+        self.db.add(refund_tx)
+        escrow.status = EscrowStatus.REFUNDED
+        escrow.released_at = datetime.now(UTC)
+        await self.db.flush()
+
+        await notify(
+            self.db,
+            user_id=escrow.client_id,
+            type=NotificationType.PAYMENT_RECEIVED,
+            title="تم بدء استرداد المبلغ",
+            message=f"سيتم إعادة ${escrow.amount:.2f} إلى حسابك خلال 3-5 أيام عمل.",
+            link_type="gig_order",
+            link_id=escrow.gig_order_id,
+        )
+        logger.info("Gig order escrow refunded: gig_order_id=%s amount=%s", gig_order_id, escrow.amount)
+        return True
 
     async def refund_escrow(
         self, milestone_id: uuid.UUID, reason: str = "Milestone cancelled"

@@ -7,7 +7,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -22,7 +22,7 @@ from app.models.contract import (
 from app.models.job import Job, JobStatus
 from app.models.notification import NotificationType
 from app.models.proposal import Proposal
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.contract import (
     ContractCreate,
     MilestoneReview,
@@ -329,14 +329,37 @@ class ContractService(BaseService):
                     if job:
                         job.status = JobStatus.COMPLETED
 
-                    # Update user stats
-                    full_contract.freelancer.total_earnings += milestone.amount
-                    full_contract.freelancer.jobs_completed += 1
-                    full_contract.client.total_spent += milestone.amount
+                    # Atomic increments avoid read-modify-write race when two milestones
+                    # are approved concurrently for the same user.
+                    await self.db.execute(
+                        update(User)
+                        .where(User.id == full_contract.freelancer_id)
+                        .values(
+                            total_earnings=User.total_earnings + milestone.amount,
+                            jobs_completed=User.jobs_completed + 1,
+                        )
+                        .execution_options(synchronize_session=False)
+                    )
+                    await self.db.execute(
+                        update(User)
+                        .where(User.id == full_contract.client_id)
+                        .values(total_spent=User.total_spent + milestone.amount)
+                        .execution_options(synchronize_session=False)
+                    )
                 else:
-                    # Just update client spent for this milestone
-                    full_contract.client.total_spent += milestone.amount
-                    full_contract.freelancer.total_earnings += milestone.amount
+                    # Atomic increments for partial milestone payments
+                    await self.db.execute(
+                        update(User)
+                        .where(User.id == full_contract.freelancer_id)
+                        .values(total_earnings=User.total_earnings + milestone.amount)
+                        .execution_options(synchronize_session=False)
+                    )
+                    await self.db.execute(
+                        update(User)
+                        .where(User.id == full_contract.client_id)
+                        .values(total_spent=User.total_spent + milestone.amount)
+                        .execution_options(synchronize_session=False)
+                    )
 
         elif data.action == "request_revision":
             milestone.status = MilestoneStatus.REVISION_REQUESTED

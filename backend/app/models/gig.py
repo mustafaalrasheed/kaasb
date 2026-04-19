@@ -217,6 +217,15 @@ class GigOrder(BaseModel):
     cancellation_reason: Mapped[str | None] = mapped_column(Text)
     cancelled_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
+    # === Dispute ===
+    dispute_reason: Mapped[str | None] = mapped_column(Text)
+    dispute_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dispute_opened_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    dispute_resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dispute_resolution: Mapped[str | None] = mapped_column(String(50))
+
     # === Relationships ===
     gig: Mapped["Gig"] = relationship("Gig", back_populates="orders")
     package: Mapped["GigPackage"] = relationship("GigPackage")

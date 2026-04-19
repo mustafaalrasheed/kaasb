@@ -21,7 +21,7 @@ from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from app.models.gig import GigOrder
 from app.models.job import Job
 from app.models.message import Conversation, ConversationType, Message, SenderRole
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserStatus
 from app.schemas.message import ConversationCreate, MessageCreate
 from app.services.base import BaseService
 from app.services.events import MessageSentEvent, bus
@@ -65,10 +65,11 @@ class MessageService(BaseService):
         p2 = max(sender.id, data.recipient_id)
 
         # Determine conversation type from context + participants.
-        if data.order_id:
-            conv_type = ConversationType.ORDER
-        elif recipient.is_superuser or sender.is_superuser:
+        # Admin involvement always wins — support > order > user.
+        if recipient.is_superuser or sender.is_superuser:
             conv_type = ConversationType.SUPPORT
+        elif data.order_id:
+            conv_type = ConversationType.ORDER
         else:
             conv_type = ConversationType.USER
 
@@ -134,15 +135,15 @@ class MessageService(BaseService):
         is_participant = sender.id in (
             conversation.participant_one_id, conversation.participant_two_id,
         )
-        # Admins can reply in any SUPPORT thread from the admin inbox even if
-        # they weren't the originally-addressed admin. Their message is still
-        # attributed to them via sender_id; the original admin stays the
-        # participant so the requester keeps their "other user" view stable.
-        is_admin_on_support = (
+        # Admins can send in any SUPPORT thread (not just their own).
+        # Admins can also send in ORDER conversations for dispute mediation.
+        is_admin_override = (
             sender.is_superuser
-            and conversation.conversation_type == ConversationType.SUPPORT
+            and conversation.conversation_type in (
+                ConversationType.SUPPORT, ConversationType.ORDER
+            )
         )
-        if not is_participant and not is_admin_on_support:
+        if not is_participant and not is_admin_override:
             raise ForbiddenError("Not part of this conversation")
 
         attachments = [a.model_dump() for a in data.attachments]
@@ -263,6 +264,60 @@ class MessageService(BaseService):
 
         return message
 
+    async def contact_support(
+        self,
+        user: User,
+        message: str,
+        order_id: uuid.UUID | None = None,
+    ) -> Conversation:
+        """
+        Start or resume a SUPPORT conversation with any platform admin.
+        Used by the "Contact Support" button so users don't need to know
+        an admin's user ID. If an existing SUPPORT thread with an admin
+        already exists it is reused (idempotent).
+        """
+        if user.is_superuser:
+            raise BadRequestError("Admins cannot open support tickets")
+
+        # Find any active admin
+        admin_result = await self.db.execute(
+            select(User).where(
+                User.is_superuser.is_(True),
+                User.status == UserStatus.ACTIVE,
+            ).limit(1)
+        )
+        admin = admin_result.scalar_one_or_none()
+        if not admin:
+            raise BadRequestError("Support is temporarily unavailable — no active admins")
+
+        # order_id stored on the SUPPORT conversation as context so admin can
+        # navigate to the order directly. Admin as recipient guarantees SUPPORT type.
+        data = ConversationCreate(
+            recipient_id=admin.id,
+            initial_message=message,
+            order_id=order_id,
+        )
+        return await self.start_conversation(user, data)
+
+    async def get_order_conversation(
+        self,
+        order_id: uuid.UUID,
+    ) -> Conversation | None:
+        """Return the ORDER-type conversation linked to this order, if any."""
+        result = await self.db.execute(
+            select(Conversation)
+            .options(
+                selectinload(Conversation.participant_one),
+                selectinload(Conversation.participant_two),
+                selectinload(Conversation.order),
+            )
+            .where(
+                Conversation.order_id == order_id,
+                Conversation.conversation_type == ConversationType.ORDER,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_conversations(
         self,
         user: User,
@@ -365,11 +420,15 @@ class MessageService(BaseService):
         is_participant = user.id in (
             conversation.participant_one_id, conversation.participant_two_id,
         )
-        is_admin_on_support = (
+        # Admins can read any SUPPORT or ORDER conversation (for dispute review
+        # and mediation) even if they are not a participant.
+        is_admin_override = (
             user.is_superuser
-            and conversation.conversation_type == ConversationType.SUPPORT
+            and conversation.conversation_type in (
+                ConversationType.SUPPORT, ConversationType.ORDER
+            )
         )
-        if not is_participant and not is_admin_on_support:
+        if not is_participant and not is_admin_override:
             raise ForbiddenError("Not part of this conversation")
 
         # Only clear unread for a participant. A non-participant admin viewing

@@ -3,7 +3,6 @@ Kaasb Platform - Input Sanitization
 Cleans user input to prevent XSS, HTML injection, and other attacks.
 """
 
-import html
 import re
 
 # Dangerous HTML tags and patterns
@@ -58,8 +57,8 @@ def sanitize_text(text: str | None, max_length: int = 10000) -> str | None:
     text = _EXPRESSION_PATTERN.sub("", text)
     text = _IMPORT_PATTERN.sub("", text)
 
-    # HTML-escape remaining special characters
-    text = html.escape(text, quote=True)
+    # Do NOT html.escape() here: this is a JSON API and the frontend (React) handles
+    # its own escaping.  html.escape would store "&amp;" in the DB and render literally.
 
     # Normalize whitespace (collapse multiple spaces, trim)
     text = " ".join(text.split())
