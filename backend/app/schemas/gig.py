@@ -79,6 +79,7 @@ class GigCreate(BaseModel):
     subcategory_id: Optional[uuid.UUID] = None
     tags: list[str] = Field(default_factory=list, max_length=5)
     packages: list[GigPackageIn] = Field(..., min_length=1, max_length=3)
+    requirement_questions: list[RequirementQuestion] = Field(default_factory=list, max_length=10)
 
     @field_validator("tags")
     @classmethod
@@ -103,6 +104,7 @@ class GigUpdate(BaseModel):
     subcategory_id: Optional[uuid.UUID] = None
     tags: Optional[list[str]] = None
     packages: Optional[list[GigPackageIn]] = None
+    requirement_questions: Optional[list[RequirementQuestion]] = None
 
 
 class FreelancerBrief(BaseModel):
@@ -128,9 +130,11 @@ class GigOut(BaseModel):
     orders_count: int
     avg_rating: float
     reviews_count: int
+    rank_score: float = 0.0
     category_id: Optional[uuid.UUID] = None
     subcategory_id: Optional[uuid.UUID] = None
     revision_note: Optional[str] = None
+    requirement_questions: Optional[list] = None
     created_at: datetime
     updated_at: datetime
     freelancer: Optional[FreelancerBrief] = None
@@ -161,15 +165,45 @@ class GigListItem(BaseModel):
 # Gig Order
 # ──────────────────────────────────────────────
 
+class RequirementQuestion(BaseModel):
+    """One question in a gig's requirement template (F3)."""
+    question: str = Field(..., min_length=3, max_length=300)
+    type: str = Field(default="text", pattern="^(text|file|multiple_choice)$")
+    required: bool = True
+    options: list[str] = Field(default_factory=list)
+
+
+class RequirementAnswer(BaseModel):
+    """One client answer matching a RequirementQuestion (F3)."""
+    question: str
+    answer: str
+
+
 class GigOrderCreate(BaseModel):
     gig_id: uuid.UUID
     package_id: uuid.UUID
     requirements: Optional[str] = Field(None, max_length=2000)
 
 
+class GigRequirementsSubmit(BaseModel):
+    """Client submits structured answers to gig requirement questions (F3)."""
+    answers: list[RequirementAnswer] = Field(..., min_length=1)
+
+
 class GigOrderUpdate(BaseModel):
     status: GigOrderStatus
     cancellation_reason: Optional[str] = Field(None, max_length=500)
+
+
+class OrderDeliveryOut(BaseModel):
+    id: uuid.UUID
+    order_id: uuid.UUID
+    message: str
+    files: list[str] = []
+    revision_number: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class GigOrderOut(BaseModel):
@@ -180,6 +214,8 @@ class GigOrderOut(BaseModel):
     freelancer_id: uuid.UUID
     status: GigOrderStatus
     requirements: Optional[str] = None
+    requirement_answers: Optional[list] = None
+    requirements_submitted_at: Optional[datetime] = None
     price_paid: float
     delivery_days: int
     revisions_remaining: int

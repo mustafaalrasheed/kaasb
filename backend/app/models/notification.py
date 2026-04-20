@@ -57,6 +57,22 @@ class NotificationType(str, enum.Enum):
     DISPUTE_OPENED = "dispute_opened"
     DISPUTE_RESOLVED = "dispute_resolved"
 
+    # Buyer Requests
+    BUYER_REQUEST_OFFER_RECEIVED = "buyer_request_offer_received"
+    BUYER_REQUEST_OFFER_ACCEPTED = "buyer_request_offer_accepted"
+    BUYER_REQUEST_OFFER_REJECTED = "buyer_request_offer_rejected"
+
+    # Order lifecycle (F3/F4)
+    ORDER_REQUIREMENTS_SUBMITTED = "order_requirements_submitted"
+    ORDER_DELIVERED = "order_delivered"
+    ORDER_AUTO_COMPLETED = "order_auto_completed"
+
+    # Seller levels (F2)
+    SELLER_LEVEL_UPGRADED = "seller_level_upgraded"
+
+    # Anti off-platform (F6)
+    CHAT_VIOLATION_WARNING = "chat_violation_warning"
+
     # System
     SYSTEM_ALERT = "system_alert"
 

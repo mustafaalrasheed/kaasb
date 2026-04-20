@@ -27,6 +27,7 @@ from app.models.gig import (
     GigOrderStatus,
     GigPackage,
     GigStatus,
+    OrderDelivery,
 )
 from app.models.message import Conversation, ConversationType
 from app.models.notification import NotificationType
@@ -98,6 +99,9 @@ class GigService(BaseService):
         base_slug = _slugify(data.title)
         slug = await self._unique_slug(base_slug)
 
+        # Serialize requirement_questions to plain dicts for JSONB storage
+        req_questions = [q.model_dump() for q in (data.requirement_questions or [])]
+
         gig = Gig(
             freelancer_id=freelancer.id,
             title=data.title,
@@ -106,6 +110,7 @@ class GigService(BaseService):
             category_id=data.category_id,
             subcategory_id=data.subcategory_id,
             tags=data.tags,
+            requirement_questions=req_questions if req_questions else None,
             status=GigStatus.PENDING_REVIEW,
         )
         self.db.add(gig)
@@ -201,6 +206,8 @@ class GigService(BaseService):
             gig.subcategory_id = data.subcategory_id
         if data.tags is not None:
             gig.tags = data.tags
+        if data.requirement_questions is not None:
+            gig.requirement_questions = [q.model_dump() for q in data.requirement_questions] or None
 
         if data.packages is not None:
             # Replace all packages
@@ -286,13 +293,18 @@ class GigService(BaseService):
         count_q = select(func.count()).select_from(q.subquery())
         total = (await self.db.execute(count_q)).scalar_one()
 
-        # Sorting
+        # Sorting — "relevance" uses rank_score (F7); empty query defaults to rank_score
         sort_map = {
+            "relevance": Gig.rank_score.desc(),
             "newest": Gig.created_at.desc(),
             "rating": Gig.avg_rating.desc(),
             "orders": Gig.orders_count.desc(),
         }
-        order_col = sort_map.get(params.sort_by, Gig.orders_count.desc())
+        # Default to rank_score when browsing without a search term
+        if not params.q and params.sort_by not in ("newest", "rating", "orders"):
+            order_col = Gig.rank_score.desc()
+        else:
+            order_col = sort_map.get(params.sort_by, Gig.rank_score.desc())
         q = q.order_by(order_col)
 
         # Pagination
@@ -486,18 +498,25 @@ class GigService(BaseService):
 
         due = datetime.now(UTC) + timedelta(days=pkg.delivery_days)
 
+        # F3: if gig has requirement questions, start in PENDING_REQUIREMENTS
+        # (transitions to IN_PROGRESS after client submits answers in payment_service)
+        has_requirements = bool(gig.requirement_questions)
+
         order = GigOrder(
             gig_id=gig.id,
             package_id=pkg.id,
             client_id=client.id,
             freelancer_id=gig.freelancer_id,
-            status=GigOrderStatus.PENDING,
+            status=GigOrderStatus.PENDING,  # always PENDING until payment confirmed
             requirements=data.requirements,
             price_paid=float(pkg.price),
             delivery_days=pkg.delivery_days,
             revisions_remaining=pkg.revisions,
             due_date=due,
         )
+        # Store whether requirements are needed so payment_service can apply correct transition
+        # (we use a flag on the order by checking gig.requirement_questions after payment)
+        _ = has_requirements  # used in payment_service after payment confirmation
         self.db.add(order)
 
         # Increment order count on gig — synchronize_session=False to avoid
@@ -596,15 +615,84 @@ class GigService(BaseService):
         )
         return list(result.scalars().all())
 
-    async def mark_delivered(self, order_id: uuid.UUID, freelancer: User) -> GigOrder:
+    async def submit_requirements(
+        self,
+        order_id: uuid.UUID,
+        client: User,
+        answers: list[dict],
+    ) -> GigOrder:
+        """F3: Client submits structured answers. Transitions PENDING_REQUIREMENTS → IN_PROGRESS."""
+        order = await self._get_order(order_id)
+        if str(order.client_id) != str(client.id):
+            raise ForbiddenError("Access denied")
+        if order.status != GigOrderStatus.PENDING_REQUIREMENTS:
+            raise BadRequestError(
+                f"Requirements already submitted or order is not waiting for them "
+                f"(status: {order.status.value})"
+            )
+        now = datetime.now(UTC)
+        order.requirement_answers = answers
+        order.requirements_submitted_at = now
+        order.status = GigOrderStatus.IN_PROGRESS
+        # Reset due date from now, not from order creation
+        order.due_date = now + timedelta(days=order.delivery_days)
+        await self.db.commit()
+
+        asyncio.create_task(notify_background(
+            user_id=order.freelancer_id,
+            type=NotificationType.ORDER_REQUIREMENTS_SUBMITTED,
+            title="العميل أرسل متطلبات الطلب",
+            message="قدّم العميل إجاباته على أسئلة المتطلبات — يمكنك البدء بالعمل الآن.",
+            link_type="gig_order",
+            link_id=str(order_id),
+            actor_id=client.id,
+        ))
+        return order
+
+    async def mark_delivered(
+        self,
+        order_id: uuid.UUID,
+        freelancer: User,
+        message: str,
+        files: list[str] | None = None,
+    ) -> GigOrder:
+        """F4: Create an OrderDelivery record and mark order as DELIVERED."""
         order = await self._get_order(order_id)
         if str(order.freelancer_id) != str(freelancer.id):
             raise ForbiddenError("Access denied")
-        if order.status != GigOrderStatus.IN_PROGRESS:
-            raise BadRequestError("Order must be in progress to mark delivered")
+        if order.status not in (GigOrderStatus.IN_PROGRESS, GigOrderStatus.REVISION_REQUESTED):
+            raise BadRequestError(
+                "Order must be in progress or revision-requested to deliver"
+            )
+
+        # Count prior deliveries for revision number
+        from sqlalchemy import func as _func
+        count_result = await self.db.execute(
+            select(_func.count(OrderDelivery.id)).where(OrderDelivery.order_id == order_id)
+        )
+        revision_number = count_result.scalar_one() or 0
+
+        delivery = OrderDelivery(
+            order_id=order.id,
+            message=message,
+            files=files or [],
+            revision_number=revision_number,
+        )
+        self.db.add(delivery)
+
         order.status = GigOrderStatus.DELIVERED
         order.delivered_at = datetime.now(UTC)
         await self.db.commit()
+
+        asyncio.create_task(notify_background(
+            user_id=order.client_id,
+            type=NotificationType.ORDER_DELIVERED,
+            title="تم تسليم طلبك",
+            message="قدّم المستقل العمل المطلوب — راجعه وأبدِ رأيك.",
+            link_type="gig_order",
+            link_id=str(order_id),
+            actor_id=freelancer.id,
+        ))
         return order
 
     async def request_revision(self, order_id: uuid.UUID, client: User) -> GigOrder:

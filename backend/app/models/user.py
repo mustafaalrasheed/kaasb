@@ -13,6 +13,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import BaseModel
 
 
+class SellerLevel(str, enum.Enum):
+    """Freelancer trust/performance tier, recalculated daily."""
+    NEW_SELLER = "new_seller"
+    LEVEL_1 = "level_1"
+    LEVEL_2 = "level_2"
+    TOP_RATED = "top_rated"
+
+
 class UserRole(str, enum.Enum):
     """User roles on the platform."""
     CLIENT = "client"
@@ -90,6 +98,22 @@ class User(BaseModel):
     jobs_completed: Mapped[int] = mapped_column(Integer, default=0)
     avg_rating: Mapped[float] = mapped_column(Numeric(3, 2), default=0.0)
     total_reviews: Mapped[int] = mapped_column(Integer, default=0)
+
+    # === Seller Level (freelancer performance tier, recalculated daily) ===
+    seller_level: Mapped[SellerLevel] = mapped_column(
+        Enum(SellerLevel, values_callable=lambda x: [e.value for e in x]),
+        default=SellerLevel.NEW_SELLER,
+        nullable=False,
+    )
+    total_completed_orders: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completion_rate: Mapped[float] = mapped_column(Numeric(5, 4), default=0.0, nullable=False)
+    response_rate: Mapped[float] = mapped_column(Numeric(5, 4), default=0.0, nullable=False)
+    avg_response_time_hours: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    level_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # === Chat safety (anti off-platform, F6) ===
+    chat_violations: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    chat_suspended_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # === Soft delete ===
     deleted_at: Mapped[datetime | None] = mapped_column(

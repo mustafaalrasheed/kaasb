@@ -16,6 +16,7 @@ export { adminApi } from "./api/admin";
 export { messagesApi } from "./api/messages";
 export { notificationsApi } from "./api/notifications";
 export { reviewsApi } from "./api/reviews";
+export { buyerRequestsApi } from "./api/buyer_requests";
 
 import { api as _apiClient } from "./api/client";
 export const healthApi = {

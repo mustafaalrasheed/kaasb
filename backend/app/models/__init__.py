@@ -4,6 +4,14 @@ Import all models here so Alembic can discover them.
 """
 
 from app.models.base import BaseModel
+from app.models.dispute import Dispute, DisputeReason, DisputeStatus
+from app.models.violation_log import ViolationAction, ViolationLog, ViolationType
+from app.models.buyer_request import (
+    BuyerRequest,
+    BuyerRequestOffer,
+    BuyerRequestOfferStatus,
+    BuyerRequestStatus,
+)
 from app.models.contract import Contract, ContractStatus, Milestone, MilestoneStatus
 from app.models.gig import (
     Category,
@@ -13,6 +21,7 @@ from app.models.gig import (
     GigPackage,
     GigPackageTier,
     GigStatus,
+    OrderDelivery,
     Subcategory,
 )
 from app.models.job import ExperienceLevel, Job, JobDuration, JobStatus, JobType
@@ -33,11 +42,14 @@ from app.models.proposal import Proposal, ProposalStatus
 from app.models.refresh_token import RefreshToken
 from app.models.report import Report, ReportReason, ReportStatus, ReportType
 from app.models.review import Review
-from app.models.user import User, UserRole, UserStatus
+from app.models.user import User, UserRole, UserStatus, SellerLevel
 
 __all__ = [
     "BaseModel",
-    "User", "UserRole", "UserStatus",
+    "User", "UserRole", "UserStatus", "SellerLevel",
+    "BuyerRequest", "BuyerRequestOffer", "BuyerRequestStatus", "BuyerRequestOfferStatus",
+    "Dispute", "DisputeReason", "DisputeStatus",
+    "ViolationLog", "ViolationType", "ViolationAction",
     "PhoneOtp",
     "RefreshToken",
     "Job", "JobStatus", "JobType", "ExperienceLevel", "JobDuration",
@@ -52,5 +64,5 @@ __all__ = [
     "Report", "ReportType", "ReportReason", "ReportStatus",
     "Category", "Subcategory",
     "Gig", "GigStatus", "GigPackage", "GigPackageTier",
-    "GigOrder", "GigOrderStatus",
+    "GigOrder", "GigOrderStatus", "OrderDelivery",
 ]

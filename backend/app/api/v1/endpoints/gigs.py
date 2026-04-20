@@ -46,8 +46,10 @@ from app.schemas.gig import (
     GigOrderCreate,
     GigOrderOut,
     GigOut,
+    GigRequirementsSubmit,
     GigSearchParams,
     GigUpdate,
+    OrderDeliveryOut,
 )
 from app.services.gig_service import GigService
 from app.utils.files import save_gig_image
@@ -280,14 +282,39 @@ async def place_order(
     return out
 
 
-@router.post("/orders/{order_id}/deliver", response_model=GigOrderOut, summary="Mark order as delivered")
-async def mark_delivered(
+@router.post(
+    "/orders/{order_id}/requirements",
+    response_model=GigOrderOut,
+    summary="Submit requirement answers (client, F3)",
+)
+async def submit_requirements(
     order_id: uuid.UUID,
+    data: GigRequirementsSubmit,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     svc = GigService(db)
-    return await svc.mark_delivered(order_id, current_user)
+    answers = [a.model_dump() for a in data.answers]
+    return await svc.submit_requirements(order_id, current_user, answers)
+
+
+from pydantic import BaseModel as _PydanticBase, Field as _PydanticField  # noqa: E402
+
+
+class DeliverBody(_PydanticBase):
+    message: str = _PydanticField(..., min_length=5, max_length=5000)
+    files: list[str] = _PydanticField(default_factory=list)
+
+
+@router.post("/orders/{order_id}/deliver", response_model=GigOrderOut, summary="Submit delivery (F4)")
+async def mark_delivered(
+    order_id: uuid.UUID,
+    data: DeliverBody,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    svc = GigService(db)
+    return await svc.mark_delivered(order_id, current_user, message=data.message, files=data.files)
 
 
 @router.post("/orders/{order_id}/revision", response_model=GigOrderOut, summary="Request revision")

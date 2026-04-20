@@ -146,9 +146,20 @@ class MessageService(BaseService):
         if not is_participant and not is_admin_override:
             raise ForbiddenError("Not part of this conversation")
 
+        # F6: check for off-platform contact info before saving
+        from app.services.message_filter_service import MessageFilterService  # noqa: PLC0415
+        filter_svc = MessageFilterService(self.db)
+        filtered_content, blocked = await filter_svc.process_message(sender, data.content)
+        if blocked:
+            from app.core.exceptions import BadRequestError as _BadRequest  # noqa: PLC0415
+            raise _BadRequest(
+                "رسالتك تحتوي على معلومات اتصال خارجية ولا يمكن إرسالها. "
+                "/ Your message contains off-platform contact info and cannot be sent."
+            )
+
         attachments = [a.model_dump() for a in data.attachments]
         msg = await self._send_message(
-            conversation, sender, data.content, attachments=attachments,
+            conversation, sender, filtered_content, attachments=attachments,
         )
         # Reload with sender relationship — lazy="raise" blocks implicit load
         # and FastAPI serializes MessageDetail which requires message.sender.

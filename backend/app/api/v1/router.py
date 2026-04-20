@@ -6,6 +6,8 @@ Aggregates all endpoint routers under /api/v1.
 from fastapi import APIRouter
 
 from app.api.v1.endpoints.admin import router as admin_router
+from app.api.v1.endpoints.buyer_requests import router as buyer_requests_router
+from app.api.v1.endpoints.disputes import router as disputes_router
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.contracts import router as contracts_router
 from app.api.v1.endpoints.gdpr import router as gdpr_router
@@ -37,4 +39,6 @@ api_router.include_router(messages_router)
 api_router.include_router(admin_router)
 api_router.include_router(gdpr_router)
 api_router.include_router(reports_router)
+api_router.include_router(buyer_requests_router)
+api_router.include_router(disputes_router)
 api_router.include_router(ws_router)

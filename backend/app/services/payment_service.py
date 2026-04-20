@@ -354,8 +354,18 @@ class PaymentService(BaseService):
                 )
                 gig_order = go_result.scalar_one_or_none()
                 if gig_order and gig_order.status == GigOrderStatus.PENDING:
-                    gig_order.status = GigOrderStatus.IN_PROGRESS
-                    logger.info("GigOrder %s → IN_PROGRESS after payment confirmed", gig_order_id)
+                    # F3: if the gig has requirement questions, wait for client answers first
+                    from app.models.gig import Gig as _Gig  # noqa: PLC0415
+                    gig_result = await self.db.execute(
+                        select(_Gig).where(_Gig.id == gig_order.gig_id)
+                    )
+                    linked_gig = gig_result.scalar_one_or_none()
+                    if linked_gig and linked_gig.requirement_questions:
+                        gig_order.status = GigOrderStatus.PENDING_REQUIREMENTS
+                        logger.info("GigOrder %s → PENDING_REQUIREMENTS (has questions)", gig_order_id)
+                    else:
+                        gig_order.status = GigOrderStatus.IN_PROGRESS
+                        logger.info("GigOrder %s → IN_PROGRESS after payment confirmed", gig_order_id)
             except (ValueError, AttributeError) as exc:
                 logger.warning("Could not parse gig_order_id from order_id=%s: %s", order_id, exc)
 

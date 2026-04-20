@@ -18,7 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -36,6 +36,7 @@ class GigStatus(str, enum.Enum):
 
 class GigOrderStatus(str, enum.Enum):
     PENDING = "pending"
+    PENDING_REQUIREMENTS = "pending_requirements"  # F3: awaiting client brief
     IN_PROGRESS = "in_progress"
     DELIVERED = "delivered"
     REVISION_REQUESTED = "revision_requested"
@@ -127,12 +128,20 @@ class Gig(BaseModel):
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # === Requirement questions (F3) ===
+    # JSON array: [{question, type, required, options}]
+    requirement_questions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
     # === Stats (denormalized for fast reads) ===
     orders_count: Mapped[int] = mapped_column(Integer, default=0)
     avg_rating: Mapped[float] = mapped_column(Numeric(3, 2), default=0.0)
     reviews_count: Mapped[int] = mapped_column(Integer, default=0)
     impressions: Mapped[int] = mapped_column(Integer, default=0)
     clicks: Mapped[int] = mapped_column(Integer, default=0)
+
+    # === Rank score (F7) ===
+    rank_score: Mapped[float] = mapped_column(Numeric(6, 2), default=0.0, nullable=False)
+    rank_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # === Relationships ===
     freelancer: Mapped["User"] = relationship("User", foreign_keys=[freelancer_id])  # type: ignore[name-defined]
@@ -203,7 +212,10 @@ class GigOrder(BaseModel):
         Enum(GigOrderStatus, values_callable=lambda x: [e.value for e in x]),
         default=GigOrderStatus.PENDING, nullable=False, index=True
     )
-    requirements: Mapped[str | None] = mapped_column(Text)   # client's brief to freelancer
+    requirements: Mapped[str | None] = mapped_column(Text)   # legacy text brief
+    # F3: structured requirement answers (JSONB)
+    requirement_answers: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    requirements_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     price_paid: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     delivery_days: Mapped[int] = mapped_column(Integer, nullable=False)
     revisions_remaining: Mapped[int] = mapped_column(Integer, default=1)
@@ -231,3 +243,25 @@ class GigOrder(BaseModel):
     package: Mapped["GigPackage"] = relationship("GigPackage")
     client: Mapped["User"] = relationship("User", foreign_keys=[client_id])  # type: ignore[name-defined]
     freelancer: Mapped["User"] = relationship("User", foreign_keys=[freelancer_id])  # type: ignore[name-defined]
+    deliveries: Mapped[list["OrderDelivery"]] = relationship(
+        "OrderDelivery", back_populates="order", lazy="raise", cascade="all, delete-orphan",
+        order_by="OrderDelivery.revision_number",
+    )
+
+
+class OrderDelivery(BaseModel):
+    """A delivery submission by a freelancer on a gig order (F4)."""
+
+    __tablename__ = "gig_order_deliveries"
+
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("gig_orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    files: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=list)
+    revision_number: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    order: Mapped["GigOrder"] = relationship("GigOrder", back_populates="deliveries")
