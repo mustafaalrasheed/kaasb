@@ -31,6 +31,7 @@ Admin
 import uuid
 
 from fastapi import APIRouter, Body, Depends, File, Query, UploadFile, status
+from pydantic import BaseModel as _PydanticBase, Field as _PydanticField
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import (
@@ -49,7 +50,6 @@ from app.schemas.gig import (
     GigRequirementsSubmit,
     GigSearchParams,
     GigUpdate,
-    OrderDeliveryOut,
 )
 from app.services.gig_service import GigService
 from app.utils.files import save_gig_image
@@ -296,9 +296,6 @@ async def submit_requirements(
     svc = GigService(db)
     answers = [a.model_dump() for a in data.answers]
     return await svc.submit_requirements(order_id, current_user, answers)
-
-
-from pydantic import BaseModel as _PydanticBase, Field as _PydanticField  # noqa: E402
 
 
 class DeliverBody(_PydanticBase):
