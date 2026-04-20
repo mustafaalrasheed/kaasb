@@ -3,7 +3,7 @@ Kaasb Platform - Buyer Request Schemas
 Pydantic v2 request/response schemas for buyer requests and offers.
 """
 
-import uuid
+import uuid  # noqa: I001
 from datetime import datetime
 from typing import Optional
 

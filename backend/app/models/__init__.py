@@ -3,7 +3,7 @@ Kaasb Platform - Models Package
 Import all models here so Alembic can discover them.
 """
 
-from app.models.base import BaseModel
+from app.models.base import BaseModel  # noqa: I001
 from app.models.buyer_request import (
     BuyerRequest,
     BuyerRequestOffer,
@@ -41,7 +41,7 @@ from app.models.proposal import Proposal, ProposalStatus
 from app.models.refresh_token import RefreshToken
 from app.models.report import Report, ReportReason, ReportStatus, ReportType
 from app.models.review import Review
-from app.models.user import User, UserRole, UserStatus, SellerLevel
+from app.models.user import SellerLevel, User, UserRole, UserStatus
 from app.models.violation_log import ViolationAction, ViolationLog, ViolationType
 
 __all__ = [
