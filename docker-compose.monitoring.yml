@@ -136,17 +136,17 @@ services:
 
   # ===========================================================================
   # Alertmanager — routes Prometheus alerts to Discord / email
+  # entrypoint.sh renders ${VAR} placeholders from env before launching
+  # alertmanager (it doesn't expand env vars natively)
   # ===========================================================================
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: kaasb_alertmanager
     restart: unless-stopped
-    command:
-      - --config.file=/etc/alertmanager/alertmanager.yml
-      - --storage.path=/alertmanager
-      - --web.listen-address=:9093
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
     volumes:
-      - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml.tpl:ro
+      - ./docker/alertmanager/entrypoint.sh:/entrypoint.sh:ro
       - alertmanager_data:/alertmanager
     environment:
       ALERTMANAGER_DISCORD_WEBHOOK_URL: ${ALERTMANAGER_DISCORD_WEBHOOK_URL:-}
