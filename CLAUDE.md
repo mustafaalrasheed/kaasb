@@ -14,6 +14,13 @@ Before reading any file, follow these rules:
 
 ---
 
+## Working Principles
+
+- When assumptions are non-trivial, state them before coding. If multiple reasonable interpretations exist, ask instead of guessing.
+- For bugs, write a failing test first when feasible; for features, state success criteria before implementing.
+
+---
+
 ## Quick Facts
 
 | Item | Value |
