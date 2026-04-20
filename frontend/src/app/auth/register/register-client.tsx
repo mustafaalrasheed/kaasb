@@ -207,15 +207,15 @@ export default function RegisterClient() {
                 {ar ? (
                   <>
                     أوافق على{" "}
-                    <Link href="/terms" target="_blank" className="text-brand-500 hover:underline">
+                    <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-brand-500 hover:underline">
                       شروط الخدمة
                     </Link>{" "}
                     و{" "}
-                    <Link href="/privacy" target="_blank" className="text-brand-500 hover:underline">
+                    <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-brand-500 hover:underline">
                       سياسة الخصوصية
                     </Link>{" "}
                     و{" "}
-                    <Link href="/acceptable-use" target="_blank" className="text-brand-500 hover:underline">
+                    <Link href="/acceptable-use" target="_blank" rel="noopener noreferrer" className="text-brand-500 hover:underline">
                       سياسة الاستخدام المقبول
                     </Link>
                     . أُقرّ بأنني أبلغ من العمر ١٨ سنة فأكثر.
@@ -223,15 +223,15 @@ export default function RegisterClient() {
                 ) : (
                   <>
                     I agree to the{" "}
-                    <Link href="/terms" target="_blank" className="text-brand-500 hover:underline">
+                    <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-brand-500 hover:underline">
                       Terms of Service
                     </Link>
                     ,{" "}
-                    <Link href="/privacy" target="_blank" className="text-brand-500 hover:underline">
+                    <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-brand-500 hover:underline">
                       Privacy Policy
                     </Link>
                     , and{" "}
-                    <Link href="/acceptable-use" target="_blank" className="text-brand-500 hover:underline">
+                    <Link href="/acceptable-use" target="_blank" rel="noopener noreferrer" className="text-brand-500 hover:underline">
                       Acceptable Use Policy
                     </Link>
                     . I confirm I am at least 18 years old.

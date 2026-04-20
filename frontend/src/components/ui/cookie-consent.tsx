@@ -113,7 +113,7 @@ export function CookieConsent() {
 
           {showDetails && (
             <div className="mt-3 border border-gray-100 rounded-lg overflow-hidden text-sm">
-              <table className="w-full text-left">
+              <table className="w-full text-start">
                 <thead>
                   <tr className="bg-gray-50">
                     <th className="p-3 font-semibold text-gray-700">Cookie</th>
