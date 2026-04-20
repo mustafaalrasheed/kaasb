@@ -163,3 +163,39 @@ html[dir="rtl"] * {
 .input-field {
   min-width: 0;
 }
+
+/* ── Legal-page language toggle ─────────────────────────────
+   Default: both AR and EN render side-by-side (binding bilingual form).
+   When user chooses one language via <LegalViewToggle />, the <html>
+   element gets .legal-lang-ar or .legal-lang-en, and these rules hide
+   the opposite column and collapse the grid to a single column.
+*/
+html.legal-lang-ar [data-legal-lang="en"],
+html.legal-lang-en [data-legal-lang="ar"] {
+  display: none !important;
+}
+html.legal-lang-ar .bilingual-grid,
+html.legal-lang-en .bilingual-grid {
+  grid-template-columns: 1fr !important;
+}
+html.legal-lang-ar .bilingual-grid > [data-legal-lang="ar"],
+html.legal-lang-en .bilingual-grid > [data-legal-lang="en"] {
+  border: 0 !important;
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+}
+
+/* Direction-aware divider between EN and AR columns in side-by-side mode.
+   On LTR, AR is the right column → border-left + padding-left.
+   On RTL, CSS grid flips column order, so AR renders as the left column
+   visually → border-right + padding-right. */
+@media (min-width: 768px) {
+  html[dir="ltr"] .bilingual-grid > [data-legal-lang="ar"] {
+    border-left: 1px solid rgb(229 231 235);
+    padding-left: 2rem;
+  }
+  html[dir="rtl"] .bilingual-grid > [data-legal-lang="ar"] {
+    border-right: 1px solid rgb(229 231 235);
+    padding-right: 2rem;
+  }
+}

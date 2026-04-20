@@ -554,7 +554,7 @@ from app.core.exceptions import ExternalServiceError
 qi = QiCardClient()
 try:
     result = await qi.create_payment(
-        amount_usd=float(order.price_paid),   # converts IQD internally (1 USD ≈ 1310 IQD)
+        amount_iqd=int(order.price_paid),     # price is IQD; QiCard accepts whole IQD
         order_id=f"order-{order.id}",
         success_url=f"{settings.FRONTEND_URL}/payment/result?status=success",
         failure_url=f"{settings.FRONTEND_URL}/payment/result?status=failure",

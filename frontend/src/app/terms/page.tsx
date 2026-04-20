@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LegalViewToggle } from "@/components/legal/legal-view-toggle";
 
 export const metadata: Metadata = {
   title: "Terms of Service | شروط الخدمة",
@@ -89,7 +90,7 @@ export default function TermsOfServicePage() {
                 {TOC.map((s) => (
                   <li key={s.id}>
                     <a href={`#${s.id}`} className="text-gray-600 hover:text-brand-600 hover:underline block leading-snug">
-                      <span className="font-mono text-xs text-gray-400 mr-1">{s.id}.</span>
+                      <span className="font-mono text-xs text-gray-400 me-1">{s.id}.</span>
                       {s.en} <span className="text-gray-400" dir="rtl">· {s.ar}</span>
                     </a>
                   </li>
@@ -106,7 +107,7 @@ export default function TermsOfServicePage() {
               {TOC.map((s) => (
                 <li key={s.id}>
                   <a href={`#${s.id}`} className="text-gray-600 hover:text-brand-600 hover:underline">
-                    <span className="font-mono text-xs text-gray-400 mr-1">{s.id}.</span>
+                    <span className="font-mono text-xs text-gray-400 me-1">{s.id}.</span>
                     {s.en} <span className="text-gray-400" dir="rtl">· {s.ar}</span>
                   </a>
                 </li>
@@ -115,6 +116,10 @@ export default function TermsOfServicePage() {
           </details>
 
           <article className="space-y-14 min-w-0">
+
+            <div className="flex justify-center sm:justify-end -mt-4">
+              <LegalViewToggle />
+            </div>
 
             {/* 1. Acceptance */}
             <section id="1" className="scroll-mt-24">
@@ -1235,10 +1240,10 @@ export default function TermsOfServicePage() {
 function SectionHeader({ num, en, ar }: { num: string; en: string; ar: string }) {
   return (
     <header className="mb-5 pb-3 border-b border-gray-200">
-      <h2 className="text-xl font-semibold text-gray-900">
-        <span className="font-mono text-sm text-gray-400 mr-2">{num}.</span>{en}
+      <h2 data-legal-lang="en" dir="ltr" className="text-xl font-semibold text-gray-900 text-left">
+        <span className="font-mono text-sm text-gray-400 me-2">{num}.</span>{en}
       </h2>
-      <h3 className="mt-1 text-lg font-semibold text-gray-700 text-right" dir="rtl">
+      <h3 data-legal-lang="ar" className="mt-1 text-lg font-semibold text-gray-700 text-right" dir="rtl">
         <span className="font-mono text-sm text-gray-400 ms-2">{toArabicNumerals(num)}.</span>{ar}
       </h3>
     </header>
@@ -1246,9 +1251,9 @@ function SectionHeader({ num, en, ar }: { num: string; en: string; ar: string })
 }
 function Bilingual({ en, ar }: { en: React.ReactNode; ar: React.ReactNode }) {
   return (
-    <div className="grid md:grid-cols-2 md:gap-8 gap-4">
-      <div dir="ltr" className="text-gray-700 leading-relaxed space-y-3">{en}</div>
-      <div dir="rtl" className="text-gray-700 leading-relaxed space-y-3 md:border-r md:pr-8 md:border-gray-200">{ar}</div>
+    <div className="bilingual-grid grid md:grid-cols-2 md:gap-8 gap-4">
+      <div data-legal-lang="en" dir="ltr" className="text-gray-700 leading-relaxed space-y-3 text-left">{en}</div>
+      <div data-legal-lang="ar" dir="rtl" className="text-gray-700 leading-relaxed space-y-3 text-right">{ar}</div>
     </div>
   );
 }

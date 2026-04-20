@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LegalViewToggle } from "@/components/legal/legal-view-toggle";
 
 export const metadata: Metadata = {
   title: "Refund Policy | سياسة الاسترداد",
@@ -36,6 +37,10 @@ export default function RefundPolicyPage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
+
+        <div className="flex justify-center sm:justify-end">
+          <LegalViewToggle />
+        </div>
 
         <section>
           <Header num="1" en="Scope" ar="النطاق" />
@@ -253,10 +258,10 @@ function Header({ num, en, ar }: { num: string; en: string; ar: string }) {
   const arNum = num.replace(/[0-9]/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
   return (
     <header className="mb-4 pb-2 border-b border-gray-200">
-      <h2 className="text-xl font-semibold text-gray-900">
-        <span className="font-mono text-sm text-gray-400 mr-2">{num}.</span>{en}
+      <h2 data-legal-lang="en" dir="ltr" className="text-xl font-semibold text-gray-900 text-left">
+        <span className="font-mono text-sm text-gray-400 me-2">{num}.</span>{en}
       </h2>
-      <h3 className="mt-1 text-lg font-semibold text-gray-700 text-right" dir="rtl">
+      <h3 data-legal-lang="ar" className="mt-1 text-lg font-semibold text-gray-700 text-right" dir="rtl">
         <span className="font-mono text-sm text-gray-400 ms-2">{arNum}.</span>{ar}
       </h3>
     </header>
@@ -264,9 +269,9 @@ function Header({ num, en, ar }: { num: string; en: string; ar: string }) {
 }
 function Bilingual({ en, ar }: { en: React.ReactNode; ar: React.ReactNode }) {
   return (
-    <div className="grid md:grid-cols-2 md:gap-8 gap-4">
-      <div dir="ltr" className="text-gray-700 leading-relaxed space-y-3">{en}</div>
-      <div dir="rtl" className="text-gray-700 leading-relaxed space-y-3 md:border-r md:pr-8 md:border-gray-200">{ar}</div>
+    <div className="bilingual-grid grid md:grid-cols-2 md:gap-8 gap-4">
+      <div data-legal-lang="en" dir="ltr" className="text-gray-700 leading-relaxed space-y-3 text-left">{en}</div>
+      <div data-legal-lang="ar" dir="rtl" className="text-gray-700 leading-relaxed space-y-3 text-right">{ar}</div>
     </div>
   );
 }
