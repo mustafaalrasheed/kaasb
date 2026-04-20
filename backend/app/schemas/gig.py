@@ -190,6 +190,12 @@ class GigRequirementsSubmit(BaseModel):
     answers: list[RequirementAnswer] = Field(..., min_length=1)
 
 
+class DeliverBody(BaseModel):
+    """Freelancer submits a delivery for an order (F4)."""
+    message: str = Field(..., min_length=5, max_length=5000)
+    files: list[str] = Field(default_factory=list)
+
+
 class GigOrderUpdate(BaseModel):
     status: GigOrderStatus
     cancellation_reason: Optional[str] = Field(None, max_length=500)
