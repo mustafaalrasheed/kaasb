@@ -115,6 +115,9 @@ case "${1:-full}" in
         $COMPOSE up -d --no-deps backend
         _wait_healthy backend || { warn "Backend unhealthy after pull — check logs"; exit 1; }
         $COMPOSE up -d --no-deps frontend
+        # Start/ensure all other services (monitoring stack, etc.) without
+        # recreating the already-updated backend/frontend
+        $COMPOSE up -d --no-recreate
         log "Pull + restart complete."
         ;;
 
