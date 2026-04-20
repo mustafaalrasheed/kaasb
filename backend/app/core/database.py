@@ -26,11 +26,18 @@ from app.core.config import get_settings
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+# Per-worker pool capacity — exposed as a constant so the checkout listener
+# reports against the configured maximum instead of the asyncpg pool's live
+# counters (which report "materialised" connections, not capacity).
+_POOL_SIZE = 5
+_MAX_OVERFLOW = 5
+_POOL_CAPACITY = _POOL_SIZE + _MAX_OVERFLOW
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,       # Never True in production (massive log spam)
-    pool_size=5,               # Persistent connections per worker (was 20 — pool exhaustion risk)
-    max_overflow=5,            # Burst above pool_size per worker
+    pool_size=_POOL_SIZE,      # Persistent connections per worker (was 20 — pool exhaustion risk)
+    max_overflow=_MAX_OVERFLOW, # Burst above pool_size per worker
     pool_pre_ping=True,        # Verify stale connections before handing them out
     pool_recycle=1800,         # Recycle connections every 30 min (prevents firewall drops)
     pool_timeout=30,           # Raise TimeoutError after 30s if pool is exhausted
@@ -63,17 +70,17 @@ def _on_connect(dbapi_connection, connection_record):
 
 @event.listens_for(engine.sync_engine, "checkout")
 def _on_checkout(dbapi_connection, connection_record, connection_proxy):
-    pool = connection_proxy._pool
-    # Warn when pool is ≥ 80% saturated so ops can scale before exhaustion.
-    # pool.size() = pool_size, pool.checkedout() = currently-in-use connections.
+    # Warn when pool is ≥ 80% saturated against the configured max capacity.
+    # We compare to the static pool_size+max_overflow because SQLAlchemy's
+    # async pool reports live counters (materialised vs in-use) which yield
+    # bogus "1/1 100%" warnings when only one connection has been opened.
     try:
-        checkedout = pool.checkedout()
-        pool_size  = pool.size() + pool.overflow()   # total capacity
-        if pool_size > 0 and checkedout / pool_size >= 0.8:
+        checkedout = connection_proxy._pool.checkedout()
+        if checkedout / _POOL_CAPACITY >= 0.8:
             logger.warning(
                 "DB pool near exhaustion: %d/%d connections in use (%.0f%%). "
                 "Consider scaling pool_size or adding workers.",
-                checkedout, pool_size, 100 * checkedout / pool_size,
+                checkedout, _POOL_CAPACITY, 100 * checkedout / _POOL_CAPACITY,
             )
     except Exception:
         pass  # Never let monitoring break request handling
@@ -117,7 +124,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         logger.critical(
             "DB connection pool exhausted — all %d connections in use. "
             "Requests are queuing. Scale pool_size or investigate slow queries.",
-            engine.pool.size() + engine.pool.overflow(),
+            _POOL_CAPACITY,
         )
         raise
 

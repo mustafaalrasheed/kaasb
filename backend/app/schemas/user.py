@@ -8,6 +8,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from app.utils.phone import normalize_iraqi_phone
+
 # === Auth Schemas ===
 
 
@@ -117,6 +119,11 @@ class UserProfileUpdate(BaseModel):
     timezone: str | None = Field(None, max_length=50)
     phone: str | None = Field(None, max_length=20)
     title: str | None = Field(None, max_length=200)
+
+    @field_validator("phone")
+    @classmethod
+    def _normalize_phone(cls, v: str | None) -> str | None:
+        return normalize_iraqi_phone(v)
     skills: list[str] | None = Field(None, max_length=20)
     experience_level: str | None = Field(
         None, pattern=r"^(entry|intermediate|expert)$"
@@ -196,8 +203,13 @@ class PhoneOtpRequest(BaseModel):
         min_length=7,
         max_length=20,
         pattern=r"^\+?[0-9]{7,19}$",
-        description="Phone number in international format, e.g. +9647701234567",
+        description="Phone number in any shape; server normalises to +9647XXXXXXXXX.",
     )
+
+    @field_validator("phone")
+    @classmethod
+    def _normalize_phone(cls, v: str) -> str:
+        return normalize_iraqi_phone(v) or v
 
 
 class PhoneOtpVerifyRequest(BaseModel):
@@ -205,6 +217,11 @@ class PhoneOtpVerifyRequest(BaseModel):
 
     phone: str = Field(..., min_length=7, max_length=20, pattern=r"^\+?[0-9]{7,19}$")
     otp: str = Field(..., min_length=6, max_length=6, pattern=r"^[0-9]{6}$")
+
+    @field_validator("phone")
+    @classmethod
+    def _normalize_phone(cls, v: str) -> str:
+        return normalize_iraqi_phone(v) or v
 
 
 # === Paginated Responses ===

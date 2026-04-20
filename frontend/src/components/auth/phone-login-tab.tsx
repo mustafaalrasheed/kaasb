@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { authApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { getApiError } from "@/lib/utils";
@@ -8,9 +8,11 @@ import { toast } from "sonner";
 
 /**
  * Phone OTP login flow (two-step):
- * 1. User enters Iraqi phone number → OTP sent to their registered email (beta)
+ * 1. User enters Iraqi phone → OTP sent via WhatsApp (fallback: email)
  * 2. User enters 6-digit OTP → receives JWT tokens and is logged in
  */
+const RESEND_COOLDOWN_SECONDS = 45;
+
 export function PhoneLoginTab({ onSuccess }: { onSuccess: () => void }) {
   const { initialize } = useAuthStore();
 
@@ -19,6 +21,13 @@ export function PhoneLoginTab({ onSuccess }: { onSuccess: () => void }) {
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
 
   // Prepend +964 if the user typed a local Iraqi number (starts with 07x)
   function normalizePhone(raw: string): string {
@@ -38,9 +47,25 @@ export function PhoneLoginTab({ onSuccess }: { onSuccess: () => void }) {
       await authApi.sendPhoneOtp(normalized);
       setPhone(normalized);
       setStep("otp");
-      toast.success("رمز التحقق أُرسل إلى بريدك الإلكتروني المسجّل");
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+      toast.success("رمز التحقق أُرسل إلى واتساب على رقمك");
     } catch (err: unknown) {
       setError(getApiError(err, "حدث خطأ. يرجى المحاولة مجدداً."));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleResendOtp() {
+    if (resendIn > 0 || isLoading) return;
+    setError("");
+    setIsLoading(true);
+    try {
+      await authApi.sendPhoneOtp(phone);
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+      toast.success("تم إعادة إرسال الرمز عبر واتساب");
+    } catch (err: unknown) {
+      setError(getApiError(err, "تعذّر إرسال الرمز. يرجى المحاولة مجدداً."));
     } finally {
       setIsLoading(false);
     }
@@ -67,8 +92,8 @@ export function PhoneLoginTab({ onSuccess }: { onSuccess: () => void }) {
     return (
       <form onSubmit={handleVerifyOtp} className="space-y-5" dir="rtl">
         <div className="text-center text-sm text-gray-600 bg-brand-50 rounded-lg p-3">
-          <p>أُرسل رمز التحقق إلى بريدك الإلكتروني المرتبط بـ</p>
-          <p className="font-medium text-gray-800 mt-1 font-mono">{phone}</p>
+          <p>أُرسل رمز التحقق عبر واتساب إلى</p>
+          <p className="font-medium text-gray-800 mt-1 font-mono" dir="ltr">{phone}</p>
         </div>
 
         {error && (
@@ -106,7 +131,18 @@ export function PhoneLoginTab({ onSuccess }: { onSuccess: () => void }) {
 
         <button
           type="button"
-          onClick={() => { setStep("phone"); setOtp(""); setError(""); }}
+          onClick={handleResendOtp}
+          disabled={resendIn > 0 || isLoading}
+          className="w-full text-sm text-brand-600 hover:text-brand-700 disabled:text-gray-400 disabled:cursor-not-allowed text-center"
+        >
+          {resendIn > 0
+            ? `إعادة الإرسال خلال ${resendIn} ثانية`
+            : "لم يصلك الرمز؟ أعِد الإرسال"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { setStep("phone"); setOtp(""); setError(""); setResendIn(0); }}
           className="w-full text-sm text-gray-500 hover:text-gray-700 text-center"
         >
           تغيير رقم الهاتف
@@ -142,7 +178,7 @@ export function PhoneLoginTab({ onSuccess }: { onSuccess: () => void }) {
           />
         </div>
         <p className="mt-1 text-xs text-gray-400">
-          سيتم إرسال الرمز إلى بريدك الإلكتروني المسجّل مؤقتاً
+          سيتم إرسال الرمز عبر واتساب إلى نفس الرقم
         </p>
       </div>
 

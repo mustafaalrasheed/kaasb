@@ -68,9 +68,12 @@ class RateLimiter:
         try:
             r = await _get_redis()
             if r:
+                # Fixed-window counter: expire only on first write, otherwise the TTL
+                # resets on every request and the counter never rolls over under
+                # sustained traffic (Prometheus scraping, pollers, bots).
                 pipe = r.pipeline()
                 pipe.incr(key)
-                pipe.expire(key, window)
+                pipe.expire(key, window, nx=True)
                 results = await pipe.execute()
                 count = results[0]
                 return count <= limit
@@ -276,9 +279,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if settings.ENVIRONMENT == "testing":
             return await call_next(request)
 
-        # Skip rate limiting for health checks and static files
+        # Skip rate limiting for health checks, metrics scraping, and static files.
+        # /metrics is scraped by Prometheus every 15s from the docker network —
+        # it must never be rate-limited or BackendScrapeDown will fire.
         path = request.url.path
-        if path in ("/", "/health", "/docs", "/redoc", "/openapi.json") or path.startswith("/api/v1/health"):
+        if path in ("/", "/health", "/metrics", "/docs", "/redoc", "/openapi.json") or path.startswith("/api/v1/health"):
             return await call_next(request)
         if path.startswith("/uploads/"):
             return await call_next(request)

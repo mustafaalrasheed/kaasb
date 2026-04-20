@@ -5,7 +5,9 @@ Kaasb Platform - Payment Schemas
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.utils.phone import normalize_iraqi_phone
 
 # === Payment Account ===
 
@@ -14,6 +16,11 @@ class PaymentAccountSetup(BaseModel):
     provider: str = Field(pattern=r"^qi_card$")
     # Qi Card-specific (optional — used for account label)
     qi_card_phone: str | None = Field(None, max_length=20, description="Iraqi phone number linked to Qi Card")
+
+    @field_validator("qi_card_phone")
+    @classmethod
+    def _normalize_phone(cls, v: str | None) -> str | None:
+        return normalize_iraqi_phone(v)
 
 
 class PaymentAccountResponse(BaseModel):
