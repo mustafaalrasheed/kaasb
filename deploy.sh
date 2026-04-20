@@ -54,7 +54,14 @@ done
 # ---------------------------------------------------------------------------
 # Compose command
 # ---------------------------------------------------------------------------
-COMPOSE="docker compose -f docker-compose.prod.yml --env-file $ENV_FILE"
+# Monitoring stack (Prometheus/Grafana/Alertmanager/exporters) is always
+# deployed alongside the application. If you need to temporarily skip it,
+# export SKIP_MONITORING=1 before running this script.
+if [ "${SKIP_MONITORING:-0}" = "1" ]; then
+    COMPOSE="docker compose -f docker-compose.prod.yml --env-file $ENV_FILE"
+else
+    COMPOSE="docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml --env-file $ENV_FILE"
+fi
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -135,7 +135,7 @@ services:
           cpus: "0.15"
 
   # ===========================================================================
-  # Alertmanager — routes Prometheus alerts to Telegram / email
+  # Alertmanager — routes Prometheus alerts to Discord / email
   # ===========================================================================
   alertmanager:
     image: prom/alertmanager:v0.27.0
@@ -149,12 +149,11 @@ services:
       - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
     environment:
-      ALERTMANAGER_TELEGRAM_BOT_TOKEN: ${ALERTMANAGER_TELEGRAM_BOT_TOKEN:-}
-      ALERTMANAGER_TELEGRAM_CHAT_ID:   ${ALERTMANAGER_TELEGRAM_CHAT_ID:-0}
-      ALERTMANAGER_SMTP_FROM:          ${ALERTMANAGER_SMTP_FROM:-}
-      ALERTMANAGER_SMTP_TO:            ${ALERTMANAGER_SMTP_TO:-}
-      ALERTMANAGER_SMTP_AUTH_USERNAME: ${ALERTMANAGER_SMTP_AUTH_USERNAME:-}
-      ALERTMANAGER_SMTP_AUTH_PASSWORD: ${ALERTMANAGER_SMTP_AUTH_PASSWORD:-}
+      ALERTMANAGER_DISCORD_WEBHOOK_URL: ${ALERTMANAGER_DISCORD_WEBHOOK_URL:-}
+      ALERTMANAGER_SMTP_FROM:           ${ALERTMANAGER_SMTP_FROM:-}
+      ALERTMANAGER_SMTP_TO:             ${ALERTMANAGER_SMTP_TO:-}
+      ALERTMANAGER_SMTP_AUTH_USERNAME:  ${ALERTMANAGER_SMTP_AUTH_USERNAME:-}
+      ALERTMANAGER_SMTP_AUTH_PASSWORD:  ${ALERTMANAGER_SMTP_AUTH_PASSWORD:-}
     networks:
       - monitoring_net
     logging:

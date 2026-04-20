@@ -374,6 +374,12 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 | `WEB_CONCURRENCY` | No | 5 | Gunicorn workers |
 | `GRAFANA_ADMIN_USER` | No | admin | Grafana username |
 | `GRAFANA_ADMIN_PASSWORD` | No | — | Grafana password |
+| `ALERTMANAGER_DISCORD_WEBHOOK_URL` | No | — | Discord webhook for critical/high alerts |
+| `ALERTMANAGER_SMTP_FROM` | No | — | Gmail sender address (alert emails) |
+| `ALERTMANAGER_SMTP_TO` | No | — | Alert email recipient |
+| `ALERTMANAGER_SMTP_AUTH_USERNAME` | No | — | Gmail username |
+| `ALERTMANAGER_SMTP_AUTH_PASSWORD` | No | — | Gmail 16-char app password |
+| `SKIP_MONITORING` | No | 0 | Set to 1 to skip monitoring stack in deploy.sh |
 | `GITHUB_REPO` | Yes (CI/CD) | — | `owner/repo` for ghcr.io path |
 | `NEXT_PUBLIC_API_URL` | No | http://localhost:8000/api/v1 | Frontend API base |
 | `NEXT_PUBLIC_BACKEND_URL` | No | http://localhost:8000 | Frontend asset base URL |
@@ -400,6 +406,7 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 
 | Date | Change |
 |------|--------|
+| 2026-04-20 | Ops runbook — monitoring + alerts: Alertmanager swapped from Telegram to Discord (`discord_configs` — Telegram blocked in Iraq); `deploy.sh:57` now includes `docker-compose.monitoring.yml` by default (opt-out via `SKIP_MONITORING=1`); env vars added: `ALERTMANAGER_DISCORD_WEBHOOK_URL`, `ALERTMANAGER_SMTP_{FROM,TO,AUTH_USERNAME,AUTH_PASSWORD}`; user provides nightly backup cron install + env-var population steps manually on server |
 | 2026-04-20 | F3 order-requirements UI + F4 delivery UI: `/dashboard/gigs/orders` now shows `pending_requirements` status (amber badge), opens RequirementsModal that reads `order.gig.requirement_questions` and posts `{ answers: [{question, answer}] }` via `gigsApi.submitRequirements`; replaced `window.prompt` delivery flow with structured DeliverModal (message textarea + list of file URLs with URL validation); added `GET /gigs/orders/{id}/deliveries` endpoint + `GigService.list_deliveries` + `gigsApi.listDeliveries` for client-side DeliveryView (paginated-style list of prior deliveries with revision numbers, messages, and external file links) |
 | 2026-04-20 | Hourly rate removed from jobs (Kaasb is fixed-price only): `JobType` enum collapsed to single `FIXED` value, migration `v8q9r0s1t2u3` converts stragglers then swaps enum; `JobUpdate` schema pattern `^fixed$`; frontend removes hourly toggle on `/jobs/new`, pricing-type dropdown on `/jobs`, hourly label on `/jobs/[id]`, hourly branch in JSON-LD, `hourly rate` copy in dashboard placeholder + privacy page. SUPPORT role added: `users.is_support` boolean (migration `w9r0s1t2u3v4`), `get_current_staff` dependency (admin OR support), read-only/support-safe admin endpoints widened (stats, users list, jobs list, escrows list, payout-approvals pending, audit logs, transactions, support inbox, order conversations), `POST /admin/users/{id}/toggle-support`, dispute list + assign widened to staff; resolve/release/user-status/admin-toggle/gig-moderation stay admin-only; admin UI hides `gigs`/`payouts`/`approvals` tabs for support, adds "Make Support"/"Revoke Support" buttons + purple Support badge; message_service overrides widened (SUPPORT + ORDER conversations readable/writable by staff) |
 | 2026-04-20 | Admin audit log + dual-control payouts: `admin_audit_logs` + `payout_approvals` tables (migration `u7p8q9r0s1t2`); `AuditService` + `PayoutApprovalService`; `/admin/escrows/{id}/release` now returns `pending_second_approval` for amounts > `PAYOUT_APPROVAL_THRESHOLD_IQD` (default 500,000 IQD); new endpoints `/admin/payout-approvals/{pending,approve,reject}` + `/admin/audit-logs`; audit writes on user status change, admin promote/demote, escrow release request/release, payout approve/reject; admin UI: PayoutApprovalsTab + AuditLogTab (own-request blocked via requester-id check); in-process asyncio scheduler with Redis lock for daily marketplace_tasks (scheduler.py, hooked into lifespan) |
