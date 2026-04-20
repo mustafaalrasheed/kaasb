@@ -391,10 +391,13 @@ function MessagesContent() {
           </h2>
           <button
             onClick={() => setSupportModal(true)}
-            className="shrink-0 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1.5 rounded-lg transition-colors"
+            className="shrink-0 flex items-center gap-1.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors font-medium"
             title={ar ? "تواصل مع الدعم" : "Contact Support"}
           >
-            {ar ? "الدعم" : "Support"}
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <span>{ar ? "الدعم" : "Support"}</span>
           </button>
         </div>
 
@@ -674,40 +677,65 @@ function MessagesContent() {
         )}
       </div>
 
-      {/* Contact Support Modal */}
+      {/* Contact Support Modal — bottom sheet on mobile, centered dialog on desktop */}
       {supportModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h3 className="font-bold text-gray-900 mb-1">
-              {ar ? "تواصل مع الدعم" : "Contact Support"}
-            </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              {ar
-                ? "سيرد عليك فريق الدعم في أقرب وقت ممكن."
-                : "Our support team will reply as soon as possible."}
-            </p>
-            <textarea
-              value={supportMsg}
-              onChange={(e) => setSupportMsg(e.target.value)}
-              placeholder={ar ? "اكتب رسالتك..." : "Describe your issue..."}
-              rows={4}
-              dir="auto"
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent mb-4"
-            />
-            <div className="flex gap-2 justify-end">
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center sm:p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) { setSupportModal(false); setSupportMsg(""); } }}
+        >
+          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-xl flex flex-col max-h-[90vh]">
+            {/* Drag handle — mobile only */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="w-10 h-1 bg-gray-300 rounded-full" />
+            </div>
+
+            <div className="px-5 pt-4 pb-2 sm:pt-6 sm:pb-2 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">
+                  {ar ? "تواصل مع الدعم" : "Contact Support"}
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {ar
+                    ? "سيرد عليك فريق الدعم في أقرب وقت ممكن."
+                    : "Our support team will reply as soon as possible."}
+                </p>
+              </div>
               <button
                 onClick={() => { setSupportModal(false); setSupportMsg(""); }}
-                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="shrink-0 p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label={ar ? "إغلاق" : "Close"}
               >
-                {ar ? "إلغاء" : "Cancel"}
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
-              <button
-                onClick={handleContactSupport}
-                disabled={!supportMsg.trim() || supportSending}
-                className="px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-40 transition-colors"
-              >
-                {supportSending ? "..." : (ar ? "إرسال" : "Send")}
-              </button>
+            </div>
+
+            <div className="px-5 pb-5 flex flex-col gap-3 overflow-y-auto">
+              <textarea
+                value={supportMsg}
+                onChange={(e) => setSupportMsg(e.target.value)}
+                placeholder={ar ? "اكتب رسالتك..." : "Describe your issue..."}
+                rows={4}
+                dir="auto"
+                autoFocus
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => { setSupportModal(false); setSupportMsg(""); }}
+                  className="px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+                >
+                  {ar ? "إلغاء" : "Cancel"}
+                </button>
+                <button
+                  onClick={handleContactSupport}
+                  disabled={!supportMsg.trim() || supportSending}
+                  className="flex-1 sm:flex-none px-5 py-2.5 text-sm bg-brand-500 text-white rounded-xl hover:bg-brand-600 disabled:opacity-40 transition-colors font-medium"
+                >
+                  {supportSending ? (ar ? "جارٍ الإرسال..." : "Sending...") : (ar ? "إرسال" : "Send Message")}
+                </button>
+              </div>
             </div>
           </div>
         </div>
