@@ -55,9 +55,19 @@ export const gigsApi = {
   myOrdersAsBuyer: () => api.get("/gigs/orders/buying"),
   myOrdersAsSeller: () => api.get("/gigs/orders/selling"),
 
-  markDelivered: (orderId: string) => api.post(`/gigs/orders/${orderId}/deliver`),
+  markDelivered: (orderId: string, data: { message: string; files?: string[] }) =>
+    api.post(`/gigs/orders/${orderId}/deliver`, {
+      message: data.message,
+      files: data.files ?? [],
+    }),
   requestRevision: (orderId: string) => api.post(`/gigs/orders/${orderId}/revision`),
   completeOrder: (orderId: string) => api.post(`/gigs/orders/${orderId}/complete`),
+
+  // F3: Client submits answers to gig requirement questions
+  submitRequirements: (
+    orderId: string,
+    answers: { question: string; answer: string }[],
+  ) => api.post(`/gigs/orders/${orderId}/requirements`, { answers }),
 
   raiseDispute: (orderId: string, reason: string) =>
     api.post(`/gigs/orders/${orderId}/dispute`, { reason }),

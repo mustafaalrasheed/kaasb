@@ -177,6 +177,11 @@ async def lifespan(app: FastAPI):
     from app.services.message_subscribers import register_message_subscribers
     register_message_subscribers()
 
+    # Start daily marketplace scheduler (seller levels, gig ranks, auto-complete,
+    # buyer-request expiry). Redis-lock-coordinated so only one worker runs each job.
+    from app.tasks import scheduler as marketplace_scheduler
+    marketplace_scheduler.start()
+
     logger.info(
         "%s v%s started in %s mode",
         settings.APP_NAME, settings.APP_VERSION, settings.ENVIRONMENT,
@@ -185,6 +190,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # === Shutdown ===
+    await marketplace_scheduler.stop()
     subscriber_task.cancel()
     # suppress is a sync CM — valid around `await`. async-with was a mypy error
     # because AbstractContextManager has no __aenter__; ruff SIM105 otherwise

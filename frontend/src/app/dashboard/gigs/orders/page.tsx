@@ -96,9 +96,21 @@ export default function GigOrdersPage() {
   }, [isFreelancer]);
 
   const handleDeliver = async (orderId: string) => {
+    const message = window.prompt(
+      ar
+        ? "اكتب رسالة التسليم (5 أحرف على الأقل):"
+        : "Delivery message (min 5 characters):",
+      "",
+    );
+    if (!message || message.trim().length < 5) {
+      if (message !== null) {
+        toast.error(ar ? "الرسالة قصيرة جداً" : "Message too short");
+      }
+      return;
+    }
     setActionLoading(orderId);
     try {
-      await gigsApi.markDelivered(orderId);
+      await gigsApi.markDelivered(orderId, { message: message.trim() });
       toast.success(ar ? "تم تسليم الطلب" : "Order delivered");
       fetchOrders();
     } catch {
