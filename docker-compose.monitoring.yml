@@ -216,8 +216,11 @@ services:
           cpus: "0.05"
 
 networks:
+  # kaasb_net is defined in docker-compose.prod.yml; when both composes are
+  # passed to `docker compose -f ... -f ...` it merges into the same project
+  # and this reference resolves automatically. If you ever run this monitoring
+  # compose file standalone, change to `external: true`.
   kaasb_net:
-    external: true
   monitoring_net:
     driver: bridge
 
