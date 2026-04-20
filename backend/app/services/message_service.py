@@ -29,9 +29,14 @@ from app.services.events import MessageSentEvent, bus
 logger = logging.getLogger(__name__)
 
 
+def _is_staff(user: User) -> bool:
+    """Staff = superuser admin OR limited-privilege support."""
+    return user.is_superuser or user.is_support
+
+
 def _role_for(user: User) -> SenderRole:
     """Map a User's current standing to the SenderRole frozen on the message."""
-    if user.is_superuser:
+    if _is_staff(user):
         return SenderRole.ADMIN
     if user.primary_role == UserRole.FREELANCER:
         return SenderRole.FREELANCER
@@ -65,8 +70,8 @@ class MessageService(BaseService):
         p2 = max(sender.id, data.recipient_id)
 
         # Determine conversation type from context + participants.
-        # Admin involvement always wins — support > order > user.
-        if recipient.is_superuser or sender.is_superuser:
+        # Staff involvement always wins — support > order > user.
+        if _is_staff(recipient) or _is_staff(sender):
             conv_type = ConversationType.SUPPORT
         elif data.order_id:
             conv_type = ConversationType.ORDER
@@ -135,15 +140,15 @@ class MessageService(BaseService):
         is_participant = sender.id in (
             conversation.participant_one_id, conversation.participant_two_id,
         )
-        # Admins can send in any SUPPORT thread (not just their own).
-        # Admins can also send in ORDER conversations for dispute mediation.
-        is_admin_override = (
-            sender.is_superuser
+        # Staff (admin or support) can send in any SUPPORT thread and in any
+        # ORDER conversation for dispute mediation, regardless of participation.
+        is_staff_override = (
+            _is_staff(sender)
             and conversation.conversation_type in (
                 ConversationType.SUPPORT, ConversationType.ORDER
             )
         )
-        if not is_participant and not is_admin_override:
+        if not is_participant and not is_staff_override:
             raise ForbiddenError("Not part of this conversation")
 
         # F6: check for off-platform contact info before saving
@@ -287,8 +292,8 @@ class MessageService(BaseService):
         an admin's user ID. If an existing SUPPORT thread with an admin
         already exists it is reused (idempotent).
         """
-        if user.is_superuser:
-            raise BadRequestError("Admins cannot open support tickets")
+        if _is_staff(user):
+            raise BadRequestError("Staff cannot open support tickets")
 
         # Find any active admin
         admin_result = await self.db.execute(
@@ -431,15 +436,15 @@ class MessageService(BaseService):
         is_participant = user.id in (
             conversation.participant_one_id, conversation.participant_two_id,
         )
-        # Admins can read any SUPPORT or ORDER conversation (for dispute review
-        # and mediation) even if they are not a participant.
-        is_admin_override = (
-            user.is_superuser
+        # Staff (admin or support) can read any SUPPORT or ORDER conversation
+        # (for dispute review and mediation) even if they are not a participant.
+        is_staff_override = (
+            _is_staff(user)
             and conversation.conversation_type in (
                 ConversationType.SUPPORT, ConversationType.ORDER
             )
         )
-        if not is_participant and not is_admin_override:
+        if not is_participant and not is_staff_override:
             raise ForbiddenError("Not part of this conversation")
 
         # Only clear unread for a participant. A non-participant admin viewing

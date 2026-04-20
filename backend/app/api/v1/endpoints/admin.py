@@ -5,15 +5,19 @@ All routes require admin/superuser access.
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_admin
+from app.api.dependencies import get_current_admin, get_current_staff
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
+from app.middleware.security import _get_client_ip
+from app.models.admin_audit import AdminAuditAction, AdminAuditLog
 from app.models.message import Conversation
 from app.models.user import User
 from app.schemas.admin import (
+    AdminAuditLogInfo,
+    AdminAuditLogListResponse,
     AdminEscrowInfo,
     AdminJobListResponse,
     AdminJobStatusUpdate,
@@ -21,7 +25,12 @@ from app.schemas.admin import (
     AdminUserInfo,
     AdminUserListResponse,
     AdminUserStatusUpdate,
+    PayoutApprovalDecision,
+    PayoutApprovalInfo,
+    PayoutApprovalListResponse,
     PlatformStats,
+    ReleaseRequestBody,
+    ReleaseRequestResult,
 )
 from app.schemas.message import (
     ConversationJobInfo,
@@ -32,7 +41,9 @@ from app.schemas.message import (
     MessageUserInfo,
 )
 from app.services.admin_service import AdminService
+from app.services.audit_service import AuditService
 from app.services.message_service import MessageService
+from app.services.payout_approval_service import PayoutApprovalService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -45,7 +56,7 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
     summary="Platform statistics",
 )
 async def get_platform_stats(
-    admin: User = Depends(get_current_admin),
+    _staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """Get comprehensive platform stats dashboard."""
@@ -66,7 +77,7 @@ async def list_users(
     search: str | None = Query(None, description="Search by name/email/username"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    admin: User = Depends(get_current_admin),
+    _staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """List users with filtering and search."""
@@ -82,12 +93,23 @@ async def list_users(
 async def update_user_status(
     user_id: uuid.UUID,
     data: AdminUserStatusUpdate,
+    request: Request,
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Suspend, activate, or deactivate a user."""
     service = AdminService(db)
-    return await service.update_user_status(user_id, data.status)
+    user = await service.update_user_status(user_id, data.status)
+    await AuditService(db).log(
+        admin_id=admin.id,
+        action=AdminAuditAction.USER_STATUS_CHANGED,
+        target_type="user",
+        target_id=user_id,
+        ip_address=_get_client_ip(request),
+        details={"new_status": data.status, "target_email": user.email},
+    )
+    await db.commit()
+    return user
 
 
 @router.post(
@@ -97,12 +119,61 @@ async def update_user_status(
 )
 async def toggle_admin(
     user_id: uuid.UUID,
+    request: Request,
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Grant or revoke admin/superuser status."""
     service = AdminService(db)
-    return await service.toggle_superuser(user_id, acting_admin=admin)
+    user = await service.toggle_superuser(user_id, acting_admin=admin)
+    await AuditService(db).log(
+        admin_id=admin.id,
+        action=(
+            AdminAuditAction.USER_PROMOTED_ADMIN
+            if user.is_superuser
+            else AdminAuditAction.USER_DEMOTED_ADMIN
+        ),
+        target_type="user",
+        target_id=user_id,
+        ip_address=_get_client_ip(request),
+        details={"target_email": user.email},
+    )
+    await db.commit()
+    return user
+
+
+@router.post(
+    "/users/{user_id}/toggle-support",
+    response_model=AdminUserInfo,
+    summary="Toggle support role",
+)
+async def toggle_support(
+    user_id: uuid.UUID,
+    request: Request,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Grant or revoke limited-privilege support role. Support staff can triage
+    disputes and handle support chat but cannot release funds or change user
+    state — those remain gated on is_superuser.
+    """
+    service = AdminService(db)
+    user = await service.toggle_support(user_id, acting_admin=admin)
+    await AuditService(db).log(
+        admin_id=admin.id,
+        action=(
+            AdminAuditAction.USER_PROMOTED_SUPPORT
+            if user.is_support
+            else AdminAuditAction.USER_DEMOTED_SUPPORT
+        ),
+        target_type="user",
+        target_id=user_id,
+        ip_address=_get_client_ip(request),
+        details={"target_email": user.email},
+    )
+    await db.commit()
+    return user
 
 
 # === Job Moderation ===
@@ -117,7 +188,7 @@ async def list_jobs(
     search: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    admin: User = Depends(get_current_admin),
+    _staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """List all jobs for moderation."""
@@ -149,7 +220,7 @@ async def update_job_status(
     summary="List funded escrows awaiting payout",
 )
 async def list_funded_escrows(
-    admin: User = Depends(get_current_admin),
+    _staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """List all FUNDED escrows with freelancer Qi Card details for manual payout."""
@@ -159,16 +230,149 @@ async def list_funded_escrows(
 
 @router.post(
     "/escrows/{escrow_id}/release",
-    summary="Mark escrow as released",
+    response_model=ReleaseRequestResult,
+    summary="Request escrow release (dual-control above threshold)",
 )
 async def release_escrow(
     escrow_id: uuid.UUID,
+    request: Request,
+    body: ReleaseRequestBody | None = None,
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Mark a funded escrow as released after sending the Qi Card payout manually."""
-    service = AdminService(db)
-    return await service.release_escrow_admin(escrow_id)
+    """
+    Request release of a FUNDED escrow.
+
+    - Amount ≤ PAYOUT_APPROVAL_THRESHOLD_IQD: released immediately.
+    - Amount > threshold: creates a pending PayoutApproval. A different admin
+      must call /admin/payout-approvals/{id}/approve before money moves.
+    """
+    service = PayoutApprovalService(db)
+    return await service.request_release(
+        escrow_id,
+        admin,
+        note=(body.note if body else None),
+        ip_address=_get_client_ip(request),
+    )
+
+
+# === Dual-Control Payout Approvals ===
+
+@router.get(
+    "/payout-approvals/pending",
+    response_model=PayoutApprovalListResponse,
+    summary="List pending payout approvals",
+)
+async def list_pending_payout_approvals(
+    _staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all PayoutApprovals awaiting a second admin's decision."""
+    service = PayoutApprovalService(db)
+    rows = await service.list_pending()
+    return PayoutApprovalListResponse(
+        approvals=[PayoutApprovalInfo(**r) for r in rows],
+        total=len(rows),
+    )
+
+
+@router.post(
+    "/payout-approvals/{approval_id}/approve",
+    summary="Approve a pending payout (second admin)",
+)
+async def approve_payout_approval(
+    approval_id: uuid.UUID,
+    request: Request,
+    body: PayoutApprovalDecision | None = None,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Second admin approves a pending payout. Must differ from the requester.
+    On approval, the underlying escrow is released immediately.
+    """
+    service = PayoutApprovalService(db)
+    return await service.approve(
+        approval_id,
+        admin,
+        note=(body.note if body else None),
+        ip_address=_get_client_ip(request),
+    )
+
+
+@router.post(
+    "/payout-approvals/{approval_id}/reject",
+    summary="Reject a pending payout (second admin)",
+)
+async def reject_payout_approval(
+    approval_id: uuid.UUID,
+    body: PayoutApprovalDecision,
+    request: Request,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Second admin rejects a pending payout with a reason. The escrow stays
+    FUNDED so the requester can retry or refund.
+    """
+    service = PayoutApprovalService(db)
+    return await service.reject(
+        approval_id,
+        admin,
+        note=body.note,
+        ip_address=_get_client_ip(request),
+    )
+
+
+# === Admin Audit Log ===
+
+@router.get(
+    "/audit-logs",
+    response_model=AdminAuditLogListResponse,
+    summary="List admin audit log entries",
+)
+async def list_audit_logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    _staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Paginated admin action audit log, newest first."""
+    from sqlalchemy import select
+
+    service = AuditService(db)
+    rows, total = await service.list_recent(
+        limit=page_size, offset=(page - 1) * page_size
+    )
+
+    admin_ids = {r.admin_id for r in rows if r.admin_id}
+    admins: dict[uuid.UUID, User] = {}
+    if admin_ids:
+        res = await db.execute(select(User).where(User.id.in_(admin_ids)))
+        admins = {u.id: u for u in res.scalars().all()}
+
+    def _serialize(r: AdminAuditLog) -> AdminAuditLogInfo:
+        a = admins.get(r.admin_id) if r.admin_id else None
+        return AdminAuditLogInfo(
+            id=r.id,
+            admin_id=r.admin_id,
+            admin_email=a.email if a else None,
+            action=r.action.value,
+            target_type=r.target_type,
+            target_id=r.target_id,
+            amount=float(r.amount) if r.amount is not None else None,
+            currency=r.currency,
+            ip_address=r.ip_address,
+            details=r.details,
+            created_at=r.created_at,
+        )
+
+    return AdminAuditLogListResponse(
+        logs=[_serialize(r) for r in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 # === Transaction Overview ===
@@ -183,7 +387,7 @@ async def list_transactions(
     status: str | None = Query(None, description="Filter: pending|completed|failed"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-    admin: User = Depends(get_current_admin),
+    _staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """List all platform transactions."""
@@ -244,7 +448,7 @@ async def list_support_conversations(
     only_unread: bool = Query(False, description="Only threads with pending messages"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
-    admin: User = Depends(get_current_admin),
+    _staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -275,16 +479,16 @@ async def get_order_conversation(
     order_id: uuid.UUID,
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=200),
-    admin: User = Depends(get_current_admin),
+    staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Admin: fetch the client-freelancer chat for a given order.
+    Staff: fetch the client-freelancer chat for a given order.
     Used when reviewing disputes to see full conversation history.
-    Admin presence does NOT mark messages as read or emit read receipts.
+    Staff presence does NOT mark messages as read or emit read receipts.
     """
     service = MessageService(db)
     conv = await service.get_order_conversation(order_id)
     if not conv:
         raise NotFoundError("Order conversation")
-    return await service.get_messages(admin, conv.id, page, page_size)
+    return await service.get_messages(staff, conv.id, page, page_size)

@@ -9,6 +9,7 @@ interface AdminUser {
   primary_role: string;
   status: string;
   is_superuser: boolean;
+  is_support?: boolean;
   avg_rating: number;
   total_reviews: number;
   total_earnings: number;
@@ -30,13 +31,14 @@ interface UsersTabProps {
   onSearch: () => void;
   onStatusUpdate: (userId: string, status: string) => void;
   onToggleAdmin: (userId: string, isCurrentlyAdmin: boolean) => void;
+  onToggleSupport: (userId: string, isCurrentlySupport: boolean) => void;
 }
 
 export function UsersTab({
   users, total, loading, search, roleFilter, currentUserId,
   ar, dateLocale,
   onSearchChange, onRoleFilterChange, onSearch,
-  onStatusUpdate, onToggleAdmin,
+  onStatusUpdate, onToggleAdmin, onToggleSupport,
 }: UsersTabProps) {
   const roleLabels: Record<string, string> = ar
     ? { client: "عميل", freelancer: "مستقل", admin: "مدير" }
@@ -93,6 +95,11 @@ export function UsersTab({
                         {ar ? "مدير" : "Admin"}
                       </span>
                     )}
+                    {!u.is_superuser && u.is_support && (
+                      <span className="ms-1 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                        {ar ? "دعم" : "Support"}
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-gray-500">{u.email}</div>
                 </td>
@@ -144,6 +151,22 @@ export function UsersTab({
                         className="px-2 py-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100"
                       >
                         {ar ? "إلغاء صلاحية المدير" : "Revoke Admin"}
+                      </button>
+                    )}
+                    {u.id !== currentUserId && !u.is_superuser && !u.is_support && (
+                      <button
+                        onClick={() => onToggleSupport(u.id, false)}
+                        className="px-2 py-1 text-xs bg-purple-50 text-purple-700 rounded hover:bg-purple-100"
+                      >
+                        {ar ? "تعيين دعم" : "Make Support"}
+                      </button>
+                    )}
+                    {u.id !== currentUserId && !u.is_superuser && u.is_support && (
+                      <button
+                        onClick={() => onToggleSupport(u.id, true)}
+                        className="px-2 py-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100"
+                      >
+                        {ar ? "إلغاء صلاحية الدعم" : "Revoke Support"}
                       </button>
                     )}
                   </div>

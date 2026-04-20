@@ -17,7 +17,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_admin, get_current_user
+from app.api.dependencies import get_current_admin, get_current_staff, get_current_user
 from app.core.database import get_db
 from app.models.dispute import DisputeStatus
 from app.models.user import User
@@ -64,7 +64,7 @@ async def get_dispute(
 )
 async def list_disputes(
     status_filter: Optional[str] = Query(None, alias="status"),
-    _admin: User = Depends(get_current_admin),
+    _staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ) -> list[DisputeOut]:
     ds = None
@@ -80,15 +80,15 @@ async def list_disputes(
 @router.patch(
     "/{dispute_id}/assign",
     response_model=DisputeOut,
-    summary="Admin: assign dispute to self",
+    summary="Staff: assign dispute to self",
 )
 async def assign_dispute(
     dispute_id: uuid.UUID,
     data: DisputeAdminAssign,
-    admin: User = Depends(get_current_admin),
+    staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ) -> DisputeOut:
-    dispute = await DisputeService(db).assign_admin(dispute_id, admin, notes=data.admin_notes)
+    dispute = await DisputeService(db).assign_admin(dispute_id, staff, notes=data.admin_notes)
     return DisputeOut.model_validate(dispute)
 
 

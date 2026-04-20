@@ -39,7 +39,7 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 async def search_jobs(
     q: str | None = Query(None, description="Search by title or description"),
     category: str | None = Query(None),
-    job_type: str | None = Query(None, pattern=r"^(fixed|hourly)$"),
+    job_type: str | None = Query(None, pattern=r"^fixed$"),
     skills: str | None = Query(
         None, description="Comma-separated skills filter"
     ),
@@ -62,7 +62,7 @@ async def search_jobs(
 
     - **q**: Text search in title and description
     - **category**: Filter by category
-    - **job_type**: fixed or hourly
+    - **job_type**: fixed (Kaasb is fixed-price only)
     - **skills**: Comma-separated list
     - **experience_level**: entry, intermediate, expert
     - **budget_min / budget_max**: Budget range
@@ -105,8 +105,8 @@ async def create_job(
     """
     Create a new job posting. Only clients can post jobs.
 
-    - For **fixed** jobs: provide `fixed_price`
-    - For **hourly** jobs: provide `budget_min` and optionally `budget_max`
+    Provide `fixed_price` (required) — Kaasb is fixed-price only.
+    Optional `budget_min`/`budget_max` can be used to show a range in search.
     """
     service = JobService(db)
     return await service.create_job(current_user, data)

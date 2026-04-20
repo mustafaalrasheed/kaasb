@@ -60,6 +60,8 @@ export const gigsApi = {
       message: data.message,
       files: data.files ?? [],
     }),
+  listDeliveries: (orderId: string) =>
+    api.get(`/gigs/orders/${orderId}/deliveries`),
   requestRevision: (orderId: string) => api.post(`/gigs/orders/${orderId}/revision`),
   completeOrder: (orderId: string) => api.post(`/gigs/orders/${orderId}/complete`),
 

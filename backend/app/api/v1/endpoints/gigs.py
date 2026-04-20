@@ -50,6 +50,7 @@ from app.schemas.gig import (
     GigRequirementsSubmit,
     GigSearchParams,
     GigUpdate,
+    OrderDeliveryOut,
 )
 from app.services.gig_service import GigService
 from app.utils.files import save_gig_image
@@ -307,6 +308,20 @@ async def mark_delivered(
 ):
     svc = GigService(db)
     return await svc.mark_delivered(order_id, current_user, message=data.message, files=data.files)
+
+
+@router.get(
+    "/orders/{order_id}/deliveries",
+    response_model=list[OrderDeliveryOut],
+    summary="List deliveries for an order (F4)",
+)
+async def list_deliveries(
+    order_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    svc = GigService(db)
+    return await svc.list_deliveries(order_id, current_user)
 
 
 @router.post("/orders/{order_id}/revision", response_model=GigOrderOut, summary="Request revision")

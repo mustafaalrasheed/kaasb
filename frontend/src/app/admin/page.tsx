@@ -15,6 +15,8 @@ import { TransactionsTab } from "./tabs/transactions-tab";
 import { PayoutsTab } from "./tabs/payouts-tab";
 import { SupportTab } from "./tabs/support-tab";
 import { DisputesTab } from "./tabs/disputes-tab";
+import { PayoutApprovalsTab } from "./tabs/payout-approvals-tab";
+import { AuditLogTab } from "./tabs/audit-log-tab";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -63,7 +65,17 @@ interface PendingGig {
   packages: { tier: string; price: number; delivery_days: number; name: string }[];
 }
 
-type Tab = "stats" | "users" | "jobs" | "gigs" | "transactions" | "payouts" | "disputes" | "support";
+type Tab =
+  | "stats"
+  | "users"
+  | "jobs"
+  | "gigs"
+  | "transactions"
+  | "payouts"
+  | "approvals"
+  | "disputes"
+  | "support"
+  | "audit";
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -118,12 +130,15 @@ function AdminPageContent() {
 
   const dateLocale = ar ? "ar-IQ" : "en-GB";
 
+  const isAdmin = !!user?.is_superuser;
+  const isStaff = isAdmin || !!user?.is_support;
+
   // ─── Auth guard ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.push("/auth/login"); return; }
-    if (!user.is_superuser) {
-      toast.error(ar ? "صلاحية المدير مطلوبة" : "Admin access required");
+    if (!user.is_superuser && !user.is_support) {
+      toast.error(ar ? "صلاحية الموظفين مطلوبة" : "Staff access required");
       router.push("/dashboard");
     }
   }, [user, authLoading, router, ar]);
@@ -239,6 +254,18 @@ function AdminPageContent() {
     }
   };
 
+  const handleToggleSupport = async (userId: string, isCurrentlySupport: boolean) => {
+    try {
+      await adminApi.toggleSupport(userId);
+      toast.success(isCurrentlySupport
+        ? (ar ? "تم إلغاء صلاحية الدعم" : "Support access revoked")
+        : (ar ? "تم تعيين المستخدم في فريق الدعم" : "User granted support role"));
+      fetchUsers();
+    } catch (err: unknown) {
+      toast.error(getApiError(err, ar ? "تعذّر تغيير الصلاحية" : "Failed to change role"));
+    }
+  };
+
   const handleApproveGig = async (gigId: string) => {
     setGigActionLoading(gigId);
     try {
@@ -274,19 +301,28 @@ function AdminPageContent() {
     const amount = `${escrow.freelancer_amount.toLocaleString(ar ? "ar-IQ" : "en-US")} ${escrow.currency}`;
     const confirmed = confirm(
       ar
-        ? `هل أرسلت الدفعة (${amount}) إلى ${freelancerName} عبر بطاقة Qi Card؟ سيتم تحديث السجل فوراً.`
-        : `Confirm: Did you send ${amount} to ${freelancerName} via Qi Card? This will update the ledger immediately.`
+        ? `هل أرسلت الدفعة (${amount}) إلى ${freelancerName} عبر بطاقة Qi Card؟ سيتم تحديث السجل فوراً. قد يتطلب المبلغ الكبير موافقة مديرٍ ثانٍ.`
+        : `Confirm: Did you send ${amount} to ${freelancerName} via Qi Card? This will update the ledger. Large amounts may require a second admin to approve.`
     );
     if (!confirmed) return;
 
     setEscrowActionLoading(escrow.escrow_id);
     try {
-      await adminApi.releaseEscrow(escrow.escrow_id);
-      toast.success(
-        ar
-          ? `تم تسجيل الدفعة إلى ${freelancerName} بنجاح`
-          : `Payout to ${freelancerName} recorded successfully`
-      );
+      const res = await adminApi.releaseEscrow(escrow.escrow_id);
+      const status = res.data?.status;
+      if (status === "pending_second_approval") {
+        toast.success(
+          ar
+            ? "تم إنشاء طلب موافقة — يحتاج مديرٌ ثانٍ إلى الموافقة قبل تحويل المبلغ"
+            : "Approval request created — a second admin must approve before the money moves"
+        );
+      } else {
+        toast.success(
+          ar
+            ? `تم تسجيل الدفعة إلى ${freelancerName} بنجاح`
+            : `Payout to ${freelancerName} recorded successfully`
+        );
+      }
       fetchEscrows();
     } catch {
       toast.error(ar ? "تعذّر تسجيل الدفعة" : "Failed to record payout");
@@ -296,7 +332,7 @@ function AdminPageContent() {
   };
 
   // ─── Auth loading guard ───────────────────────────────────────────────────────
-  if (authLoading || !user?.is_superuser) {
+  if (authLoading || !isStaff) {
     return (
       <div className="p-6 text-center text-gray-500">
         {authLoading
@@ -307,7 +343,9 @@ function AdminPageContent() {
   }
 
   // ─── Tab definitions ─────────────────────────────────────────────────────────
-  const TABS: { value: Tab; label: string }[] = [
+  // Support staff get a reduced surface: no gig moderation (admin-only) and
+  // no payouts/approvals (financial actions stay on admins).
+  const ALL_TABS: { value: Tab; label: string; adminOnly?: boolean }[] = [
     { value: "stats", label: ar ? "📊 نظرة عامة" : "📊 Overview" },
     { value: "users", label: ar ? "👥 المستخدمون" : "👥 Users" },
     { value: "jobs", label: ar ? "📋 الوظائف" : "📋 Jobs" },
@@ -316,12 +354,16 @@ function AdminPageContent() {
       label: ar
         ? `🛍️ مراجعة الخدمات${pendingGigs.length > 0 ? ` (${pendingGigs.length})` : ""}`
         : `🛍️ Gig Review${pendingGigs.length > 0 ? ` (${pendingGigs.length})` : ""}`,
+      adminOnly: true,
     },
     { value: "transactions", label: ar ? "💳 المعاملات" : "💳 Transactions" },
-    { value: "payouts", label: ar ? "💸 المدفوعات المعلقة" : "💸 Pending Payouts" },
+    { value: "payouts", label: ar ? "💸 المدفوعات المعلقة" : "💸 Pending Payouts", adminOnly: true },
+    { value: "approvals", label: ar ? "✅ موافقات الدفع" : "✅ Payout Approvals", adminOnly: true },
     { value: "disputes", label: ar ? "⚠️ النزاعات" : "⚠️ Disputes" },
     { value: "support", label: ar ? "🛟 الدعم" : "🛟 Support" },
+    { value: "audit", label: ar ? "📜 سجل الإجراءات" : "📜 Audit Log" },
   ];
+  const TABS = ALL_TABS.filter((t) => isAdmin || !t.adminOnly);
 
   // ─── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -375,6 +417,7 @@ function AdminPageContent() {
             onSearch={fetchUsers}
             onStatusUpdate={handleStatusUpdate}
             onToggleAdmin={handleToggleAdmin}
+            onToggleSupport={handleToggleSupport}
           />
         )}
 
@@ -440,12 +483,20 @@ function AdminPageContent() {
           />
         )}
 
+        {tab === "approvals" && (
+          <PayoutApprovalsTab ar={ar} dateLocale={dateLocale} currentAdminId={user?.id} />
+        )}
+
         {tab === "disputes" && (
           <DisputesTab ar={ar} dateLocale={dateLocale} />
         )}
 
         {tab === "support" && (
           <SupportTab ar={ar} dateLocale={dateLocale} />
+        )}
+
+        {tab === "audit" && (
+          <AuditLogTab ar={ar} dateLocale={dateLocale} />
         )}
       </div>
     </div>

@@ -16,7 +16,7 @@ export interface JobSummary {
   id: string;
   title: string;
   category: string;
-  job_type: "fixed" | "hourly";
+  job_type: "fixed";
   budget_min: number | null;
   budget_max: number | null;
   fixed_price: number | null;

@@ -12,6 +12,9 @@ export const adminApi = {
   toggleAdmin: (userId: string) =>
     api.post(`/admin/users/${userId}/toggle-admin`),
 
+  toggleSupport: (userId: string) =>
+    api.post(`/admin/users/${userId}/toggle-support`),
+
   getJobs: (params?: Record<string, string | number>) =>
     api.get("/admin/jobs", { params }),
 
@@ -23,8 +26,20 @@ export const adminApi = {
 
   getEscrows: () => api.get("/admin/escrows"),
 
-  releaseEscrow: (escrowId: string) =>
-    api.post(`/admin/escrows/${escrowId}/release`),
+  releaseEscrow: (escrowId: string, note?: string) =>
+    api.post(`/admin/escrows/${escrowId}/release`, { note: note ?? null }),
+
+  getPendingPayoutApprovals: () =>
+    api.get("/admin/payout-approvals/pending"),
+
+  approvePayoutApproval: (approvalId: string, note?: string) =>
+    api.post(`/admin/payout-approvals/${approvalId}/approve`, { note: note ?? null }),
+
+  rejectPayoutApproval: (approvalId: string, note: string) =>
+    api.post(`/admin/payout-approvals/${approvalId}/reject`, { note }),
+
+  getAuditLogs: (params?: { page?: number; page_size?: number }) =>
+    api.get("/admin/audit-logs", { params }),
 
   getPendingGigs: () =>
     api.get("/gigs/admin/pending"),

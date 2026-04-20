@@ -38,9 +38,9 @@ class JobCreate(BaseModel):
     title: str = Field(min_length=10, max_length=200)
     description: str = Field(min_length=50, max_length=10000)
     category: str = Field(min_length=2, max_length=100)
-    job_type: str = Field(pattern=r"^(fixed|hourly)$")
+    job_type: str = Field(default="fixed", pattern=r"^fixed$")
 
-    # Pricing (conditional on job_type)
+    # Pricing — fixed-price only
     budget_min: float | None = Field(None, ge=5)
     budget_max: float | None = Field(None, ge=5)
     fixed_price: float | None = Field(None, ge=5)
@@ -59,17 +59,8 @@ class JobCreate(BaseModel):
     @field_validator("fixed_price")
     @classmethod
     def validate_fixed_price(cls, v, info):
-        data = info.data
-        if data.get("job_type") == "fixed" and v is None:
-            raise ValueError("Fixed price is required for fixed-price jobs")
-        return v
-
-    @field_validator("budget_min")
-    @classmethod
-    def validate_budget_min(cls, v, info):
-        data = info.data
-        if data.get("job_type") == "hourly" and v is None:
-            raise ValueError("Minimum budget is required for hourly jobs")
+        if v is None:
+            raise ValueError("Fixed price is required")
         return v
 
 
@@ -79,7 +70,7 @@ class JobUpdate(BaseModel):
     title: str | None = Field(None, min_length=10, max_length=200)
     description: str | None = Field(None, min_length=50, max_length=10000)
     category: str | None = Field(None, min_length=2, max_length=100)
-    job_type: str | None = Field(None, pattern=r"^(fixed|hourly)$")
+    job_type: str | None = Field(None, pattern=r"^fixed$")
     budget_min: float | None = Field(None, ge=5)
     budget_max: float | None = Field(None, ge=5)
     fixed_price: float | None = Field(None, ge=5)
@@ -124,12 +115,12 @@ class JobSummary(BaseModel):
 
     @property
     def budget_display(self) -> str:
-        if self.job_type == "fixed" and self.fixed_price:
+        if self.fixed_price:
             return f"${self.fixed_price:,.0f}"
         if self.budget_min and self.budget_max:
-            return f"${self.budget_min:,.0f} - ${self.budget_max:,.0f}/hr"
+            return f"${self.budget_min:,.0f} - ${self.budget_max:,.0f}"
         if self.budget_min:
-            return f"From ${self.budget_min:,.0f}/hr"
+            return f"From ${self.budget_min:,.0f}"
         return "Budget not set"
 
 

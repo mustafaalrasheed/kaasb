@@ -104,7 +104,7 @@ async def update_profile(
     """
     Update the authenticated user's profile.
     Only send the fields you want to update.
-    Freelancer-specific fields (title, hourly_rate, skills, etc.)
+    Freelancer-specific fields (title, skills, experience_level, etc.)
     are only available for freelancer accounts.
     """
     service = UserService(db)

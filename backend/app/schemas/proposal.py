@@ -21,7 +21,6 @@ class ProposalFreelancerInfo(BaseModel):
     display_name: str | None = None
     avatar_url: str | None = None
     title: str | None = None
-    hourly_rate: float | None = None
     country: str | None = None
     experience_level: str | None = None
     skills: list[str] | None = None

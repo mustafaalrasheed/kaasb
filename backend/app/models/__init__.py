@@ -3,6 +3,12 @@ Kaasb Platform - Models Package
 Import all models here so Alembic can discover them.
 """
 
+from app.models.admin_audit import (
+    AdminAuditAction,
+    AdminAuditLog,
+    PayoutApproval,
+    PayoutApprovalStatus,
+)
 from app.models.base import BaseModel  # noqa: I001
 from app.models.buyer_request import (
     BuyerRequest,
@@ -46,6 +52,7 @@ from app.models.violation_log import ViolationAction, ViolationLog, ViolationTyp
 
 __all__ = [
     "BaseModel",
+    "AdminAuditLog", "AdminAuditAction", "PayoutApproval", "PayoutApprovalStatus",
     "User", "UserRole", "UserStatus", "SellerLevel",
     "BuyerRequest", "BuyerRequestOffer", "BuyerRequestStatus", "BuyerRequestOfferStatus",
     "Dispute", "DisputeReason", "DisputeStatus",

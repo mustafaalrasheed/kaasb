@@ -49,8 +49,8 @@ export default function DashboardPage() {
           </h3>
           <p className="mt-1 text-sm text-gray-600">
             {isFreelancer
-              ? (ar ? "أضف نبذتك ومهاراتك وسعر الساعة لبدء استقبال العروض."
-                     : "Add your bio, skills and hourly rate to start receiving offers.")
+              ? (ar ? "أضف نبذتك ومهاراتك ومستوى خبرتك لبدء استقبال العروض."
+                     : "Add your bio, skills and experience level to start receiving offers.")
               : (ar ? "أضف نبذتك وموقعك لمساعدة المستقلين على فهم احتياجاتك."
                      : "Add your bio and location to help freelancers understand your needs.")}
           </p>

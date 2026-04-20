@@ -53,8 +53,13 @@ class Settings(BaseSettings):
 
     # === Platform Settings ===
     PLATFORM_FEE_PERCENT: float = 10.0  # 10% platform fee
-    MIN_HOURLY_RATE: float = 5.0
-    MAX_HOURLY_RATE: float = 500.0
+
+    # === Dual-Control on Payouts ===
+    # Escrow releases above this IQD amount require a SECOND admin to approve
+    # before the money actually moves. Releases at/below this amount go through
+    # on a single admin click. Set to 0 to disable the threshold (every release
+    # requires second approval). Set very high to effectively disable dual-control.
+    PAYOUT_APPROVAL_THRESHOLD_IQD: float = 500_000.0
 
     # === Qi Card (Iraqi Payment Gateway) ===
     # QI_CARD_API_KEY → Authorization header value (raw key, no prefix)

@@ -35,9 +35,8 @@ class JobStatus(str, enum.Enum):
 
 
 class JobType(str, enum.Enum):
-    """Job pricing type."""
+    """Job pricing type. Hourly removed 2026-04-20 — Kaasb is fixed-price only."""
     FIXED = "fixed"
-    HOURLY = "hourly"
 
 
 class ExperienceLevel(str, enum.Enum):

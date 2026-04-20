@@ -28,6 +28,7 @@ class AdminUserInfo(BaseModel):
     primary_role: str
     status: str
     is_superuser: bool
+    is_support: bool = False
     avg_rating: float
     total_reviews: int
     total_earnings: float
@@ -119,3 +120,72 @@ class AdminEscrowInfo(BaseModel):
     currency: str
     funded_at: datetime | None = None
     freelancer: AdminEscrowFreelancerInfo
+
+
+# === Payout Approval (Dual-Control) ===
+
+class ReleaseRequestResult(BaseModel):
+    """Result of an admin clicking 'Release' on a funded escrow."""
+    status: str  # "released" | "pending_second_approval"
+    escrow_id: uuid.UUID
+    amount: float
+    currency: str = "IQD"
+    approval_id: Optional[uuid.UUID] = None  # set when pending_second_approval
+    message: Optional[str] = None
+
+
+class ReleaseRequestBody(BaseModel):
+    """Optional note from the requesting admin."""
+    note: Optional[str] = None
+
+
+class PayoutApprovalDecision(BaseModel):
+    note: Optional[str] = None
+
+
+class PayoutApprovalInfo(BaseModel):
+    id: uuid.UUID
+    escrow_id: uuid.UUID
+    amount: float
+    currency: str
+    status: str
+    requested_by_id: Optional[uuid.UUID] = None
+    requested_by_email: Optional[str] = None
+    decided_by_id: Optional[uuid.UUID] = None
+    decided_by_email: Optional[str] = None
+    request_note: Optional[str] = None
+    decision_note: Optional[str] = None
+    decided_at: Optional[datetime] = None
+    created_at: datetime
+    # Context for the admin reviewer — who's getting paid, how much, which order
+    freelancer_id: Optional[uuid.UUID] = None
+    freelancer_email: Optional[str] = None
+    freelancer_username: Optional[str] = None
+    gig_order_id: Optional[uuid.UUID] = None
+    milestone_id: Optional[uuid.UUID] = None
+
+
+class PayoutApprovalListResponse(BaseModel):
+    approvals: list[PayoutApprovalInfo]
+    total: int
+
+
+class AdminAuditLogInfo(BaseModel):
+    id: uuid.UUID
+    admin_id: Optional[uuid.UUID] = None
+    admin_email: Optional[str] = None
+    action: str
+    target_type: str
+    target_id: Optional[uuid.UUID] = None
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    ip_address: Optional[str] = None
+    details: Optional[dict] = None
+    created_at: datetime
+
+
+class AdminAuditLogListResponse(BaseModel):
+    logs: list[AdminAuditLogInfo]
+    total: int
+    page: int
+    page_size: int

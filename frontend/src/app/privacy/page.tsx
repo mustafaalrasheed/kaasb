@@ -76,8 +76,8 @@ export default function PrivacyPolicyPage() {
             <div>
               <h3 className="font-medium text-gray-900">Professional Information</h3>
               <p className="text-gray-700 mt-1 leading-relaxed">
-                Freelancers may provide a professional title, skills, hourly rate, experience
-                level, and portfolio URL. This information is displayed publicly on your profile.
+                Freelancers may provide a professional title, skills, experience level, and
+                portfolio URL. This information is displayed publicly on your profile.
               </p>
             </div>
             <div>

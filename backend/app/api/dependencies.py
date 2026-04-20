@@ -67,10 +67,27 @@ async def get_current_client(
 async def get_current_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Require the current user to be an admin."""
+    """Require the current user to be an admin (superuser)."""
     if not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
+        )
+    return current_user
+
+
+async def get_current_staff(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    Require the current user to be staff — admin (is_superuser) OR support
+    (is_support). Use on read-only admin views and dispute/support triage
+    where support staff should also have access. Actions that move money or
+    mutate user state must keep using get_current_admin instead.
+    """
+    if not (current_user.is_superuser or current_user.is_support):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff access required",
         )
     return current_user

@@ -695,6 +695,20 @@ class GigService(BaseService):
         ))
         return order
 
+    async def list_deliveries(
+        self, order_id: uuid.UUID, user: User
+    ) -> list[OrderDelivery]:
+        """List all deliveries for an order, oldest first (F4)."""
+        order = await self._get_order(order_id)
+        if str(order.client_id) != str(user.id) and str(order.freelancer_id) != str(user.id):
+            raise ForbiddenError("Access denied")
+        result = await self.db.execute(
+            select(OrderDelivery)
+            .where(OrderDelivery.order_id == order_id)
+            .order_by(OrderDelivery.revision_number.asc(), OrderDelivery.created_at.asc())
+        )
+        return list(result.scalars().all())
+
     async def request_revision(self, order_id: uuid.UUID, client: User) -> GigOrder:
         order = await self._get_order(order_id)
         if str(order.client_id) != str(client.id):

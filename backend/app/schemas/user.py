@@ -130,6 +130,7 @@ class UserMe(UserProfile):
     email: EmailStr
     is_email_verified: bool
     is_superuser: bool = False
+    is_support: bool = False
     timezone: str | None = None
     phone: str | None = None
     total_earnings: float = 0.0

@@ -15,6 +15,7 @@ export interface User {
   status: "active" | "suspended" | "deactivated" | "pending_verification";
   is_email_verified: boolean;
   is_superuser: boolean;
+  is_support?: boolean;
   title: string | null;
   skills: string[] | null;
   experience_level: "entry" | "intermediate" | "expert" | null;

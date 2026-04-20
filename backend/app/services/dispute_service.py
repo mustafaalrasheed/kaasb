@@ -10,7 +10,7 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
@@ -110,14 +110,14 @@ class DisputeService(BaseService):
             actor_id=initiator.id,
         ))
 
-        # Notify admins
-        admin_result = await self.db.execute(
+        # Notify staff (admins + support)
+        staff_result = await self.db.execute(
             select(User).where(
-                User.is_superuser == True,  # noqa: E712
+                or_(User.is_superuser.is_(True), User.is_support.is_(True)),
                 User.status == UserStatus.ACTIVE,
             )
         )
-        for admin in admin_result.scalars().all():
+        for admin in staff_result.scalars().all():
             asyncio.create_task(notify_background(
                 user_id=admin.id,
                 type=NotificationType.DISPUTE_OPENED,
@@ -135,7 +135,8 @@ class DisputeService(BaseService):
         if not order:
             raise NotFoundError("Order")
         is_participant = str(user.id) in (str(order.client_id), str(order.freelancer_id))
-        if not is_participant and not user.is_superuser:
+        is_staff = user.is_superuser or user.is_support
+        if not is_participant and not is_staff:
             raise ForbiddenError("Access denied")
 
         dispute = await self.db.execute(

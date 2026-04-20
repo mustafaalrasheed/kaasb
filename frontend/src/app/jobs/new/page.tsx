@@ -38,10 +38,7 @@ export default function PostJobPage() {
     title: "",
     description: "",
     category: "",
-    job_type: "fixed" as "fixed" | "hourly",
     fixed_price: "",
-    budget_min: "",
-    budget_max: "",
     experience_level: "",
     duration: "",
     skills_required: [] as string[],
@@ -93,13 +90,8 @@ export default function PostJobPage() {
         title: form.title,
         description: form.description,
         category: form.category,
-        job_type: form.job_type,
-        ...(form.job_type === "fixed"
-          ? { fixed_price: parseFloat(form.fixed_price) }
-          : {
-              budget_min: parseFloat(form.budget_min),
-              ...(form.budget_max ? { budget_max: parseFloat(form.budget_max) } : {}),
-            }),
+        job_type: "fixed",
+        fixed_price: parseFloat(form.fixed_price),
         ...(form.experience_level ? { experience_level: form.experience_level } : {}),
         ...(form.duration ? { duration: form.duration } : {}),
         ...(form.skills_required.length > 0 ? { skills_required: form.skills_required } : {}),
@@ -212,96 +204,27 @@ export default function PostJobPage() {
           </h2>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {ar ? "نوع التسعير *" : "Pricing Type *"}
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {ar ? "السعر الثابت (د.ع) *" : "Fixed Price (IQD) *"}
             </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, job_type: "fixed" })}
-                className={`p-4 rounded-lg border-2 text-center transition-all ${
-                  form.job_type === "fixed"
-                    ? "border-brand-500 bg-brand-50 text-brand-700"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                <div className="font-medium">{ar ? "سعر ثابت" : "Fixed Price"}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {ar ? "ادفع مبلغاً محدداً للمشروع كاملاً" : "Pay a set amount for the whole project"}
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, job_type: "hourly" })}
-                className={`p-4 rounded-lg border-2 text-center transition-all ${
-                  form.job_type === "hourly"
-                    ? "border-brand-500 bg-brand-50 text-brand-700"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                <div className="font-medium">{ar ? "بالساعة" : "Hourly"}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {ar ? "ادفع بالساعة مع تقدم العمل" : "Pay per hour as work progresses"}
-                </div>
-              </button>
-            </div>
+            <input
+              name="fixed_price"
+              type="number"
+              value={form.fixed_price}
+              onChange={handleChange}
+              className="input-field"
+              placeholder="500"
+              min={5}
+              step={1}
+              dir="ltr"
+              required
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              {ar
+                ? "كاس.بي للمشاريع ذات السعر الثابت فقط."
+                : "Kaasb is fixed-price only."}
+            </p>
           </div>
-
-          {form.job_type === "fixed" ? (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {ar ? "السعر الثابت (د.ع) *" : "Fixed Price (IQD) *"}
-              </label>
-              <input
-                name="fixed_price"
-                type="number"
-                value={form.fixed_price}
-                onChange={handleChange}
-                className="input-field"
-                placeholder="500"
-                min={5}
-                step={1}
-                dir="ltr"
-                required
-              />
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {ar ? "الحد الأدنى (د.ع/س) *" : "Min Rate (IQD/hr) *"}
-                </label>
-                <input
-                  name="budget_min"
-                  type="number"
-                  value={form.budget_min}
-                  onChange={handleChange}
-                  className="input-field"
-                  placeholder="15"
-                  min={5}
-                  step={0.5}
-                  dir="ltr"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {ar ? "الحد الأقصى (د.ع/س)" : "Max Rate (IQD/hr)"}
-                </label>
-                <input
-                  name="budget_max"
-                  type="number"
-                  value={form.budget_max}
-                  onChange={handleChange}
-                  className="input-field"
-                  placeholder="50"
-                  min={5}
-                  step={0.5}
-                  dir="ltr"
-                />
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Requirements */}

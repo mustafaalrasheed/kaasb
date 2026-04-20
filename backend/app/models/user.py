@@ -79,6 +79,12 @@ class User(BaseModel):
         default=UserStatus.PENDING_VERIFICATION, nullable=False, index=True,
     )
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Limited-privilege support staff: can triage disputes + support chat and read
+    # admin views, but cannot release funds, change user status, or grant admin.
+    # Financial and account-state actions always require is_superuser.
+    is_support: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false",
+    )
 
     # === Freelancer-Specific Fields ===
     title: Mapped[str | None] = mapped_column(

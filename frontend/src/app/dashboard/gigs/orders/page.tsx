@@ -6,6 +6,18 @@ import { useAuthStore } from "@/lib/auth-store";
 import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
 
+interface RequirementQuestion {
+  question: string;
+  type: "text" | "file" | "multiple_choice";
+  required: boolean;
+  options: string[];
+}
+
+interface RequirementAnswer {
+  question: string;
+  answer: string;
+}
+
 interface GigOrderItem {
   id: string;
   gig_id: string;
@@ -14,6 +26,8 @@ interface GigOrderItem {
   freelancer_id: string;
   status: string;
   requirements?: string;
+  requirement_answers?: RequirementAnswer[] | null;
+  requirements_submitted_at?: string | null;
   price_paid: number;
   delivery_days: number;
   revisions_remaining: number;
@@ -21,11 +35,16 @@ interface GigOrderItem {
   delivered_at?: string;
   completed_at?: string;
   created_at: string;
-  gig?: { title: string; slug: string };
+  gig?: {
+    title: string;
+    slug: string;
+    requirement_questions?: RequirementQuestion[] | null;
+  };
 }
 
 const STATUS_LABELS_AR: Record<string, string> = {
   pending: "معلق",
+  pending_requirements: "بانتظار المتطلبات",
   in_progress: "جارٍ",
   delivered: "مُسلَّم",
   revision_requested: "طلب مراجعة",
@@ -36,6 +55,7 @@ const STATUS_LABELS_AR: Record<string, string> = {
 
 const STATUS_LABELS_EN: Record<string, string> = {
   pending: "Pending",
+  pending_requirements: "Awaiting Requirements",
   in_progress: "In Progress",
   delivered: "Delivered",
   revision_requested: "Revision Requested",
@@ -46,6 +66,7 @@ const STATUS_LABELS_EN: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  pending_requirements: "bg-amber-50 text-amber-800 border-amber-200",
   in_progress: "bg-blue-50 text-blue-700 border-blue-200",
   delivered: "bg-indigo-50 text-indigo-700 border-indigo-200",
   revision_requested: "bg-orange-50 text-orange-700 border-orange-200",
@@ -68,6 +89,9 @@ export default function GigOrdersPage() {
   const [orders, setOrders] = useState<GigOrderItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [requirementsOrder, setRequirementsOrder] = useState<GigOrderItem | null>(null);
+  const [deliverOrder, setDeliverOrder] = useState<GigOrderItem | null>(null);
+  const [viewOrder, setViewOrder] = useState<GigOrderItem | null>(null);
 
   const isFreelancer = user?.primary_role === "freelancer";
   const statusLabels = ar ? STATUS_LABELS_AR : STATUS_LABELS_EN;
@@ -95,23 +119,15 @@ export default function GigOrdersPage() {
     if (!isFreelancer) setTab("buying");
   }, [isFreelancer]);
 
-  const handleDeliver = async (orderId: string) => {
-    const message = window.prompt(
-      ar
-        ? "اكتب رسالة التسليم (5 أحرف على الأقل):"
-        : "Delivery message (min 5 characters):",
-      "",
-    );
-    if (!message || message.trim().length < 5) {
-      if (message !== null) {
-        toast.error(ar ? "الرسالة قصيرة جداً" : "Message too short");
-      }
-      return;
-    }
+  const handleDeliver = async (
+    orderId: string,
+    data: { message: string; files: string[] },
+  ) => {
     setActionLoading(orderId);
     try {
-      await gigsApi.markDelivered(orderId, { message: message.trim() });
+      await gigsApi.markDelivered(orderId, data);
       toast.success(ar ? "تم تسليم الطلب" : "Order delivered");
+      setDeliverOrder(null);
       fetchOrders();
     } catch {
       toast.error(ar ? "تعذّر تسليم الطلب" : "Failed to deliver order");
@@ -142,6 +158,23 @@ export default function GigOrdersPage() {
       fetchOrders();
     } catch {
       toast.error(ar ? "تعذّر طلب المراجعة" : "Failed to request revision");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSubmitRequirements = async (
+    orderId: string,
+    answers: RequirementAnswer[],
+  ) => {
+    setActionLoading(orderId);
+    try {
+      await gigsApi.submitRequirements(orderId, answers);
+      toast.success(ar ? "تم إرسال المتطلبات" : "Requirements submitted");
+      setRequirementsOrder(null);
+      fetchOrders();
+    } catch {
+      toast.error(ar ? "تعذّر إرسال المتطلبات" : "Failed to submit requirements");
     } finally {
       setActionLoading(null);
     }
@@ -201,12 +234,42 @@ export default function GigOrdersPage() {
               ar={ar}
               statusLabels={statusLabels}
               actionLoading={actionLoading}
-              onDeliver={handleDeliver}
               onComplete={handleComplete}
               onRevision={handleRevision}
+              onOpenRequirements={() => setRequirementsOrder(order)}
+              onOpenDeliver={() => setDeliverOrder(order)}
+              onViewDelivery={() => setViewOrder(order)}
             />
           ))}
         </div>
+      )}
+
+      {requirementsOrder && (
+        <RequirementsModal
+          order={requirementsOrder}
+          ar={ar}
+          isBusy={actionLoading === requirementsOrder.id}
+          onClose={() => setRequirementsOrder(null)}
+          onSubmit={(answers) => handleSubmitRequirements(requirementsOrder.id, answers)}
+        />
+      )}
+
+      {deliverOrder && (
+        <DeliverModal
+          order={deliverOrder}
+          ar={ar}
+          isBusy={actionLoading === deliverOrder.id}
+          onClose={() => setDeliverOrder(null)}
+          onSubmit={(data) => handleDeliver(deliverOrder.id, data)}
+        />
+      )}
+
+      {viewOrder && (
+        <DeliveryView
+          order={viewOrder}
+          ar={ar}
+          onClose={() => setViewOrder(null)}
+        />
       )}
     </div>
   );
@@ -218,20 +281,28 @@ function OrderCard({
   ar,
   statusLabels,
   actionLoading,
-  onDeliver,
   onComplete,
   onRevision,
+  onOpenRequirements,
+  onOpenDeliver,
+  onViewDelivery,
 }: {
   order: GigOrderItem;
   view: "selling" | "buying";
   ar: boolean;
   statusLabels: Record<string, string>;
   actionLoading: string | null;
-  onDeliver: (id: string) => void;
   onComplete: (id: string) => void;
   onRevision: (id: string) => void;
+  onOpenRequirements: () => void;
+  onOpenDeliver: () => void;
+  onViewDelivery: () => void;
 }) {
   const isBusy = actionLoading === order.id;
+  const canViewDelivery =
+    order.status === "delivered" ||
+    order.status === "revision_requested" ||
+    order.status === "completed";
 
   return (
     <div className="card p-5">
@@ -278,13 +349,35 @@ function OrderCard({
 
         {/* Actions */}
         <div className="flex gap-2 shrink-0 flex-wrap">
-          {view === "selling" && order.status === "in_progress" && (
+          {view === "buying" && order.status === "pending_requirements" && (
             <button
-              onClick={() => onDeliver(order.id)}
+              onClick={onOpenRequirements}
               disabled={isBusy}
               className="btn-primary py-1.5 px-4 text-sm disabled:opacity-50"
             >
-              {isBusy ? "..." : (ar ? "تسليم الطلب" : "Deliver")}
+              {isBusy ? "..." : (ar ? "إرسال المتطلبات" : "Submit Requirements")}
+            </button>
+          )}
+          {view === "selling" &&
+            (order.status === "in_progress" || order.status === "revision_requested") && (
+              <button
+                onClick={onOpenDeliver}
+                disabled={isBusy}
+                className="btn-primary py-1.5 px-4 text-sm disabled:opacity-50"
+              >
+                {isBusy
+                  ? "..."
+                  : order.status === "revision_requested"
+                    ? (ar ? "تسليم المراجعة" : "Deliver Revision")
+                    : (ar ? "تسليم الطلب" : "Deliver")}
+              </button>
+            )}
+          {canViewDelivery && (
+            <button
+              onClick={onViewDelivery}
+              className="btn-secondary py-1.5 px-4 text-sm"
+            >
+              {ar ? "عرض التسليم" : "View Delivery"}
             </button>
           )}
           {view === "buying" && order.status === "delivered" && (
@@ -307,6 +400,442 @@ function OrderCard({
               )}
             </>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RequirementsModal({
+  order,
+  ar,
+  isBusy,
+  onClose,
+  onSubmit,
+}: {
+  order: GigOrderItem;
+  ar: boolean;
+  isBusy: boolean;
+  onClose: () => void;
+  onSubmit: (answers: RequirementAnswer[]) => void;
+}) {
+  const questions: RequirementQuestion[] = order.gig?.requirement_questions ?? [];
+  const [answers, setAnswers] = useState<string[]>(() =>
+    questions.map(() => ""),
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  const handleChange = (index: number, value: string) => {
+    setAnswers((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  };
+
+  const handleSubmit = () => {
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      if (q.required && !answers[i].trim()) {
+        setError(
+          ar
+            ? `الرجاء الإجابة على السؤال ${i + 1}`
+            : `Please answer question ${i + 1}`,
+        );
+        return;
+      }
+    }
+    setError(null);
+    const payload: RequirementAnswer[] = questions
+      .map((q, i) => ({ question: q.question, answer: answers[i].trim() }))
+      .filter((a) => a.answer.length > 0);
+    if (payload.length === 0) {
+      setError(ar ? "يجب إضافة إجابة واحدة على الأقل" : "At least one answer is required");
+      return;
+    }
+    onSubmit(payload);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-5 border-b">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {ar ? "متطلبات الطلب" : "Order Requirements"}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+            aria-label={ar ? "إغلاق" : "Close"}
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-gray-600">
+            {ar
+              ? "يحتاج المستقل إلى هذه المعلومات لبدء العمل على طلبك."
+              : "The freelancer needs this information to start working on your order."}
+          </p>
+
+          {questions.length === 0 ? (
+            <p className="text-sm text-gray-500 italic">
+              {ar
+                ? "لا توجد أسئلة محددة. يمكنك المتابعة مباشرة."
+                : "No specific questions. You can proceed."}
+            </p>
+          ) : (
+            questions.map((q, i) => (
+              <div key={i} className="space-y-1.5">
+                <label className="block text-sm font-medium text-gray-800">
+                  {i + 1}. {q.question}
+                  {q.required && <span className="text-red-500 ms-1">*</span>}
+                </label>
+                {q.type === "multiple_choice" && q.options.length > 0 ? (
+                  <select
+                    value={answers[i]}
+                    onChange={(e) => handleChange(i, e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="">
+                      {ar ? "اختر إجابة..." : "Select an answer..."}
+                    </option>
+                    {q.options.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <textarea
+                    value={answers[i]}
+                    onChange={(e) => handleChange(i, e.target.value)}
+                    rows={3}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    placeholder={ar ? "اكتب إجابتك..." : "Type your answer..."}
+                  />
+                )}
+              </div>
+            ))
+          )}
+
+          {error && (
+            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 justify-end p-5 border-t bg-gray-50">
+          <button
+            onClick={onClose}
+            disabled={isBusy}
+            className="btn-secondary py-2 px-4 text-sm disabled:opacity-50"
+          >
+            {ar ? "إلغاء" : "Cancel"}
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isBusy || questions.length === 0}
+            className="btn-primary py-2 px-4 text-sm disabled:opacity-50"
+          >
+            {isBusy ? (ar ? "جاري الإرسال..." : "Submitting...") : (ar ? "إرسال" : "Submit")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeliverModal({
+  order,
+  ar,
+  isBusy,
+  onClose,
+  onSubmit,
+}: {
+  order: GigOrderItem;
+  ar: boolean;
+  isBusy: boolean;
+  onClose: () => void;
+  onSubmit: (data: { message: string; files: string[] }) => void;
+}) {
+  const [message, setMessage] = useState("");
+  const [fileUrls, setFileUrls] = useState<string[]>([""]);
+  const [error, setError] = useState<string | null>(null);
+
+  const isRevision = order.status === "revision_requested";
+
+  const updateFile = (index: number, value: string) => {
+    setFileUrls((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  };
+  const addFile = () => setFileUrls((prev) => [...prev, ""]);
+  const removeFile = (index: number) =>
+    setFileUrls((prev) => prev.filter((_, i) => i !== index));
+
+  const handleSubmit = () => {
+    if (message.trim().length < 5) {
+      setError(ar ? "الرسالة يجب أن تكون 5 أحرف على الأقل" : "Message must be at least 5 characters");
+      return;
+    }
+    const cleanFiles = fileUrls.map((u) => u.trim()).filter((u) => u.length > 0);
+    for (const url of cleanFiles) {
+      try {
+        const parsed = new URL(url);
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+          throw new Error("bad scheme");
+        }
+      } catch {
+        setError(ar ? `رابط غير صالح: ${url}` : `Invalid URL: ${url}`);
+        return;
+      }
+    }
+    setError(null);
+    onSubmit({ message: message.trim(), files: cleanFiles });
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-5 border-b">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {isRevision
+              ? (ar ? "تسليم المراجعة" : "Deliver Revision")
+              : (ar ? "تسليم الطلب" : "Deliver Order")}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+            aria-label={ar ? "إغلاق" : "Close"}
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-800 mb-1.5">
+              {ar ? "رسالة التسليم" : "Delivery message"}
+              <span className="text-red-500 ms-1">*</span>
+            </label>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={5}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              placeholder={
+                ar
+                  ? "اشرح ما تم إنجازه وأي تعليمات للعميل..."
+                  : "Describe what was completed and any notes for the client..."
+              }
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-800 mb-1.5">
+              {ar ? "روابط الملفات (اختياري)" : "File links (optional)"}
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              {ar
+                ? "ألصق روابط Google Drive أو Dropbox أو أي خدمة مشاركة ملفات."
+                : "Paste Google Drive, Dropbox, or any file-share URL."}
+            </p>
+            <div className="space-y-2">
+              {fileUrls.map((url, i) => (
+                <div key={i} className="flex gap-2">
+                  <input
+                    type="url"
+                    value={url}
+                    onChange={(e) => updateFile(i, e.target.value)}
+                    placeholder="https://..."
+                    dir="ltr"
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                  {fileUrls.length > 1 && (
+                    <button
+                      onClick={() => removeFile(i)}
+                      className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg"
+                      aria-label={ar ? "إزالة" : "Remove"}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={addFile}
+                className="text-sm text-brand-600 hover:underline"
+              >
+                + {ar ? "إضافة رابط آخر" : "Add another link"}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 justify-end p-5 border-t bg-gray-50">
+          <button
+            onClick={onClose}
+            disabled={isBusy}
+            className="btn-secondary py-2 px-4 text-sm disabled:opacity-50"
+          >
+            {ar ? "إلغاء" : "Cancel"}
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isBusy}
+            className="btn-primary py-2 px-4 text-sm disabled:opacity-50"
+          >
+            {isBusy
+              ? (ar ? "جاري التسليم..." : "Delivering...")
+              : (ar ? "تسليم" : "Deliver")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface DeliveryRecord {
+  id: string;
+  order_id: string;
+  message: string;
+  files: string[];
+  revision_number: number;
+  created_at: string;
+}
+
+function DeliveryView({
+  order,
+  ar,
+  onClose,
+}: {
+  order: GigOrderItem;
+  ar: boolean;
+  onClose: () => void;
+}) {
+  const [deliveries, setDeliveries] = useState<DeliveryRecord[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await gigsApi.listDeliveries(order.id);
+        if (!cancelled) setDeliveries(res.data);
+      } catch {
+        if (!cancelled) setError(ar ? "تعذّر تحميل التسليم" : "Failed to load delivery");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [order.id, ar]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-5 border-b">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {ar ? "تفاصيل التسليم" : "Delivery Details"}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+            aria-label={ar ? "إغلاق" : "Close"}
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {error && (
+            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+              {error}
+            </div>
+          )}
+          {!error && deliveries === null && (
+            <p className="text-sm text-gray-500">{ar ? "جاري التحميل..." : "Loading..."}</p>
+          )}
+          {deliveries !== null && deliveries.length === 0 && (
+            <p className="text-sm text-gray-500">
+              {ar ? "لا توجد تسليمات بعد." : "No deliveries yet."}
+            </p>
+          )}
+          {deliveries?.map((d) => (
+            <div key={d.id} className="border border-gray-200 rounded-lg p-4 space-y-2">
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span className="font-medium text-gray-700">
+                  {d.revision_number === 0
+                    ? (ar ? "التسليم الأصلي" : "Original delivery")
+                    : (ar ? `مراجعة ${d.revision_number}` : `Revision ${d.revision_number}`)}
+                </span>
+                <span>
+                  {new Date(d.created_at).toLocaleDateString(ar ? "ar-IQ" : "en-US", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+              <p className="text-sm text-gray-800 whitespace-pre-wrap">{d.message}</p>
+              {d.files.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-600">
+                    {ar ? "الملفات:" : "Files:"}
+                  </p>
+                  <ul className="space-y-1">
+                    {d.files.map((url, i) => (
+                      <li key={i}>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          dir="ltr"
+                          className="text-sm text-brand-600 hover:underline break-all"
+                        >
+                          {url}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end p-5 border-t bg-gray-50">
+          <button onClick={onClose} className="btn-secondary py-2 px-4 text-sm">
+            {ar ? "إغلاق" : "Close"}
+          </button>
         </div>
       </div>
     </div>

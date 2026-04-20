@@ -28,7 +28,6 @@ from app.models.proposal import Proposal
 from app.models.review import Review
 from app.models.user import User, UserRole, UserStatus
 from app.services.base import BaseService
-from app.services.payment_service import PaymentService
 from app.utils.sanitize import escape_like
 
 logger = logging.getLogger(__name__)
@@ -235,12 +234,43 @@ class AdminService(BaseService):
         user.is_superuser = not user.is_superuser
         if user.is_superuser:
             user.primary_role = UserRole.ADMIN
+            # Admin already has staff powers — drop the support flag to keep
+            # one source of truth on the privilege hierarchy.
+            user.is_support = False
         else:
             # Demoted — fall back to client (safest default; admin can update further)
             user.primary_role = UserRole.CLIENT
         logger.info(
             "Admin privilege %s user=%s by admin=%s",
             "granted to" if user.is_superuser else "revoked from",
+            user_id, acting_admin.id,
+        )
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def toggle_support(self, user_id: uuid.UUID, acting_admin: User) -> User:
+        """
+        Grant or revoke limited-privilege support role. Support can triage
+        disputes and handle support chat but cannot release funds or change
+        user state. Admins already have those powers — toggling support on
+        an admin is a no-op (the is_support flag is kept off on admins).
+        """
+        if user_id == acting_admin.id:
+            raise BadRequestError("Cannot modify your own support role")
+
+        result = await self.db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise NotFoundError("User")
+
+        if user.is_superuser:
+            raise BadRequestError("Admins already have full staff access")
+
+        user.is_support = not user.is_support
+        logger.info(
+            "Support role %s user=%s by admin=%s",
+            "granted to" if user.is_support else "revoked from",
             user_id, acting_admin.id,
         )
         await self.db.commit()
@@ -357,23 +387,6 @@ class AdminService(BaseService):
                 },
             })
         return escrows
-
-    async def release_escrow_admin(self, escrow_id: uuid.UUID) -> dict:
-        """
-        Admin marks a funded escrow as released after sending manual Qi Card payout.
-        Works for both contract-milestone and gig-order escrows.
-        """
-        payment_service = PaymentService(self.db)
-        release_result = await payment_service.release_escrow_by_id(escrow_id)
-        if not release_result:
-            raise NotFoundError("Funded escrow")
-
-        return {
-            "escrow_id": str(escrow_id),
-            "status": "released",
-            "freelancer_amount": release_result.freelancer_amount,
-            "currency": "IQD",
-        }
 
     # === Transaction Overview ===
 

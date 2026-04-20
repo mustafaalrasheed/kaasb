@@ -93,7 +93,7 @@ interface JobJsonLdProps {
   description: string;
   publishedAt: string;
   category: string;
-  jobType: "fixed" | "hourly";
+  jobType: "fixed";
   budgetMin?: number | null;
   budgetMax?: number | null;
   fixedPrice?: number | null;
@@ -110,7 +110,7 @@ export function JobPostingJsonLd(props: JobJsonLdProps) {
     currency: "IQD",
   };
 
-  if (props.jobType === "fixed" && props.fixedPrice) {
+  if (props.fixedPrice) {
     salary.value = {
       "@type": "QuantitativeValue",
       value: props.fixedPrice,
@@ -121,7 +121,7 @@ export function JobPostingJsonLd(props: JobJsonLdProps) {
       "@type": "QuantitativeValue",
       minValue: props.budgetMin || 0,
       maxValue: props.budgetMax || props.budgetMin || 0,
-      unitText: "HOUR",
+      unitText: "PROJECT",
     };
   }
 

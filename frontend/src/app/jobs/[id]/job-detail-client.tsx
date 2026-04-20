@@ -34,12 +34,10 @@ const JOB_STATUS_EN: Record<string, string> = {
 
 const JOB_TYPE_AR: Record<string, string> = {
   fixed: "سعر ثابت",
-  hourly: "بالساعة",
 };
 
 const JOB_TYPE_EN: Record<string, string> = {
   fixed: "Fixed Price",
-  hourly: "Hourly",
 };
 
 const EXPERIENCE_LABELS_AR: Record<string, string> = {
@@ -59,14 +57,13 @@ const DURATION_LABELS_AR: Record<string, string> = {
 function formatBudget(job: JobDetail, ar: boolean): string {
   const numLocale = ar ? "ar-IQ" : "en-US";
   const currency = ar ? "د.ع" : "IQD";
-  const perHour = ar ? "د.ع/س" : "IQD/hr";
-  if (job.job_type === "fixed" && job.fixed_price) {
+  if (job.fixed_price) {
     return `${job.fixed_price.toLocaleString(numLocale)} ${currency}`;
   }
   if (job.budget_min && job.budget_max) {
-    return `${job.budget_min.toLocaleString(numLocale)} - ${job.budget_max.toLocaleString(numLocale)} ${perHour}`;
+    return `${job.budget_min.toLocaleString(numLocale)} - ${job.budget_max.toLocaleString(numLocale)} ${currency}`;
   }
-  if (job.budget_min) return `${ar ? "من " : "From "}${job.budget_min.toLocaleString(numLocale)} ${perHour}`;
+  if (job.budget_min) return `${ar ? "من " : "From "}${job.budget_min.toLocaleString(numLocale)} ${currency}`;
   return ar ? "الميزانية غير محددة" : "Budget not specified";
 }
 

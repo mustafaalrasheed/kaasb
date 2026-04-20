@@ -42,14 +42,13 @@ const DURATION_LABELS_AR: Record<string, string> = {
 function formatBudget(job: JobSummary, ar: boolean): string {
   const numLocale = ar ? "ar-IQ" : "en-US";
   const currency = ar ? "د.ع" : "IQD";
-  const perHour = ar ? "د.ع/س" : "IQD/hr";
-  if (job.job_type === "fixed" && job.fixed_price) {
+  if (job.fixed_price) {
     return `${job.fixed_price.toLocaleString(numLocale)} ${currency}`;
   }
   if (job.budget_min && job.budget_max) {
-    return `${job.budget_min.toLocaleString(numLocale)} - ${job.budget_max.toLocaleString(numLocale)} ${perHour}`;
+    return `${job.budget_min.toLocaleString(numLocale)} - ${job.budget_max.toLocaleString(numLocale)} ${currency}`;
   }
-  if (job.budget_min) return `${ar ? "من " : "From "}${job.budget_min.toLocaleString(numLocale)} ${perHour}`;
+  if (job.budget_min) return `${ar ? "من " : "From "}${job.budget_min.toLocaleString(numLocale)} ${currency}`;
   return ar ? "الميزانية غير محددة" : "Budget not specified";
 }
 
@@ -64,7 +63,6 @@ export default function JobsClient() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [category, setCategory] = useState("");
-  const [jobType, setJobType] = useState("");
   const [experienceLevel, setExperienceLevel] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [page, setPage] = useState(1);
@@ -80,7 +78,6 @@ export default function JobsClient() {
         page_size: 12,
         ...(searchQuery && { q: searchQuery }),
         ...(category && { category }),
-        ...(jobType && { job_type: jobType }),
         ...(experienceLevel && { experience_level: experienceLevel }),
       });
       const data: JobListResponse = response.data;
@@ -92,7 +89,7 @@ export default function JobsClient() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, category, jobType, experienceLevel, sortBy, page]);
+  }, [searchQuery, category, experienceLevel, sortBy, page]);
 
   useEffect(() => {
     fetchJobs();
@@ -166,19 +163,6 @@ export default function JobsClient() {
                   {cat}
                 </option>
               ))}
-            </select>
-            <select
-              value={jobType}
-              onChange={(e) => {
-                setJobType(e.target.value);
-                setPage(1);
-              }}
-              className="input-field sm:w-36"
-              aria-label={ar ? "تصفية حسب نوع الوظيفة" : "Filter by job type"}
-            >
-              <option value="">{ar ? "كل الأنواع" : "All Types"}</option>
-              <option value="fixed">{ar ? "سعر ثابت" : "Fixed Price"}</option>
-              <option value="hourly">{ar ? "بالساعة" : "Hourly"}</option>
             </select>
             <select
               value={experienceLevel}
@@ -284,9 +268,7 @@ function JobCard({ job, ar }: { job: JobSummary; ar: boolean }) {
                 {job.category}
               </span>
               <span className="text-xs text-gray-400">
-                {job.job_type === "fixed"
-                  ? ar ? "سعر ثابت" : "Fixed Price"
-                  : ar ? "بالساعة" : "Hourly"}
+                {ar ? "سعر ثابت" : "Fixed Price"}
               </span>
             </div>
             <h2 className="text-lg font-semibold text-gray-900">
