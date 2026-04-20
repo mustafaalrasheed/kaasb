@@ -55,10 +55,7 @@ SUSPENSION_HOURS = 24
 
 def _is_allowed_url(url: str) -> bool:
     """Return True if the URL points to kaasb.com (safe to pass through)."""
-    for domain in _ALLOWED_DOMAINS:
-        if domain in url.lower():
-            return True
-    return False
+    return any(domain in url.lower() for domain in _ALLOWED_DOMAINS)
 
 
 def detect_violations(content: str) -> list[tuple[ViolationType, str]]:

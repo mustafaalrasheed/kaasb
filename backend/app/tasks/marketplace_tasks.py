@@ -122,13 +122,20 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
         response_rate = float(user.response_rate or 0.0)
 
         # Determine new level (highest threshold that passes, else new_seller)
-        def qualifies(thresholds: dict) -> bool:
+        def qualifies(
+            thresholds: dict,
+            _co: float = completed_orders,
+            _ar: float = avg_rating,
+            _cr: float = completion_rate,
+            _rr: float = response_rate,
+            _ma: int = months_active,
+        ) -> bool:
             return (
-                completed_orders >= thresholds["min_orders"]
-                and avg_rating >= thresholds["min_rating"]
-                and completion_rate >= thresholds["min_completion"]
-                and response_rate >= thresholds["min_response"]
-                and months_active >= thresholds["min_months"]
+                _co >= thresholds["min_orders"]
+                and _ar >= thresholds["min_rating"]
+                and _cr >= thresholds["min_completion"]
+                and _rr >= thresholds["min_response"]
+                and _ma >= thresholds["min_months"]
             )
 
         # TOP_RATED requires manual admin review — only keep, never auto-grant
@@ -189,8 +196,9 @@ async def auto_complete_delivered_orders(db: AsyncSession) -> int:
             await db.flush()
 
             # Release escrow
-            from app.models.payment import Escrow, EscrowStatus
             from sqlalchemy import select as _select
+
+            from app.models.payment import Escrow, EscrowStatus
             escrow_result = await db.execute(
                 _select(Escrow).where(
                     Escrow.gig_order_id == order.id,

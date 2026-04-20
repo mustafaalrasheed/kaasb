@@ -4,8 +4,6 @@ Import all models here so Alembic can discover them.
 """
 
 from app.models.base import BaseModel
-from app.models.dispute import Dispute, DisputeReason, DisputeStatus
-from app.models.violation_log import ViolationAction, ViolationLog, ViolationType
 from app.models.buyer_request import (
     BuyerRequest,
     BuyerRequestOffer,
@@ -13,6 +11,7 @@ from app.models.buyer_request import (
     BuyerRequestStatus,
 )
 from app.models.contract import Contract, ContractStatus, Milestone, MilestoneStatus
+from app.models.dispute import Dispute, DisputeReason, DisputeStatus
 from app.models.gig import (
     Category,
     Gig,
@@ -43,6 +42,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.report import Report, ReportReason, ReportStatus, ReportType
 from app.models.review import Review
 from app.models.user import User, UserRole, UserStatus, SellerLevel
+from app.models.violation_log import ViolationAction, ViolationLog, ViolationType
 
 __all__ = [
     "BaseModel",

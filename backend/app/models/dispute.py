@@ -75,8 +75,8 @@ class Dispute(BaseModel):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    order: Mapped["GigOrder"] = relationship("GigOrder")  # type: ignore[name-defined]
-    admin: Mapped["User | None"] = relationship("User", foreign_keys=[admin_id])  # type: ignore[name-defined]
+    order: Mapped[GigOrder] = relationship("GigOrder")  # type: ignore[name-defined]
+    admin: Mapped[User | None] = relationship("User", foreign_keys=[admin_id])  # type: ignore[name-defined]
 
     def __repr__(self) -> str:
         return f"<Dispute order={self.order_id} status={self.status.value}>"

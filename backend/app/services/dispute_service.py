@@ -14,11 +14,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
-from app.models.dispute import Dispute, DisputeReason, DisputeStatus
+from app.models.dispute import Dispute, DisputeStatus
 from app.models.gig import GigOrder, GigOrderStatus
 from app.models.notification import NotificationType
 from app.models.payment import Escrow, EscrowStatus
-from app.models.user import User, UserRole, UserStatus
+from app.models.user import User, UserStatus
 from app.schemas.dispute import DisputeCreate
 from app.services.base import BaseService
 from app.services.notification_service import notify_background

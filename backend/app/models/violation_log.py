@@ -54,7 +54,7 @@ class ViolationLog(BaseModel):
         nullable=False,
     )
 
-    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])  # type: ignore[name-defined]
+    user: Mapped[User] = relationship("User", foreign_keys=[user_id])  # type: ignore[name-defined]
 
     def __repr__(self) -> str:
         return f"<ViolationLog user={self.user_id} type={self.violation_type.value}>"

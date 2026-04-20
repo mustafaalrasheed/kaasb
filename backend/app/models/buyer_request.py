@@ -61,9 +61,9 @@ class BuyerRequest(BaseModel):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     # Relationships
-    client: Mapped["User"] = relationship("User", foreign_keys=[client_id])  # type: ignore[name-defined]
-    category: Mapped["Category | None"] = relationship("Category")  # type: ignore[name-defined]
-    offers: Mapped[list["BuyerRequestOffer"]] = relationship(
+    client: Mapped[User] = relationship("User", foreign_keys=[client_id])  # type: ignore[name-defined]
+    category: Mapped[Category | None] = relationship("Category")  # type: ignore[name-defined]
+    offers: Mapped[list[BuyerRequestOffer]] = relationship(
         "BuyerRequestOffer",
         back_populates="request",
         lazy="raise",
@@ -108,9 +108,9 @@ class BuyerRequestOffer(BaseModel):
     )
 
     # Relationships
-    request: Mapped["BuyerRequest"] = relationship("BuyerRequest", back_populates="offers")
-    freelancer: Mapped["User"] = relationship("User", foreign_keys=[freelancer_id])  # type: ignore[name-defined]
-    gig: Mapped["Gig | None"] = relationship("Gig")  # type: ignore[name-defined]
+    request: Mapped[BuyerRequest] = relationship("BuyerRequest", back_populates="offers")
+    freelancer: Mapped[User] = relationship("User", foreign_keys=[freelancer_id])  # type: ignore[name-defined]
+    gig: Mapped[Gig | None] = relationship("Gig")  # type: ignore[name-defined]
 
     def __repr__(self) -> str:
         return f"<BuyerRequestOffer freelancer={self.freelancer_id} status={self.status.value}>"

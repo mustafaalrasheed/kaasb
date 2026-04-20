@@ -69,6 +69,24 @@ class GigPackageOut(GigPackageIn):
 
 
 # ──────────────────────────────────────────────
+# Requirement Questions / Answers (F3) — must be defined before GigCreate
+# ──────────────────────────────────────────────
+
+class RequirementQuestion(BaseModel):
+    """One question in a gig's requirement template (F3)."""
+    question: str = Field(..., min_length=3, max_length=300)
+    type: str = Field(default="text", pattern="^(text|file|multiple_choice)$")
+    required: bool = True
+    options: list[str] = Field(default_factory=list)
+
+
+class RequirementAnswer(BaseModel):
+    """One client answer matching a RequirementQuestion (F3)."""
+    question: str
+    answer: str
+
+
+# ──────────────────────────────────────────────
 # Gig
 # ──────────────────────────────────────────────
 
@@ -164,20 +182,6 @@ class GigListItem(BaseModel):
 # ──────────────────────────────────────────────
 # Gig Order
 # ──────────────────────────────────────────────
-
-class RequirementQuestion(BaseModel):
-    """One question in a gig's requirement template (F3)."""
-    question: str = Field(..., min_length=3, max_length=300)
-    type: str = Field(default="text", pattern="^(text|file|multiple_choice)$")
-    required: bool = True
-    options: list[str] = Field(default_factory=list)
-
-
-class RequirementAnswer(BaseModel):
-    """One client answer matching a RequirementQuestion (F3)."""
-    question: str
-    answer: str
-
 
 class GigOrderCreate(BaseModel):
     gig_id: uuid.UUID
