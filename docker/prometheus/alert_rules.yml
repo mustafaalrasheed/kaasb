@@ -52,18 +52,35 @@ groups:
           summary:     "p99 latency exceeds 5 seconds"
           description: "1% of requests are taking more than 5 seconds. Likely DB or external service issue."
 
-      # API completely down (no successful requests for 2 minutes)
+      # API failing: traffic is hitting the service but none of it succeeds.
+      # Requires a non-trivial request rate so we don't fire during quiet
+      # periods (e.g. overnight beta with no organic traffic).
       - alert: APIDown
         expr: |
-          sum(rate(http_requests_total{status=~"2.."}[2m])) == 0
+          sum(rate(http_requests_total[5m])) > 0.05
+          and
+          sum(rate(http_requests_total{status=~"2.."}[5m])) == 0
         for: 2m
         labels:
           severity: critical
           channel:  telegram
         annotations:
           summary:     "Kaasb API is returning no successful responses"
-          description: "Zero 2xx responses in the last 2 minutes. The API may be down or all requests failing."
-          runbook:     "Check: docker compose ps; docker compose logs api --tail=50"
+          description: "Traffic is hitting the API but zero 2xx responses in the last 5 minutes. API likely broken."
+          runbook:     "Check: docker compose ps; docker compose logs backend --tail=50"
+
+      # Backend scrape target is unreachable (truly down / crashed / network issue).
+      # This is the real 'service is dead' alert and fires regardless of traffic.
+      - alert: BackendScrapeDown
+        expr: up{job="fastapi"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          channel:  telegram
+        annotations:
+          summary:     "Kaasb backend is unreachable from Prometheus"
+          description: "Prometheus cannot scrape the backend /metrics endpoint. The service is either down, crashed, or unreachable."
+          runbook:     "Check: docker ps | grep backend; docker logs kaasb_backend --tail=50"
 
       # Spike in 4xx errors (bad client requests — may indicate attack)
       - alert: High4xxRate
