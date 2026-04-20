@@ -81,12 +81,12 @@ def upgrade() -> None:
     ]:
         _rename("experiencelevel", old, new)
 
-    # jobduration
+    # jobduration: values match the Python enum .value (numeric prefixes preserved)
     for old, new in [
         ("LESS_THAN_1_WEEK", "less_than_1_week"),
-        ("ONE_TO_4_WEEKS", "one_to_4_weeks"),
-        ("ONE_TO_3_MONTHS", "one_to_3_months"),
-        ("THREE_TO_6_MONTHS", "three_to_6_months"),
+        ("ONE_TO_4_WEEKS", "1_to_4_weeks"),
+        ("ONE_TO_3_MONTHS", "1_to_3_months"),
+        ("THREE_TO_6_MONTHS", "3_to_6_months"),
         ("MORE_THAN_6_MONTHS", "more_than_6_months"),
     ]:
         _rename("jobduration", old, new)
@@ -204,8 +204,8 @@ def downgrade() -> None:
         "jobtype": [("fixed", "FIXED"), ("hourly", "HOURLY")],
         "experiencelevel": [("entry", "ENTRY"), ("intermediate", "INTERMEDIATE"), ("expert", "EXPERT")],
         "jobduration": [
-            ("less_than_1_week", "LESS_THAN_1_WEEK"), ("one_to_4_weeks", "ONE_TO_4_WEEKS"),
-            ("one_to_3_months", "ONE_TO_3_MONTHS"), ("three_to_6_months", "THREE_TO_6_MONTHS"),
+            ("less_than_1_week", "LESS_THAN_1_WEEK"), ("1_to_4_weeks", "ONE_TO_4_WEEKS"),
+            ("1_to_3_months", "ONE_TO_3_MONTHS"), ("3_to_6_months", "THREE_TO_6_MONTHS"),
             ("more_than_6_months", "MORE_THAN_6_MONTHS"),
         ],
         "jobstatus": [
