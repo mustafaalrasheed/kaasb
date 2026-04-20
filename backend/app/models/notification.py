@@ -68,7 +68,8 @@ class Notification(BaseModel):
 
     # === Content ===
     type: Mapped[NotificationType] = mapped_column(
-        Enum(NotificationType), nullable=False, index=True
+        Enum(NotificationType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False, index=True,
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)

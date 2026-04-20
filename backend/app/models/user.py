@@ -63,10 +63,12 @@ class User(BaseModel):
 
     # === Role & Status ===
     primary_role: Mapped[UserRole] = mapped_column(
-        Enum(UserRole), default=UserRole.CLIENT, nullable=False, index=True
+        Enum(UserRole, values_callable=lambda x: [e.value for e in x]),
+        default=UserRole.CLIENT, nullable=False, index=True,
     )
     status: Mapped[UserStatus] = mapped_column(
-        Enum(UserStatus), default=UserStatus.PENDING_VERIFICATION, nullable=False, index=True
+        Enum(UserStatus, values_callable=lambda x: [e.value for e in x]),
+        default=UserStatus.PENDING_VERIFICATION, nullable=False, index=True,
     )
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
 

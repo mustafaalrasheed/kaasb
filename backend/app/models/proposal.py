@@ -54,7 +54,7 @@ class Proposal(BaseModel):
 
     # === Status ===
     status: Mapped[ProposalStatus] = mapped_column(
-        Enum(ProposalStatus),
+        Enum(ProposalStatus, values_callable=lambda x: [e.value for e in x]),
         default=ProposalStatus.PENDING,
         nullable=False,
         index=True,

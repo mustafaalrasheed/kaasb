@@ -59,7 +59,7 @@ class Contract(BaseModel):
 
     # === Status ===
     status: Mapped[ContractStatus] = mapped_column(
-        Enum(ContractStatus),
+        Enum(ContractStatus, values_callable=lambda x: [e.value for e in x]),
         default=ContractStatus.ACTIVE,
         nullable=False,
         index=True,
@@ -160,7 +160,7 @@ class Milestone(BaseModel):
 
     # === Status ===
     status: Mapped[MilestoneStatus] = mapped_column(
-        Enum(MilestoneStatus),
+        Enum(MilestoneStatus, values_callable=lambda x: [e.value for e in x]),
         default=MilestoneStatus.PENDING,
         nullable=False,
         index=True,

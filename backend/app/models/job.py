@@ -80,7 +80,8 @@ class Job(BaseModel):
 
     # === Pricing ===
     job_type: Mapped[JobType] = mapped_column(
-        Enum(JobType), nullable=False, default=JobType.FIXED
+        Enum(JobType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False, default=JobType.FIXED,
     )
     budget_min: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
     budget_max: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
@@ -91,15 +92,18 @@ class Job(BaseModel):
         ARRAY(String), nullable=True
     )
     experience_level: Mapped[ExperienceLevel | None] = mapped_column(
-        Enum(ExperienceLevel), nullable=True
+        Enum(ExperienceLevel, values_callable=lambda x: [e.value for e in x]),
+        nullable=True,
     )
     duration: Mapped[JobDuration | None] = mapped_column(
-        Enum(JobDuration), nullable=True
+        Enum(JobDuration, values_callable=lambda x: [e.value for e in x]),
+        nullable=True,
     )
 
     # === Status & Visibility ===
     status: Mapped[JobStatus] = mapped_column(
-        Enum(JobStatus), default=JobStatus.OPEN, nullable=False, index=True
+        Enum(JobStatus, values_callable=lambda x: [e.value for e in x]),
+        default=JobStatus.OPEN, nullable=False, index=True,
     )
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
 

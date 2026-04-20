@@ -63,7 +63,7 @@ class PaymentAccount(BaseModel):
         nullable=False
     )
     status: Mapped[PaymentAccountStatus] = mapped_column(
-        Enum(PaymentAccountStatus),
+        Enum(PaymentAccountStatus, values_callable=lambda x: [e.value for e in x]),
         default=PaymentAccountStatus.PENDING,
         nullable=False,
     )
@@ -124,10 +124,11 @@ class Transaction(BaseModel):
 
     # === Type & Status ===
     transaction_type: Mapped[TransactionType] = mapped_column(
-        Enum(TransactionType), nullable=False, index=True
+        Enum(TransactionType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False, index=True,
     )
     status: Mapped[TransactionStatus] = mapped_column(
-        Enum(TransactionStatus),
+        Enum(TransactionStatus, values_callable=lambda x: [e.value for e in x]),
         default=TransactionStatus.PENDING,
         nullable=False,
         index=True,
@@ -232,7 +233,7 @@ class Escrow(BaseModel):
 
     # === Status ===
     status: Mapped[EscrowStatus] = mapped_column(
-        Enum(EscrowStatus),
+        Enum(EscrowStatus, values_callable=lambda x: [e.value for e in x]),
         default=EscrowStatus.PENDING,
         nullable=False,
         index=True,
