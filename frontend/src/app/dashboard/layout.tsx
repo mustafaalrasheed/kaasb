@@ -20,11 +20,13 @@ const sidebarLinks = [
   // Client-only
   { href: "/dashboard/my-jobs", labelAr: "وظائفي", labelEn: "My Jobs", icon: "📋", roles: ["client"] },
   { href: "/jobs/new", labelAr: "نشر وظيفة", labelEn: "Post a Job", icon: "✏️", roles: ["client"] },
+  { href: "/dashboard/requests", labelAr: "طلباتي", labelEn: "My Requests", icon: "📣", roles: ["client"] },
   // Freelancer-only
   { href: "/dashboard/gigs", labelAr: "خدماتي", labelEn: "My Gigs", icon: "🛍️", roles: ["freelancer"] },
   { href: "/dashboard/gigs/new", labelAr: "إنشاء خدمة", labelEn: "Create Gig", icon: "✨", roles: ["freelancer"] },
   { href: "/dashboard/gigs/orders", labelAr: "طلبات الخدمات", labelEn: "Gig Orders", icon: "📦", roles: ["client", "freelancer"] },
   { href: "/dashboard/my-proposals", labelAr: "عروضي", labelEn: "My Proposals", icon: "📨", roles: ["freelancer"] },
+  { href: "/requests", labelAr: "طلبات العملاء", labelEn: "Client Requests", icon: "📣", roles: ["freelancer"] },
   { href: "/jobs", labelAr: "ابحث عن عمل", labelEn: "Find Work", icon: "🔍", roles: ["freelancer"] },
   { href: "/dashboard/profile/edit", labelAr: "تعديل الملف", labelEn: "Edit Profile", icon: "👤", roles: ["client", "freelancer"] },
   { href: "/dashboard/settings", labelAr: "الإعدادات", labelEn: "Settings", icon: "⚙️", roles: ["client", "freelancer"] },

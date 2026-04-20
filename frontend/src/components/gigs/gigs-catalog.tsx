@@ -23,6 +23,15 @@ interface GigSubcategory {
   name_en: string;
 }
 
+type SellerLevel = "new_seller" | "level_1" | "level_2" | "top_rated";
+
+const LEVEL_BADGE: Record<SellerLevel, { label: string; labelAr: string; cls: string }> = {
+  new_seller: { label: "New", labelAr: "جديد", cls: "bg-gray-100 text-gray-600" },
+  level_1:    { label: "Level 1", labelAr: "المستوى 1", cls: "bg-blue-100 text-blue-700" },
+  level_2:    { label: "Level 2", labelAr: "المستوى 2", cls: "bg-purple-100 text-purple-700" },
+  top_rated:  { label: "Top Rated", labelAr: "الأفضل تقييماً", cls: "bg-amber-100 text-amber-700" },
+};
+
 interface GigFreelancer {
   id: string;
   username: string;
@@ -30,6 +39,7 @@ interface GigFreelancer {
   last_name: string;
   display_name?: string;
   avatar_url?: string;
+  seller_level?: SellerLevel;
 }
 
 interface GigPackageSummary {
@@ -196,6 +206,13 @@ function GigCard({ gig, locale }: { gig: GigSummary; locale: "ar" | "en" }) {
               )}
             </div>
             <span className="text-sm text-gray-500 truncate">{freelancerName}</span>
+            {gig.freelancer.seller_level && gig.freelancer.seller_level !== "new_seller" && (
+              <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${LEVEL_BADGE[gig.freelancer.seller_level].cls}`}>
+                {locale === "ar"
+                  ? LEVEL_BADGE[gig.freelancer.seller_level].labelAr
+                  : LEVEL_BADGE[gig.freelancer.seller_level].label}
+              </span>
+            )}
           </div>
 
           {/* Title */}

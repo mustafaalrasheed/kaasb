@@ -29,6 +29,7 @@ export function Navbar() {
     findWork:         locale === "ar" ? "ابحث عن عمل"       : "Find Work",
     findFreelancers:  locale === "ar" ? "ابحث عن مستقلين"   : "Find Freelancers",
     services:         locale === "ar" ? "الخدمات"            : "Services",
+    requests:         locale === "ar" ? "طلبات العملاء"      : "Client Requests",
     dashboard:        locale === "ar" ? "لوحة التحكم"        : "Dashboard",
     messages:         locale === "ar" ? "الرسائل"            : "Messages",
     notifications:    locale === "ar" ? "الإشعارات"         : "Notifications",
@@ -45,6 +46,7 @@ export function Navbar() {
   const showFindWork = !isAuthenticated || role === "freelancer";
   const showFindFreelancers = !isAuthenticated || role === "client";
   const showPostJob = isAuthenticated && role === "client";
+  const showRequests = !isAuthenticated || role === "freelancer";
 
   return (
     <nav className="fixed top-0 inset-x-0 z-50 bg-white border-b border-gray-200">
@@ -77,6 +79,11 @@ export function Navbar() {
                 <Link href="/gigs" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
                   {t.services}
                 </Link>
+                {showRequests && (
+                  <Link href="/requests" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                    {t.requests}
+                  </Link>
+                )}
                 {showPostJob && (
                   <Link href="/jobs/new" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
                     {isRTL ? "نشر وظيفة" : "Post a Job"}
@@ -187,6 +194,11 @@ export function Navbar() {
               <Link href="/gigs" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
                 {t.services}
               </Link>
+              {showRequests && (
+                <Link href="/requests" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                  {t.requests}
+                </Link>
+              )}
               {showPostJob && (
                 <Link href="/jobs/new" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
                   {isRTL ? "نشر وظيفة" : "Post a Job"}

@@ -132,6 +132,7 @@ class FreelancerBrief(BaseModel):
     last_name: str
     avatar_url: Optional[str] = None
     avg_rating: Optional[float] = None
+    seller_level: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

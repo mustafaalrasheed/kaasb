@@ -18,8 +18,8 @@ export async function generateMetadata() {
     ? `كاسب - منصة المستقلين الرائدة في العراق`
     : `${SITE_NAME} - Iraq's Leading Freelancing Platform`;
   const description = ar
-    ? "كاسب يربط الشركات بالمستقلين الموهوبين في العراق والشرق الأوسط. انشر مشاريع، وظّف خبراء، ونمّ أعمالك مع دفعات آمنة عبر كي كارد."
-    : "Kaasb connects businesses with talented freelancers across Iraq and the Middle East. Post jobs, hire experts, and grow your business with secure payments via Qi Card.";
+    ? "كاسب يربط الشركات بالمستقلين الموهوبين في العراق والشرق الأوسط. تصفّح الخدمات الجاهزة أو انشر مشروعاً — مع دفعات آمنة عبر كي كارد."
+    : "Kaasb connects businesses with talented freelancers across Iraq and the Middle East. Browse ready-made services or post a job — with secure payments via Qi Card.";
 
   return {
     title,
@@ -94,42 +94,42 @@ const FAQ_ITEMS_EN = [
 const HOW_IT_WORKS_AR = [
   {
     step: "01",
-    title: "انشر مشروعك",
-    description: "صِف مشروعك، حدد ميزانيتك، وانشره لآلاف المستقلين في العراق.",
-    icon: "📝",
+    title: "اختر طريقتك",
+    description: "تصفّح خدمات جاهزة واطلب مباشرة، أو انشر مشروعك وتلقَّ عروضاً من المستقلين.",
+    icon: "🎯",
   },
   {
     step: "02",
-    title: "راجع العروض",
-    description: "استقبل عروضاً من مستقلين مؤهلين. قارن المهارات والأسعار والتقييمات.",
-    icon: "🔍",
+    title: "تعاون بأمان",
+    description: "تواصل مع المستقل عبر المنصة. المدفوعات محجوزة في الضمان حتى تنتهي من العمل.",
+    icon: "🔒",
   },
   {
     step: "03",
-    title: "وظّف وتعاون",
-    description: "اختر الأنسب، تعاون عبر منصتنا، وادفع بأمان عبر كي كارد.",
-    icon: "🤝",
+    title: "استلم وادفع",
+    description: "راجع التسليم، اقبله، وتُحرَّر المدفوعات تلقائياً عبر كي كارد.",
+    icon: "✅",
   },
 ];
 
 const HOW_IT_WORKS_EN = [
   {
     step: "01",
-    title: "Post a Job",
-    description: "Describe your project, set your budget, and post it to thousands of freelancers across Iraq.",
-    icon: "📝",
+    title: "Choose your path",
+    description: "Browse ready-made services and order instantly, or post a project and receive proposals.",
+    icon: "🎯",
   },
   {
     step: "02",
-    title: "Review Proposals",
-    description: "Receive proposals from qualified freelancers. Compare skills, rates, and reviews.",
-    icon: "🔍",
+    title: "Collaborate safely",
+    description: "Communicate through the platform. Payments are held in escrow until work is complete.",
+    icon: "🔒",
   },
   {
     step: "03",
-    title: "Hire & Collaborate",
-    description: "Choose the best fit, collaborate through our platform, and pay securely via Qi Card.",
-    icon: "🤝",
+    title: "Receive & pay",
+    description: "Review the delivery, approve it, and funds release automatically via Qi Card.",
+    icon: "✅",
   },
 ];
 
@@ -180,36 +180,60 @@ export default async function HomePage() {
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight">
               {ar ? (
                 <>
-                  اعثر على{" "}
-                  <span className="text-brand-200">المستقل المثالي</span>{" "}
-                  لمشروعك
+                  سوق العمل الحر
+                  <span className="text-brand-200"> الأول في العراق</span>
                 </>
               ) : (
                 <>
-                  Find the perfect
-                  <span className="text-brand-200"> freelancer </span>
-                  for your project
+                  Iraq&apos;s freelance
+                  <span className="text-brand-200"> marketplace</span>
                 </>
               )}
             </h1>
             <p className="mt-6 text-lg sm:text-xl text-blue-100 leading-relaxed">
               {ar
-                ? "كاسب يربط الشركات بالمستقلين الموهوبين في العراق والشرق الأوسط. انشر مشروعاً، راجع العروض، ووظّف الأفضل — الكل في مكان واحد."
-                : "Kaasb connects businesses with talented freelancers across Iraq and the Middle East. Post a job, review proposals, and hire the best — all in one place."}
+                ? "تصفّح آلاف الخدمات الجاهزة، أو انشر وظيفتك وتلقَّ عروضاً من مستقلين محترفين. الدفع الآمن عبر كي كارد."
+                : "Browse thousands of ready-made services, or post a job and receive proposals from skilled freelancers. Secure payments via Qi Card."}
             </p>
-            <div className="mt-10 flex flex-col sm:flex-row gap-4">
+
+            {/* Dual discovery paths */}
+            <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+              {/* Path 1: Browse gigs (Fiverr model) */}
+              <Link
+                href="/gigs"
+                className="flex flex-col gap-1 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 px-5 py-4 transition-colors text-start"
+              >
+                <span className="text-2xl">🛍️</span>
+                <span className="font-semibold text-white">
+                  {ar ? "تصفّح الخدمات" : "Browse Services"}
+                </span>
+                <span className="text-sm text-blue-200">
+                  {ar ? "خدمات جاهزة بأسعار ثابتة" : "Ready-made services, fixed price"}
+                </span>
+              </Link>
+
+              {/* Path 2: Post a job (Upwork model) */}
+              <Link
+                href={isLoggedIn ? "/jobs/new" : "/jobs"}
+                className="flex flex-col gap-1 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 px-5 py-4 transition-colors text-start"
+              >
+                <span className="text-2xl">📋</span>
+                <span className="font-semibold text-white">
+                  {ar ? "انشر مشروعك" : "Post a Project"}
+                </span>
+                <span className="text-sm text-blue-200">
+                  {ar ? "تلقَّ عروضاً من مستقلين" : "Receive proposals from freelancers"}
+                </span>
+              </Link>
+            </div>
+
+            <div className="mt-6">
               <HeroCta
                 ar={ar}
                 ssrLoggedIn={isLoggedIn}
                 ssrDashboardHref={dashboardHref}
                 variant="hero"
               />
-              <Link
-                href="/jobs"
-                className="btn-primary bg-white text-brand-600 hover:bg-blue-50 text-center text-lg px-8 py-3"
-              >
-                {ar ? "تصفّح الوظائف" : "Browse Jobs"}
-              </Link>
             </div>
           </div>
         </div>
