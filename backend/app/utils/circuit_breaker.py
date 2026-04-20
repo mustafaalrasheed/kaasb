@@ -12,7 +12,7 @@ Usage::
     cb = CircuitBreaker(name="qi_card", failure_threshold=5, recovery_timeout=30)
 
     try:
-        result = await cb.call(client.create_payment, amount_usd=100, ...)
+        result = await cb.call(client.create_payment, amount_iqd=131000, ...)
     except CircuitOpenError:
         # fail fast — no network call was made
         raise ExternalServiceError("Payment service temporarily unavailable")

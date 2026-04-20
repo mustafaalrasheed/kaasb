@@ -85,15 +85,21 @@ export function CookieConsent() {
 
           {/* Body */}
           <p className="mt-3 text-sm text-gray-600 leading-relaxed">
-            We use essential cookies to keep you logged in and secure. We do not
-            use advertising or tracking cookies.{" "}
-            <Link href="/privacy#cookies" className="text-brand-500 hover:underline font-medium">
-              Learn more
+            We use only strictly-necessary cookies to keep you signed in and secure,
+            and one local-storage key to remember this choice. No analytics, no
+            advertising, no third-party trackers.{" "}
+            <Link href="/cookies" className="text-brand-500 hover:underline font-medium">
+              Full Cookie Policy
             </Link>
           </p>
           {/* Arabic */}
           <p className="mt-1 text-sm text-gray-500 leading-relaxed text-right" dir="rtl">
-            نستخدم ملفات الارتباط الأساسية فقط للحفاظ على جلستك وأمانك.
+            نستخدم ملفات ارتباط ضرورية فقط لإبقائك مسجلاً وحماية جلستك، ومفتاحاً
+            محلياً واحداً لتذكّر هذا الاختيار. لا تحليلات ولا إعلانات ولا أدوات تتبع
+            خارجية.{" "}
+            <Link href="/cookies" className="text-brand-500 hover:underline font-medium">
+              سياسة ملفات الارتباط الكاملة
+            </Link>
           </p>
 
           {/* Cookie details toggle */}
@@ -111,25 +117,65 @@ export function CookieConsent() {
                 <thead>
                   <tr className="bg-gray-50">
                     <th className="p-3 font-semibold text-gray-700">Cookie</th>
-                    <th className="p-3 font-semibold text-gray-700">Purpose</th>
-                    <th className="p-3 font-semibold text-gray-700">Duration</th>
+                    <th className="p-3 font-semibold text-gray-700">Purpose · الغرض</th>
+                    <th className="p-3 font-semibold text-gray-700">Duration · المدة</th>
                   </tr>
                 </thead>
-                <tbody className="text-gray-600">
+                <tbody className="text-gray-600 align-top">
                   <tr className="border-t border-gray-100">
                     <td className="p-3 font-mono text-xs">access_token</td>
-                    <td className="p-3">Authentication session</td>
-                    <td className="p-3">30 minutes</td>
+                    <td className="p-3">
+                      <div>Authentication session</div>
+                      <div className="text-gray-500" dir="rtl">مصادقة الجلسة</div>
+                    </td>
+                    <td className="p-3">
+                      <div>30 minutes</div>
+                      <div className="text-gray-500" dir="rtl">٣٠ دقيقة</div>
+                    </td>
                   </tr>
                   <tr className="border-t border-gray-100">
                     <td className="p-3 font-mono text-xs">refresh_token</td>
-                    <td className="p-3">Session renewal</td>
-                    <td className="p-3">7 days</td>
+                    <td className="p-3">
+                      <div>Session renewal</div>
+                      <div className="text-gray-500" dir="rtl">تجديد الجلسة</div>
+                    </td>
+                    <td className="p-3">
+                      <div>7 days</div>
+                      <div className="text-gray-500" dir="rtl">٧ أيام</div>
+                    </td>
+                  </tr>
+                  <tr className="border-t border-gray-100">
+                    <td className="p-3 font-mono text-xs">csrf_token</td>
+                    <td className="p-3">
+                      <div>Cross-site request protection</div>
+                      <div className="text-gray-500" dir="rtl">الحماية من تزوير الطلبات</div>
+                    </td>
+                    <td className="p-3">
+                      <div>Session</div>
+                      <div className="text-gray-500" dir="rtl">مدة الجلسة</div>
+                    </td>
+                  </tr>
+                  <tr className="border-t border-gray-100">
+                    <td className="p-3 font-mono text-xs">locale</td>
+                    <td className="p-3">
+                      <div>Interface language (AR / EN)</div>
+                      <div className="text-gray-500" dir="rtl">لغة الواجهة</div>
+                    </td>
+                    <td className="p-3">
+                      <div>1 year</div>
+                      <div className="text-gray-500" dir="rtl">سنة واحدة</div>
+                    </td>
                   </tr>
                   <tr className="border-t border-gray-100">
                     <td className="p-3 font-mono text-xs">{STORAGE_KEY}</td>
-                    <td className="p-3">Cookie preference (localStorage)</td>
-                    <td className="p-3">Persistent</td>
+                    <td className="p-3">
+                      <div>Cookie consent choice (localStorage)</div>
+                      <div className="text-gray-500" dir="rtl">اختيار الموافقة (localStorage)</div>
+                    </td>
+                    <td className="p-3">
+                      <div>Persistent</div>
+                      <div className="text-gray-500" dir="rtl">دائم</div>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -143,20 +189,20 @@ export function CookieConsent() {
               className="btn-primary py-2.5 px-5 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-500"
               aria-label="Accept all cookies"
             >
-              Accept All
+              Accept · أوافق
             </button>
             <button
               onClick={() => save("essential")}
               className="py-2.5 px-5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400"
               aria-label="Accept essential cookies only"
             >
-              Essential Only
+              Essential only · الضرورية فقط
             </button>
             <Link
-              href="/privacy"
+              href="/cookies"
               className="py-2.5 px-5 text-sm font-medium text-brand-500 hover:text-brand-600 hover:underline self-center"
             >
-              Privacy Policy
+              Cookie Policy · السياسة
             </Link>
           </div>
         </div>

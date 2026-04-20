@@ -202,6 +202,15 @@ export default async function RootLayout({
                   <Link href="/terms" className="hover:text-gray-800 transition-colors">
                     {locale === "ar" ? "شروط الخدمة" : "Terms of Service"}
                   </Link>
+                  <Link href="/cookies" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "ملفات الارتباط" : "Cookies"}
+                  </Link>
+                  <Link href="/refunds" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "سياسة الاسترداد" : "Refunds"}
+                  </Link>
+                  <Link href="/acceptable-use" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "الاستخدام المقبول" : "Acceptable Use"}
+                  </Link>
                   <a href="mailto:support@kaasb.com" className="hover:text-gray-800 transition-colors">
                     {locale === "ar" ? "الدعم" : "Support"}
                   </a>

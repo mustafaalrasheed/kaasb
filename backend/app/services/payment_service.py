@@ -51,7 +51,7 @@ from app.schemas.payment import (
 )
 from app.services.base import BaseService
 from app.services.notification_service import notify
-from app.services.qi_card_client import QiCardClient, QiCardError, usd_to_iqd
+from app.services.qi_card_client import QiCardClient, QiCardError
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -208,10 +208,10 @@ class PaymentService(BaseService):
         failure_url = f"{base}/api/v1/payments/qi-card/failure?sig={sig}"
         cancel_url  = f"{base}/api/v1/payments/qi-card/cancel?sig={sig}"
 
-        # Initiate Qi Card payment
+        # Initiate Qi Card payment (milestone.amount is already IQD)
         try:
             qi_result = await self.qi_card.create_payment(
-                amount_usd=fees["amount"],
+                amount_iqd=int(fees["amount"]),
                 order_id=order_id,
                 success_url=success_url,
                 failure_url=failure_url,
@@ -273,8 +273,8 @@ class PaymentService(BaseService):
             raise
 
         logger.info(
-            "Qi Card payment initiated: milestone=%s payment_id=%s amount_usd=%s amount_iqd=%s",
-            data.milestone_id, qi_payment_id, fees['amount'], amount_iqd,
+            "Qi Card payment initiated: milestone=%s payment_id=%s amount_iqd=%s",
+            data.milestone_id, qi_payment_id, amount_iqd,
         )
 
         return EscrowFundResponse(
@@ -591,7 +591,7 @@ class PaymentService(BaseService):
             original_tx = tx_result.scalar_one_or_none()
 
         qi_payment_id = original_tx.external_transaction_id if original_tx else None
-        amount_iqd = usd_to_iqd(escrow.amount)
+        amount_iqd = int(escrow.amount)
 
         gateway_refund_succeeded = False
         if qi_payment_id:
@@ -675,9 +675,9 @@ class PaymentService(BaseService):
 
         available = round(total_released - total_paid_out, 2)
         if data.amount > available:
-            raise BadRequestError(f"Insufficient balance. Available: ${available:.2f}")
+            raise BadRequestError(f"Insufficient balance. Available: {available:,.0f} IQD")
 
-        amount_iqd = usd_to_iqd(data.amount)
+        amount_iqd = int(data.amount)
 
         # For Qi Card payouts: in production, call Qi Card payout/transfer API
         # Currently logged as processing — admin confirms manually until payout API is available
@@ -692,7 +692,7 @@ class PaymentService(BaseService):
             provider=account.provider,
             external_transaction_id=f"payout_{uuid.uuid4().hex[:12]}",
             description=(
-                f"Qi Card payout: {amount_iqd:,} IQD (${data.amount:.2f}) "
+                f"Qi Card payout: {amount_iqd:,} IQD "
                 f"to phone {account.qi_card_phone or 'N/A'}"
             ),
         )

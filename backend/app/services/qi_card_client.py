@@ -56,15 +56,6 @@ from app.utils.retry import async_retry
 
 logger = logging.getLogger(__name__)
 
-# Exchange rate — update periodically or replace with a live rate API
-USD_TO_IQD = 1310.0
-
-
-def usd_to_iqd(amount_usd: float) -> int:
-    """Convert USD to whole IQD, rounded up."""
-    raw = amount_usd * USD_TO_IQD
-    return int(raw) + (1 if raw % 1 > 0 else 0)
-
 
 class QiCardError(Exception):
     """Raised when the Qi Card API returns an error or network failure."""
@@ -81,7 +72,7 @@ class QiCardClient:
     Usage:
         client = QiCardClient()
         result = await client.create_payment(
-            amount_usd=150.0,
+            amount_iqd=196500,
             order_id="escrow-<uuid>",
             success_url="https://kaasb.com/api/v1/payments/qi-card/success",
             failure_url="https://kaasb.com/api/v1/payments/qi-card/failure",
@@ -125,7 +116,7 @@ class QiCardClient:
     @async_retry(max_attempts=3, base_delay=1.0, exceptions=(httpx.RequestError,))
     async def create_payment(
         self,
-        amount_usd: float,
+        amount_iqd: int,
         order_id: str,
         success_url: str,
         failure_url: str,
@@ -140,13 +131,10 @@ class QiCardClient:
                 "link":       "https://pay.qi.iq/...",  # redirect user here
                 "order_id":   "escrow-<uuid>",
                 "amount_iqd": 196500,
-                "amount_usd": 150.0,
             }
         """
-        amount_iqd = usd_to_iqd(amount_usd)
-
         if not self._is_configured():
-            return self._mock_create(amount_usd, amount_iqd, order_id)
+            return self._mock_create(amount_iqd, order_id)
 
         payload = {
             "order": {
@@ -210,12 +198,30 @@ class QiCardClient:
             "link": link,
             "order_id": order_id,
             "amount_iqd": amount_iqd,
-            "amount_usd": amount_usd,
         }
 
     # =========================================================================
-    # Refund Payment (not yet supported by Qi Card v0 API)
+    # Refund Payment
     # =========================================================================
+    #
+    # Qi Card's v1 3DS API exposes a refund endpoint:
+    #   POST https://{host}/api/v1/payment/{paymentId}/refund
+    #   Auth: Basic (username:password) + X-Terminal-Id header
+    #   Body: { requestId, amount, message, extParams? }
+    #
+    # This is a DIFFERENT product from the v0 redirect API used in
+    # create_payment above (raw API key, no terminal ID). Wiring refunds
+    # therefore requires:
+    #   1. Confirming the merchant account is provisioned against the v1
+    #      3DS API (or migrating the create flow to v1 first).
+    #   2. New settings: QI_CARD_V1_HOST, QI_CARD_TERMINAL_ID,
+    #      QI_CARD_BASIC_USER, QI_CARD_BASIC_PASSWORD.
+    #   3. Persisting the v1 paymentId returned from create (which v0 does
+    #      not currently surface) so we can pass it here.
+    #
+    # Until that migration is done, refunds are issued by an admin through
+    # the Qi Card merchant portal after the dispute/refund decision; this
+    # method raises so the caller falls back to that manual path.
 
     async def refund_payment(
         self,
@@ -226,16 +232,16 @@ class QiCardClient:
         """
         Refund a previously completed Qi Card payment.
 
-        NOTE: The Qi Card v0 API does not currently expose a refund endpoint.
-        This method raises QiCardError so the caller can fall back to manual
-        reconciliation. Implement once Qi Card exposes the endpoint.
+        Not yet wired — see the block comment above for the v1 3DS migration
+        that unlocks this. Raises QiCardError so the caller reconciles manually.
         """
         logger.warning(
-            "Qi Card refund requested for payment_id=%s amount_iqd=%d — not supported by API",
+            "Qi Card refund requested for payment_id=%s amount_iqd=%d — "
+            "v1 3DS refund not yet wired; falling back to manual merchant portal",
             payment_id, amount_iqd,
         )
         raise QiCardError(
-            "Qi Card refunds are not yet supported via the API. "
+            "Qi Card refunds are not yet wired to the v1 3DS API. "
             "Process manually through the Qi Card merchant portal.",
         )
 
@@ -243,15 +249,14 @@ class QiCardClient:
     # Mock helpers (used when QI_CARD_API_KEY is not set)
     # =========================================================================
 
-    def _mock_create(self, amount_usd: float, amount_iqd: int, order_id: str) -> dict:
+    def _mock_create(self, amount_iqd: int, order_id: str) -> dict:
         mock_id = uuid.uuid4().hex[:12]
         logger.info(
-            "[MOCK] Qi Card create_payment: order_id=%s amount_usd=%.2f amount_iqd=%d",
-            order_id, amount_usd, amount_iqd,
+            "[MOCK] Qi Card create_payment: order_id=%s amount_iqd=%d",
+            order_id, amount_iqd,
         )
         return {
             "link": f"https://merchant.uat.pay.qi.iq/mock-pay/{mock_id}?orderId={order_id}",
             "order_id": order_id,
             "amount_iqd": amount_iqd,
-            "amount_usd": amount_usd,
         }

@@ -48,7 +48,7 @@ from app.schemas.gig import (
 )
 from app.services.base import BaseService
 from app.services.notification_service import notify_background
-from app.services.qi_card_client import USD_TO_IQD, QiCardClient, QiCardError
+from app.services.qi_card_client import QiCardClient, QiCardError
 from app.utils.files import MAX_GIG_IMAGES, delete_gig_image
 
 logger = logging.getLogger(__name__)
@@ -546,10 +546,8 @@ class GigService(BaseService):
 
         try:
             qi_card = QiCardClient()
-            # price is IQD; convert to USD for QiCardClient which converts back
-            amount_usd = float(price_d) / USD_TO_IQD
             qi_result = await qi_card.create_payment(
-                amount_usd=amount_usd,
+                amount_iqd=int(price_d),
                 order_id=order_ref,
                 success_url=f"{base}/api/v1/payments/qi-card/success?sig={sig}",
                 failure_url=f"{base}/api/v1/payments/qi-card/failure?sig={sig}",

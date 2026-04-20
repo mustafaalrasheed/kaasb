@@ -24,6 +24,7 @@ export default function RegisterClient() {
   });
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -47,6 +48,12 @@ export default function RegisterClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!legalAccepted) {
+      setError(ar
+        ? "يجب الموافقة على شروط الخدمة وسياسة الخصوصية قبل المتابعة."
+        : "You must agree to the Terms of Service and Privacy Policy before continuing.");
+      return;
+    }
     setError("");
     setIsLoading(true);
     try {
@@ -187,7 +194,57 @@ export default function RegisterClient() {
               </p>
             </div>
 
-            <button type="submit" disabled={isLoading} className="btn-primary w-full py-3 mt-2">
+            <div className="flex items-start gap-2 mt-2">
+              <input
+                id="legal_accepted"
+                type="checkbox"
+                checked={legalAccepted}
+                onChange={(e) => setLegalAccepted(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+                required
+              />
+              <label htmlFor="legal_accepted" className="text-xs text-gray-600 leading-relaxed">
+                {ar ? (
+                  <>
+                    أوافق على{" "}
+                    <Link href="/terms" target="_blank" className="text-brand-500 hover:underline">
+                      شروط الخدمة
+                    </Link>{" "}
+                    و{" "}
+                    <Link href="/privacy" target="_blank" className="text-brand-500 hover:underline">
+                      سياسة الخصوصية
+                    </Link>{" "}
+                    و{" "}
+                    <Link href="/acceptable-use" target="_blank" className="text-brand-500 hover:underline">
+                      سياسة الاستخدام المقبول
+                    </Link>
+                    . أُقرّ بأنني أبلغ من العمر ١٨ سنة فأكثر.
+                  </>
+                ) : (
+                  <>
+                    I agree to the{" "}
+                    <Link href="/terms" target="_blank" className="text-brand-500 hover:underline">
+                      Terms of Service
+                    </Link>
+                    ,{" "}
+                    <Link href="/privacy" target="_blank" className="text-brand-500 hover:underline">
+                      Privacy Policy
+                    </Link>
+                    , and{" "}
+                    <Link href="/acceptable-use" target="_blank" className="text-brand-500 hover:underline">
+                      Acceptable Use Policy
+                    </Link>
+                    . I confirm I am at least 18 years old.
+                  </>
+                )}
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading || !legalAccepted}
+              className="btn-primary w-full py-3 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               {isLoading
                 ? (ar ? "جاري إنشاء الحساب..." : "Creating account...")
                 : (ar ? "إنشاء الحساب" : "Create account")}
