@@ -296,12 +296,54 @@ async def refresh_gig_rank_scores(db: AsyncSession) -> int:
     return updated
 
 
+async def flag_stuck_pending_transactions(
+    db: AsyncSession, min_age_minutes: int = 30
+) -> int:
+    """
+    Count PENDING Transactions older than `min_age_minutes`.
+
+    These are the canonical signal for "Qi Card redirect succeeded on the
+    user's browser but the success webhook never reached Kaasb" — the money
+    may already be on the merchant balance while Kaasb still thinks the
+    payment is in progress. Counted here so the daily task updates the
+    Prometheus gauge; admins see the queue via GET /admin/payments/stuck-pending
+    and resolve each one manually until the v1 3DS status API is wired up
+    (P0-3 in the payments plan).
+    """
+    from app.models.payment import Transaction, TransactionStatus
+
+    cutoff = datetime.now(UTC) - timedelta(minutes=min_age_minutes)
+    result = await db.execute(
+        select(func.count(Transaction.id)).where(
+            Transaction.status == TransactionStatus.PENDING,
+            Transaction.created_at < cutoff,
+        )
+    )
+    count = int(result.scalar() or 0)
+
+    if count:
+        logger.warning(
+            "payments: %d PENDING transactions older than %dmin — likely need "
+            "manual reconciliation against Qi Card merchant dashboard",
+            count, min_age_minutes,
+        )
+
+    try:
+        from app.middleware.monitoring import STUCK_PENDING_TRANSACTIONS
+        STUCK_PENDING_TRANSACTIONS.set(count)
+    except Exception:
+        logger.debug("metrics: stuck-pending gauge emit failed", exc_info=True)
+
+    return count
+
+
 async def run_all(db: AsyncSession) -> dict:
     summary: dict = {}
     summary["buyer_requests_expired"] = await expire_buyer_requests(db)
     summary["seller_levels"] = await recalculate_seller_levels(db)
     summary["orders_auto_completed"] = await auto_complete_delivered_orders(db)
     summary["gig_rank_scores_updated"] = await refresh_gig_rank_scores(db)
+    summary["stuck_pending_transactions"] = await flag_stuck_pending_transactions(db)
     return summary
 
 

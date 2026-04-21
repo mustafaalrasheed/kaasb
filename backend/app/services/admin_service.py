@@ -438,6 +438,55 @@ class AdminService(BaseService):
             })
         return payouts
 
+    async def list_stuck_pending_transactions(
+        self, min_age_minutes: int = 30
+    ) -> list[dict]:
+        """
+        List PENDING Transactions older than `min_age_minutes` — the Qi Card
+        success webhook never landed, so Kaasb doesn't know whether to
+        complete or refund. Admin reconciles each one manually against the
+        Qi Card merchant dashboard.
+
+        Returns enough context (payer, amount, age, order_id) for the admin
+        to look the transaction up in Qi Card's portal.
+        """
+        from datetime import timedelta
+
+        cutoff = datetime.now(UTC) - timedelta(minutes=min_age_minutes)
+        stmt = (
+            select(Transaction, User)
+            .outerjoin(User, User.id == Transaction.payer_id)
+            .where(
+                Transaction.status == TransactionStatus.PENDING,
+                Transaction.created_at < cutoff,
+            )
+            .order_by(Transaction.created_at.asc())
+        )
+        result = await self.db.execute(stmt)
+        rows = result.all()
+
+        payments: list[dict] = []
+        for tx, payer in rows:
+            payments.append({
+                "transaction_id": tx.id,
+                "external_order_id": tx.external_transaction_id,
+                "amount": float(tx.amount),
+                "currency": tx.currency,
+                "transaction_type": tx.transaction_type.value,
+                "created_at": tx.created_at,
+                "age_minutes": int(
+                    (datetime.now(UTC) - tx.created_at).total_seconds() // 60
+                ),
+                "provider": tx.provider.value if tx.provider else None,
+                "description": tx.description,
+                "payer": {
+                    "id": payer.id,
+                    "username": payer.username,
+                    "email": payer.email,
+                } if payer else None,
+            })
+        return payments
+
     # === Transaction Overview ===
 
     async def list_transactions_admin(

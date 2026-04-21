@@ -33,6 +33,7 @@ from app.schemas.admin import (
     PlatformStats,
     ReleaseRequestBody,
     ReleaseRequestResult,
+    StuckPendingTransactionInfo,
 )
 from app.schemas.message import (
     ConversationJobInfo,
@@ -257,6 +258,31 @@ async def release_escrow(
         note=(body.note if body else None),
         ip_address=_get_client_ip(request),
     )
+
+
+# === Stuck PENDING payments (reconciliation surface) ===
+
+@router.get(
+    "/payments/stuck-pending",
+    response_model=list[StuckPendingTransactionInfo],
+    summary="List PENDING transactions older than the reconciliation threshold",
+)
+async def list_stuck_pending_payments(
+    min_age_minutes: int = Query(30, ge=5, le=1440),
+    _staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Surface PENDING Transactions whose Qi Card success webhook never landed.
+
+    Admin reconciles each one manually against the Qi Card merchant
+    dashboard — if the payment actually completed on Qi Card's side the
+    admin can trigger a manual FUNDED transition (future: auto-reconciled
+    by the v1 3DS status API, Known Issue #2). If the payment never
+    completed, the admin can refund / close it out.
+    """
+    service = AdminService(db)
+    return await service.list_stuck_pending_transactions(min_age_minutes)
 
 
 # === Freelancer-initiated payouts awaiting admin "Mark Paid" ===
