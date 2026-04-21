@@ -21,7 +21,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -236,13 +236,21 @@ class PaymentService(BaseService):
             )
         except QiCardError as e:
             logger.exception("Qi Card error in fund_escrow: %s", e)
+            # Explicit rollback mirrors place_order's pattern — drops any
+            # validation-time selects or partial state from the session so
+            # the outer request gets a clean slate on the error path.
+            await self.db.rollback()
             raise ExternalServiceError("Payment gateway error. Please try again later.") from e
 
         qi_payment_id = order_id   # Qi Card uses our orderId to identify the payment
         amount_iqd = qi_result["amount_iqd"]
         form_url = qi_result.get("link")
 
-        # Create transaction and escrow atomically in a single flush
+        # Create transaction + escrow and flush them together. BaseModel.id is
+        # generated client-side (uuid.uuid4 default), so transaction.id is
+        # available before any DB round-trip and can be used as the escrow's
+        # funding_transaction_id FK without an intermediate flush. This removes
+        # the window where the Transaction was persisted but the Escrow wasn't.
         transaction = Transaction(
             transaction_type=TransactionType.ESCROW_FUND,
             status=TransactionStatus.PENDING,
@@ -257,17 +265,6 @@ class PaymentService(BaseService):
             external_transaction_id=qi_payment_id,
             description=f"Qi Card escrow payment for milestone: {milestone.title}",
         )
-        self.db.add(transaction)
-
-        # Flush transaction first to get its ID for the escrow FK
-        try:
-            await self.db.flush()
-        except IntegrityError as e:
-            raise ConflictError("Duplicate or constraint violation") from e
-        except SQLAlchemyError:
-            raise
-
-        # Create escrow in PENDING state (will be FUNDED after webhook)
         escrow = Escrow(
             amount=fees["amount"],
             platform_fee=fees["platform_fee"],
@@ -281,12 +278,14 @@ class PaymentService(BaseService):
             funding_transaction_id=transaction.id,
             funded_at=None,  # Set only when webhook confirms actual payment
         )
-        self.db.add(escrow)
+        self.db.add_all([transaction, escrow])
         try:
             await self.db.flush()
         except IntegrityError as e:
+            await self.db.rollback()
             raise ConflictError("Duplicate or constraint violation") from e
         except SQLAlchemyError:
+            await self.db.rollback()
             raise
 
         logger.info(
@@ -479,15 +478,45 @@ class PaymentService(BaseService):
         self.db.add(release_tx)
         await self.db.flush()
 
-        escrow.status = EscrowStatus.RELEASED
-        escrow.released_at = datetime.now(UTC)
+        # Optimistic-lock UPDATE: WHERE id=... AND version=:expected. If a
+        # racing coroutine already released this escrow (would only be possible
+        # if the FOR UPDATE row lock was bypassed), the rowcount comes back 0
+        # and we refuse to record a duplicate release.
+        expected_version = escrow.version
+        now = datetime.now(UTC)
+        update_result = await self.db.execute(
+            update(Escrow)
+            .where(
+                Escrow.id == escrow.id,
+                Escrow.version == expected_version,
+                Escrow.status == EscrowStatus.FUNDED,
+            )
+            .values(
+                status=EscrowStatus.RELEASED,
+                released_at=now,
+                release_transaction_id=release_tx.id,
+                version=expected_version + 1,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if update_result.rowcount != 1:
+            # Someone else flipped the row between our FOR UPDATE read and now.
+            # Raising aborts the outer transaction so the ledger transactions
+            # we just flushed get rolled back — no phantom release.
+            raise ConflictError(
+                "Escrow state changed concurrently (version mismatch); release aborted"
+            )
         _record_escrow_transition("funded", "released")
+
+        # Keep the in-memory ORM object consistent with what we just wrote.
+        escrow.status = EscrowStatus.RELEASED
+        escrow.released_at = now
         escrow.release_transaction_id = release_tx.id
-        await self.db.flush()
+        escrow.version = expected_version + 1
 
         logger.info(
-            "Escrow released: escrow=%s milestone=%s amount=%s",
-            escrow.id, escrow.milestone_id, escrow.freelancer_amount,
+            "Escrow released: escrow=%s milestone=%s amount=%s version=%d",
+            escrow.id, escrow.milestone_id, escrow.freelancer_amount, escrow.version,
         )
 
         await notify(

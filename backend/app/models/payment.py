@@ -15,6 +15,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     Text,
@@ -223,6 +224,14 @@ class Escrow(BaseModel):
         CheckConstraint("platform_fee >= 0", name="ck_escrow_fee_non_negative"),
         CheckConstraint("freelancer_amount > 0", name="ck_escrow_freelancer_amount_positive"),
         CheckConstraint("freelancer_amount <= amount", name="ck_escrow_freelancer_le_total"),
+        # Defence-in-depth: the release logic in PaymentService already refuses
+        # to release a DISPUTED escrow, but a DB-level CHECK closes the window
+        # where a future refactor accidentally paths around that service guard.
+        # An escrow in DISPUTED state MUST NOT carry a release_transaction_id.
+        CheckConstraint(
+            "NOT (status = 'disputed' AND release_transaction_id IS NOT NULL)",
+            name="ck_escrow_no_release_while_disputed",
+        ),
     )
 
     # === Financial ===
@@ -288,6 +297,15 @@ class Escrow(BaseModel):
     )
     released_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # === Concurrency control ===
+    # Incremented on every state-change UPDATE. PaymentService release/refund
+    # paths include `WHERE version = :expected` so a stale-read UPDATE from a
+    # racing coroutine refuses to commit. Defence-in-depth on top of SELECT
+    # FOR UPDATE locking.
+    version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
     )
 
     def __repr__(self) -> str:
