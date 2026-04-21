@@ -266,6 +266,16 @@ function AdminPageContent() {
     }
   };
 
+  const handleUnsuspendChat = async (userId: string) => {
+    try {
+      await adminApi.unsuspendChat(userId);
+      toast.success(ar ? "تم رفع إيقاف الدردشة" : "Chat suspension lifted");
+      fetchUsers();
+    } catch (err: unknown) {
+      toast.error(getApiError(err, ar ? "تعذّر رفع الإيقاف" : "Failed to lift suspension"));
+    }
+  };
+
   const handleApproveGig = async (gigId: string) => {
     setGigActionLoading(gigId);
     try {
@@ -418,6 +428,7 @@ function AdminPageContent() {
             onStatusUpdate={handleStatusUpdate}
             onToggleAdmin={handleToggleAdmin}
             onToggleSupport={handleToggleSupport}
+            onUnsuspendChat={handleUnsuspendChat}
           />
         )}
 

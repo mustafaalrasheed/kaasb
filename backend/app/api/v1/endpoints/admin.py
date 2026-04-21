@@ -176,6 +176,38 @@ async def toggle_support(
     return user
 
 
+@router.post(
+    "/users/{user_id}/unsuspend-chat",
+    response_model=AdminUserInfo,
+    summary="Lift off-platform chat suspension",
+)
+async def unsuspend_chat(
+    user_id: uuid.UUID,
+    request: Request,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Clears the 24h ``chat_suspended_until`` cooldown that F6 applies after a
+    third off-platform-contact violation. Keeps ``chat_violations`` intact so
+    repeat offenders escalate from their existing count.
+    """
+    service = AdminService(db)
+    user = await service.unsuspend_chat(user_id)
+    # Reusing USER_STATUS_CHANGED here — no DB-level audit enum migration
+    # needed just for chat suspension lifts, and `details.action` distinguishes.
+    await AuditService(db).log(
+        admin_id=admin.id,
+        action=AdminAuditAction.USER_STATUS_CHANGED,
+        target_type="user",
+        target_id=user_id,
+        ip_address=_get_client_ip(request),
+        details={"action": "chat_unsuspended", "target_email": user.email},
+    )
+    await db.commit()
+    return user
+
+
 # === Job Moderation ===
 
 @router.get(
@@ -419,6 +451,7 @@ def _serialize_support_conversation(c: Conversation) -> ConversationSummary:
         other = p2 if c.unread_one >= c.unread_two else p1
         unread = max(c.unread_one, c.unread_two)
 
+    assignee = c.support_assignee
     return ConversationSummary(
         id=c.id,
         conversation_type=c.conversation_type,
@@ -436,6 +469,14 @@ def _serialize_support_conversation(c: Conversation) -> ConversationSummary:
         message_count=c.message_count,
         unread_count=unread,
         created_at=c.created_at,
+        support_status=c.support_status,
+        support_assignee=MessageUserInfo(
+            id=assignee.id,
+            username=assignee.username,
+            first_name=assignee.first_name,
+            last_name=assignee.last_name,
+            avatar_url=assignee.avatar_url,
+        ) if assignee else None,
     )
 
 
@@ -446,9 +487,13 @@ def _serialize_support_conversation(c: Conversation) -> ConversationSummary:
 )
 async def list_support_conversations(
     only_unread: bool = Query(False, description="Only threads with pending messages"),
+    status: SupportTicketStatus | None = Query(
+        None, description="Filter by ticket status (open/in_progress/resolved)",
+    ),
+    mine: bool = Query(False, description="Only tickets assigned to me"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
-    _staff: User = Depends(get_current_staff),
+    staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -457,7 +502,11 @@ async def list_support_conversations(
     calling admin's own participant threads.
     """
     service = MessageService(db)
-    result = await service.list_support_conversations(page, page_size, only_unread)
+    result = await service.list_support_conversations(
+        page, page_size, only_unread,
+        status=status,
+        assignee_id=staff.id if mine else None,
+    )
     conversations = [
         _serialize_support_conversation(c) for c in result["conversations"]
     ]
@@ -468,6 +517,57 @@ async def list_support_conversations(
         page_size=result["page_size"],
         total_pages=result["total_pages"],
     )
+
+
+@router.post(
+    "/support/conversations/{conversation_id}/claim",
+    response_model=ConversationSummary,
+    summary="Claim a support ticket",
+)
+async def claim_support_ticket(
+    conversation_id: uuid.UUID,
+    staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Staff takes ownership → status flips to in_progress."""
+    service = MessageService(db)
+    conv = await service.claim_support_ticket(conversation_id, staff)
+    await db.commit()
+    return _serialize_support_conversation(conv)
+
+
+@router.post(
+    "/support/conversations/{conversation_id}/resolve",
+    response_model=ConversationSummary,
+    summary="Mark a support ticket resolved",
+)
+async def resolve_support_ticket(
+    conversation_id: uuid.UUID,
+    staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Staff closes the ticket; user replying reopens it automatically."""
+    service = MessageService(db)
+    conv = await service.resolve_support_ticket(conversation_id, staff)
+    await db.commit()
+    return _serialize_support_conversation(conv)
+
+
+@router.post(
+    "/support/conversations/{conversation_id}/reopen",
+    response_model=ConversationSummary,
+    summary="Reopen a resolved support ticket",
+)
+async def reopen_support_ticket(
+    conversation_id: uuid.UUID,
+    staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Flip a resolved ticket back to open — e.g. follow-up from another channel."""
+    service = MessageService(db)
+    conv = await service.reopen_support_ticket(conversation_id, staff)
+    await db.commit()
+    return _serialize_support_conversation(conv)
 
 
 @router.get(

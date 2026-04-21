@@ -15,6 +15,9 @@ export const adminApi = {
   toggleSupport: (userId: string) =>
     api.post(`/admin/users/${userId}/toggle-support`),
 
+  unsuspendChat: (userId: string) =>
+    api.post(`/admin/users/${userId}/unsuspend-chat`),
+
   getJobs: (params?: Record<string, string | number>) =>
     api.get("/admin/jobs", { params }),
 
@@ -55,9 +58,20 @@ export const adminApi = {
 
   getSupportConversations: (params?: {
     only_unread?: boolean;
+    status?: "open" | "in_progress" | "resolved";
+    mine?: boolean;
     page?: number;
     page_size?: number;
   }) => api.get("/admin/support/conversations", { params }),
+
+  claimSupportTicket: (conversationId: string) =>
+    api.post(`/admin/support/conversations/${conversationId}/claim`),
+
+  resolveSupportTicket: (conversationId: string) =>
+    api.post(`/admin/support/conversations/${conversationId}/resolve`),
+
+  reopenSupportTicket: (conversationId: string) =>
+    api.post(`/admin/support/conversations/${conversationId}/reopen`),
 
   getOrderConversation: (orderId: string, params?: { page?: number; page_size?: number }) =>
     api.get(`/admin/orders/${orderId}/conversation`, { params }),

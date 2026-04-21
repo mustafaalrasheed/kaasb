@@ -608,6 +608,7 @@ class MessageService(BaseService):
             raise ForbiddenError("Only staff can claim tickets")
         conversation.support_status = SupportTicketStatus.IN_PROGRESS
         conversation.support_assignee_id = staff.id
+        conversation.support_assignee = staff
         conversation.support_resolved_at = None
         await self.db.flush()
         return conversation
@@ -630,6 +631,7 @@ class MessageService(BaseService):
         # Take ownership if previously unclaimed so the log is complete.
         if conversation.support_assignee_id is None:
             conversation.support_assignee_id = staff.id
+            conversation.support_assignee = staff
         await self.db.flush()
         return conversation
 
