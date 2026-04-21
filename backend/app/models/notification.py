@@ -5,9 +5,11 @@ In-app notifications for key platform events.
 
 import enum
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
+    DateTime,
     Enum,
     ForeignKey,
     Index,
@@ -86,6 +88,9 @@ class Notification(BaseModel):
         # Composite index backs the /unread-count hot path and the "unread
         # only" filter on /notifications. Created in migration b4w5x6y7z8a9.
         Index("ix_notifications_user_is_read", "user_id", "is_read"),
+        # Retention sweep filters by archived_at so it benefits from its
+        # own index. Created in migration c5x6y7z8a9b0.
+        Index("ix_notifications_archived_at", "archived_at"),
     )
 
     # === Content ===
@@ -125,6 +130,14 @@ class Notification(BaseModel):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+    # === Soft-delete ===
+    # Active queries filter `archived_at IS NULL`. The retention task sets
+    # this instead of hard-deleting so GDPR export stays complete and
+    # admins can audit past notifications in dispute post-mortems.
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     def __repr__(self) -> str:

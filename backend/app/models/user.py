@@ -74,6 +74,12 @@ class User(BaseModel):
     locale: Mapped[str] = mapped_column(
         String(2), nullable=False, server_default="ar", default="ar"
     )
+    # Per-user opt-out for email notifications. When False, notification
+    # emails are skipped (in-app bell still fires). Granular per-type
+    # control is a future enhancement.
+    email_notifications_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true", default=True
+    )
 
     # === Role & Status ===
     primary_role: Mapped[UserRole] = mapped_column(

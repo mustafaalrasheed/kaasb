@@ -50,17 +50,22 @@ async def run_retention(db: AsyncSession) -> dict[str, int]:
     summary: dict[str, int] = {}
 
     # ------------------------------------------------------------------
-    # 1. Delete notifications older than 90 days
+    # 1. Archive notifications older than 90 days (soft-delete)
     # ------------------------------------------------------------------
+    # Previously hard-deleted. Soft-delete keeps the row available for
+    # GDPR export and for dispute post-mortems that surface later. The
+    # bell/list queries filter `archived_at IS NULL` so user-facing
+    # behaviour is unchanged.
     cutoff_90d = now - timedelta(days=90)
     r = await db.execute(
         sql_text(
-            "DELETE FROM notifications WHERE created_at < :cutoff"
+            "UPDATE notifications SET archived_at = :now "
+            "WHERE created_at < :cutoff AND archived_at IS NULL"
         ),
-        {"cutoff": cutoff_90d},
+        {"cutoff": cutoff_90d, "now": now},
     )
-    summary["notifications_deleted"] = r.rowcount
-    logger.info("Notifications deleted (>90d): %d", r.rowcount)
+    summary["notifications_archived"] = r.rowcount
+    logger.info("Notifications archived (>90d): %d", r.rowcount)
 
     # ------------------------------------------------------------------
     # 2. Delete revoked refresh tokens older than 30 days

@@ -17,6 +17,7 @@ import uuid
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.services.base import BaseService
@@ -32,6 +33,34 @@ logger = logging.getLogger(__name__)
 _SUPPORTED_LOCALES = ("ar", "en")
 _DEFAULT_LOCALE = "ar"
 
+# Notification types that also trigger an email copy, when the recipient has
+# email_notifications_enabled. Intentionally a short high-signal whitelist —
+# the bell already covers routine activity. Everything not in this set is
+# in-app only.
+_EMAILABLE_TYPES = frozenset({
+    NotificationType.PROPOSAL_ACCEPTED,
+    NotificationType.CONTRACT_CREATED,
+    NotificationType.MILESTONE_FUNDED,
+    NotificationType.MILESTONE_APPROVED,
+    NotificationType.PAYMENT_RECEIVED,
+    NotificationType.PAYOUT_COMPLETED,
+    NotificationType.DISPUTE_OPENED,
+    NotificationType.DISPUTE_RESOLVED,
+    NotificationType.BUYER_REQUEST_OFFER_ACCEPTED,
+})
+
+# Link types that map to a stable URL suitable for email deep-linking. Frontend
+# route shape matches the notifications page's getLink helper.
+_EMAIL_LINK_ROUTES = {
+    "contract": "/dashboard/contracts/{id}",
+    "job": "/jobs/{id}",
+    "gig": "/dashboard/gigs",
+    "gig_order": "/dashboard/gigs/orders?order={id}",
+    "buyer_request": "/dashboard/requests?highlight={id}",
+    "proposal": "/dashboard/my-proposals",
+    "message": "/dashboard/messages",
+}
+
 
 def _bump_dispatch(channel: str, status: str) -> None:
     """Increment the notification dispatch counter. Guarded so a metrics
@@ -41,6 +70,47 @@ def _bump_dispatch(channel: str, status: str) -> None:
         NOTIFICATION_DISPATCH_TOTAL.labels(channel=channel, status=status).inc()
     except Exception:
         pass
+
+
+def _build_link_url(link_type: str | None, link_id) -> str | None:
+    """Map a notification's (link_type, link_id) to an absolute frontend URL
+    suitable for the email deep-link. Returns None when no template is
+    registered for the link_type — the email then omits the CTA button."""
+    if not link_type:
+        return None
+    template = _EMAIL_LINK_ROUTES.get(link_type)
+    if not template:
+        return None
+    base = get_settings().FRONTEND_URL.rstrip("/")
+    path = template.format(id=link_id) if link_id else template.split("?")[0]
+    return f"{base}{path}"
+
+
+async def _send_notification_email_bg(
+    *,
+    email: str,
+    title: str,
+    message: str,
+    link_url: str | None,
+    lang: str,
+) -> None:
+    """Send the notification email via Resend in the background so a slow
+    provider never stalls the caller. Bumps the dispatch counter on either
+    outcome and swallows errors — an email failure must not block in-app
+    delivery, which has already succeeded by the time we get here."""
+    try:
+        from app.services.email_service import EmailService  # late import, circular deps
+        sent = await EmailService().send_notification_email(
+            to_email=email,
+            title=title,
+            message=message,
+            link_url=link_url,
+            lang="en" if lang == "en" else "ar",  # Literal narrowing for mypy
+        )
+        _bump_dispatch("email", "ok" if sent else "fail")
+    except Exception:
+        _bump_dispatch("email", "fail")
+        logger.debug("notification email dispatch failed", exc_info=True)
 
 
 def _push_read_event(user_id: uuid.UUID, *, marked: int, all: bool) -> None:
@@ -68,6 +138,26 @@ async def _resolve_locale(db: AsyncSession, user_id: uuid.UUID) -> str:
         logger.warning("locale: failed to load for user=%s, defaulting to 'ar'", user_id)
         return _DEFAULT_LOCALE
     return locale if locale in _SUPPORTED_LOCALES else _DEFAULT_LOCALE
+
+
+async def _resolve_email_context(
+    db: AsyncSession, user_id: uuid.UUID
+) -> tuple[str | None, bool]:
+    """Return (email, email_notifications_enabled). Used by the optional email
+    copy when a notification type is in the whitelist."""
+    try:
+        result = await db.execute(
+            select(User.email, User.email_notifications_enabled).where(
+                User.id == user_id
+            )
+        )
+        row = result.first()
+        if row is None:
+            return None, False
+        return row[0], bool(row[1])
+    except Exception:
+        logger.debug("email-context lookup failed", exc_info=True)
+        return None, False
 
 
 class NotificationService(BaseService):
@@ -143,6 +233,24 @@ class NotificationService(BaseService):
 
         asyncio.create_task(_send_ws())
 
+        # Optional email copy for a short whitelist of high-signal types.
+        # Resolved inside a dedicated session in the background task so a
+        # slow SMTP / Resend call can't stall the caller, and so a closed
+        # request session doesn't block the send.
+        if type in _EMAILABLE_TYPES:
+            email, enabled = await _resolve_email_context(self.db, user_id)
+            if email and enabled:
+                link_url = _build_link_url(link_type, link_id)
+                asyncio.create_task(
+                    _send_notification_email_bg(
+                        email=email,
+                        title=title,
+                        message=message,
+                        link_url=link_url,
+                        lang=locale if locale in _SUPPORTED_LOCALES else _DEFAULT_LOCALE,
+                    )
+                )
+
         return notification
 
     async def get_notifications(
@@ -152,9 +260,12 @@ class NotificationService(BaseService):
         page: int = 1,
         page_size: int = 20,
     ) -> dict:
-        """Get notifications for a user."""
+        """Get notifications for a user. Archived rows are filtered out."""
         page_size = self.clamp_page_size(page_size)
-        stmt = select(Notification).where(Notification.user_id == user.id)
+        stmt = select(Notification).where(
+            Notification.user_id == user.id,
+            Notification.archived_at.is_(None),
+        )
 
         if unread_only:
             stmt = stmt.where(Notification.is_read.is_(False))
@@ -168,6 +279,7 @@ class NotificationService(BaseService):
             select(func.count()).where(
                 Notification.user_id == user.id,
                 Notification.is_read.is_(False),
+                Notification.archived_at.is_(None),
             )
         )
         unread_count = unread_result.scalar() or 0
@@ -184,11 +296,12 @@ class NotificationService(BaseService):
         return result_dict
 
     async def get_unread_count(self, user: User) -> int:
-        """Get unread notification count."""
+        """Get unread notification count (archived rows excluded)."""
         result = await self.db.execute(
             select(func.count()).where(
                 Notification.user_id == user.id,
                 Notification.is_read.is_(False),
+                Notification.archived_at.is_(None),
             )
         )
         return result.scalar() or 0
@@ -215,12 +328,13 @@ class NotificationService(BaseService):
         return marked
 
     async def mark_all_read(self, user: User) -> int:
-        """Mark all notifications as read."""
+        """Mark all (non-archived) notifications as read."""
         result = await self.db.execute(
             update(Notification)
             .where(
                 Notification.user_id == user.id,
                 Notification.is_read.is_(False),
+                Notification.archived_at.is_(None),
             )
             .values(is_read=True)
         )

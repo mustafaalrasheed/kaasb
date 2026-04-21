@@ -24,6 +24,10 @@ export default function SettingsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  // Email-notification preference: null until loaded so we don't flash
+  // a default-checked toggle and then flip it after the GET resolves.
+  const [emailPref, setEmailPref] = useState<boolean | null>(null);
+  const [savingEmailPref, setSavingEmailPref] = useState(false);
 
   const loadSessions = async () => {
     try {
@@ -39,7 +43,26 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadSessions();
+    usersApi
+      .getEmailPreferences()
+      .then((res) => setEmailPref(Boolean(res.data?.email_notifications_enabled)))
+      .catch(() => setEmailPref(true)); // fail-open: server default is true
   }, []);
+
+  const handleToggleEmailPref = async (next: boolean) => {
+    // Optimistic flip so the toggle is instantly responsive. Revert on
+    // API failure and surface a toast.
+    setEmailPref(next);
+    setSavingEmailPref(true);
+    try {
+      await usersApi.updateEmailPreferences(next);
+    } catch (err) {
+      setEmailPref(!next);
+      toast.error(getApiError(err, ar ? "تعذّر حفظ التفضيل" : "Failed to save preference"));
+    } finally {
+      setSavingEmailPref(false);
+    }
+  };
 
   const handleRevokeSession = async (id: string) => {
     setRevokingId(id);
@@ -124,6 +147,32 @@ export default function SettingsPage() {
         <p className="mt-1 text-gray-600">
           {ar ? "إدارة إعدادات حسابك والأمان." : "Manage your account settings and security."}
         </p>
+      </div>
+
+      {/* Email notifications */}
+      <div className="card p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">
+          {ar ? "إشعارات البريد الإلكتروني" : "Email Notifications"}
+        </h2>
+        <p className="text-sm text-gray-500 mb-4">
+          {ar
+            ? "تلقّي بريد إلكتروني للإشعارات المهمة (قبول العروض، تحرير الدفع، إغلاق النزاع، إلخ). إشعارات التطبيق تعمل دائماً."
+            : "Receive email for important notifications (offer accepted, payment released, dispute resolved, etc). In-app notifications always stay on."}
+        </p>
+        <label className="inline-flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            className="h-5 w-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+            checked={emailPref ?? true}
+            disabled={emailPref === null || savingEmailPref}
+            onChange={(e) => handleToggleEmailPref(e.target.checked)}
+          />
+          <span className="text-sm font-medium text-gray-900">
+            {emailPref === null
+              ? (ar ? "جارٍ التحميل..." : "Loading...")
+              : (ar ? "تفعيل إشعارات البريد الإلكتروني" : "Enable email notifications")}
+          </span>
+        </label>
       </div>
 
       {/* Change Password */}

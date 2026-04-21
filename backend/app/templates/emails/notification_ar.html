@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p>{{ message }}</p>
+{% if link_url %}
+<a class="btn" href="{{ link_url }}">عرض التفاصيل</a>
+<hr class="divider" />
+<p class="link-note">{{ link_url }}</p>
+{% endif %}
+<p style="font-size:12px;color:#aaa;margin-top:24px;">
+  لإيقاف رسائل الإشعارات عبر البريد الإلكتروني، انتقل إلى إعدادات حسابك.
+</p>
+{% endblock %}

@@ -137,6 +137,42 @@ async def update_my_locale(
     return {"locale": locale}
 
 
+@router.get(
+    "/me/email-preferences",
+    summary="Read the authenticated user's email notification preferences",
+)
+async def get_my_email_preferences(
+    current_user: User = Depends(get_current_user),
+):
+    """Return the per-user email toggle. Granular per-type preferences are
+    intentionally not exposed yet — one toggle covers the whitelist of
+    high-signal notification types the server opts into."""
+    return {"email_notifications_enabled": current_user.email_notifications_enabled}
+
+
+@router.put(
+    "/me/email-preferences",
+    summary="Update the authenticated user's email notification preferences",
+)
+async def update_my_email_preferences(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle whether the user receives email copies of notifications.
+    Accepts {"email_notifications_enabled": bool}; everything else rejects."""
+    value = (payload or {}).get("email_notifications_enabled")
+    if not isinstance(value, bool):
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="email_notifications_enabled must be a boolean",
+        )
+    current_user.email_notifications_enabled = value
+    await db.commit()
+    return {"email_notifications_enabled": value}
+
+
 @router.post(
     "/avatar",
     response_model=UserMe,
