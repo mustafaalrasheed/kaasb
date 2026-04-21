@@ -8,6 +8,17 @@
 - PostgreSQL 15+
 - Redis 7+
 
+### First-time Git config (Windows)
+
+Git for Windows ships with `core.autocrlf=true`, which conflicts with this repo's `.gitattributes` (forces `eol=lf`). Before your first clone or pull, run:
+
+```bash
+git config --global core.autocrlf false
+git config --global core.safecrlf warn
+```
+
+The repo also includes an `.editorconfig` that enforces LF, 4-space indent for Python, and 2-space for JS/TS — VS Code, PyCharm, and most editors pick this up automatically.
+
 ### Backend Setup
 ```bash
 cd backend

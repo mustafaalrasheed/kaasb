@@ -10,7 +10,7 @@ import { getApiError } from "@/lib/utils";
 import { StatsTab } from "./tabs/stats-tab";
 import { UsersTab } from "./tabs/users-tab";
 import { JobsTab } from "./tabs/jobs-tab";
-import { GigsTab } from "./tabs/gigs-tab";
+import { ServicesTab } from "./tabs/services-tab";
 import { TransactionsTab } from "./tabs/transactions-tab";
 import { PayoutsTab } from "./tabs/payouts-tab";
 import { SupportTab } from "./tabs/support-tab";
@@ -54,7 +54,12 @@ interface AdminEscrow {
   escrow_id: string; contract_id: string; milestone_id: string;
   milestone_title: string; amount: number; platform_fee: number;
   freelancer_amount: number; currency: string; funded_at: string | null;
-  freelancer: { id: string; username: string; email: string; phone: string | null; qi_card_phone: string | null };
+  freelancer: {
+    id: string; username: string; email: string;
+    phone: string | null;
+    qi_card_phone: string | null;
+    qi_card_holder_name: string | null;
+  };
 }
 
 interface PendingGig {
@@ -449,17 +454,21 @@ function AdminPageContent() {
         )}
 
         {tab === "gigs" && (
-          <GigsTab
-            pendingGigs={pendingGigs}
+          <ServicesTab
+            pendingServices={pendingGigs}
             loading={loading}
             actionLoading={gigActionLoading}
-            modalState={gigModalState}
+            modalState={
+              gigModalState
+                ? { type: gigModalState.type, serviceId: gigModalState.gigId, serviceTitle: gigModalState.gigTitle }
+                : null
+            }
             modalText={gigModalText}
             ar={ar}
             dateLocale={dateLocale}
             onApprove={handleApproveGig}
-            onOpenModal={(type, gigId, gigTitle) => {
-              setGigModalState({ type, gigId, gigTitle });
+            onOpenModal={(type: "revision" | "reject", serviceId: string, serviceTitle: string) => {
+              setGigModalState({ type, gigId: serviceId, gigTitle: serviceTitle });
               setGigModalText("");
             }}
             onCloseModal={() => { setGigModalState(null); setGigModalText(""); }}
