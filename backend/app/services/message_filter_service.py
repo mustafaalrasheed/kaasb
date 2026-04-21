@@ -7,6 +7,11 @@ Violation escalation:
   1st: warning — deliver message with contact info masked, warn sender
   2nd: blocked — message dropped, admin notified
   3rd+: suspended — sender's chat blocked for 24h
+
+URL detection is bypassed for ORDER-type conversations so the client and
+freelancer can legitimately share deliverable links (Google Drive, GitHub,
+portfolio pages, …). Email / phone / external-app patterns stay on — those
+are almost always attempts to move off-platform.
 """
 
 from __future__ import annotations
@@ -14,11 +19,13 @@ from __future__ import annotations
 import asyncio
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.message import ConversationType
 from app.models.notification import NotificationType
 from app.models.user import User
 from app.models.violation_log import ViolationAction, ViolationLog, ViolationType
@@ -53,15 +60,39 @@ _EXTERNAL_APP_RE = re.compile(
 SUSPENSION_HOURS = 24
 
 
+@dataclass(frozen=True)
+class FilterOutcome:
+    """Result of running a message through the off-platform-contact filter.
+
+    ``blocked`` → caller must NOT persist/deliver the message.
+    ``warning`` → message WILL be delivered but with contact info masked; UI
+                  should surface the escalation notice to the sender.
+    ``code``    → stable machine-readable reason ("email" / "phone" / "url" /
+                  "external_app" / "suspended") for the frontend to render a
+                  targeted message.
+    """
+
+    content: str
+    blocked: bool
+    warning: bool = False
+    code: str | None = None
+    total_violations: int = 0
+    suspended_until: datetime | None = None
+
+
 def _is_allowed_url(url: str) -> bool:
     """Return True if the URL points to kaasb.com (safe to pass through)."""
     return any(domain in url.lower() for domain in _ALLOWED_DOMAINS)
 
 
-def detect_violations(content: str) -> list[tuple[ViolationType, str]]:
+def detect_violations(
+    content: str, *, skip_urls: bool = False,
+) -> list[tuple[ViolationType, str]]:
     """
     Scan content for policy violations.
     Returns a list of (type, matched_text) tuples.
+    When ``skip_urls`` is True the URL pattern is not evaluated — used for
+    ORDER conversations where sharing deliverable links is legitimate.
     """
     violations: list[tuple[ViolationType, str]] = []
 
@@ -71,9 +102,10 @@ def detect_violations(content: str) -> list[tuple[ViolationType, str]]:
     for m in _PHONE_RE.finditer(content):
         violations.append((ViolationType.PHONE, m.group(0)))
 
-    for m in _URL_RE.finditer(content):
-        if not _is_allowed_url(m.group(0)):
-            violations.append((ViolationType.URL, m.group(0)))
+    if not skip_urls:
+        for m in _URL_RE.finditer(content):
+            if not _is_allowed_url(m.group(0)):
+                violations.append((ViolationType.URL, m.group(0)))
 
     for m in _EXTERNAL_APP_RE.finditer(content):
         violations.append((ViolationType.EXTERNAL_APP, m.group(0)))
@@ -81,15 +113,16 @@ def detect_violations(content: str) -> list[tuple[ViolationType, str]]:
     return violations
 
 
-def mask_content(content: str) -> str:
+def mask_content(content: str, *, skip_urls: bool = False) -> str:
     """Replace detected contact info in content with placeholder text."""
     content = _EMAIL_RE.sub("[معلومات الاتصال محذوفة / contact info removed]", content)
     content = _PHONE_RE.sub("[رقم هاتف محذوف / phone removed]", content)
 
-    def _replace_url(m: re.Match) -> str:
-        return m.group(0) if _is_allowed_url(m.group(0)) else "[رابط خارجي محذوف / external link removed]"
+    if not skip_urls:
+        def _replace_url(m: re.Match) -> str:
+            return m.group(0) if _is_allowed_url(m.group(0)) else "[رابط خارجي محذوف / external link removed]"
+        content = _URL_RE.sub(_replace_url, content)
 
-    content = _URL_RE.sub(_replace_url, content)
     content = _EXTERNAL_APP_RE.sub("[تطبيق خارجي محذوف / external app removed]", content)
     return content
 
@@ -97,7 +130,7 @@ def mask_content(content: str) -> str:
 class MessageFilterService:
     """
     Stateless filter: call `process_message` before persisting.
-    Returns (filtered_content, blocked: bool, violation_detected: bool).
+    Returns a ``FilterOutcome`` — see its docstring.
     """
 
     def __init__(self, db: AsyncSession):
@@ -107,25 +140,27 @@ class MessageFilterService:
         self,
         sender: User,
         content: str,
+        *,
+        conversation_type: ConversationType = ConversationType.USER,
         message_id: uuid.UUID | None = None,
-    ) -> tuple[str, bool]:
-        """
-        Check content against policies and update user violation state.
-
-        Returns:
-          (processed_content, blocked)
-
-          - processed_content: original or masked content
-          - blocked: True means the caller should NOT save/deliver the message
-        """
-        # Check if sender is currently suspended
+    ) -> FilterOutcome:
         now = datetime.now(UTC)
-        if sender.chat_suspended_until and sender.chat_suspended_until > now:
-            return content, True  # silently block
 
-        violations = detect_violations(content)
+        # Already suspended — short-circuit. Caller raises BadRequest with
+        # suspended_until so the UI can show a countdown.
+        if sender.chat_suspended_until and sender.chat_suspended_until > now:
+            return FilterOutcome(
+                content=content,
+                blocked=True,
+                code="suspended",
+                total_violations=sender.chat_violations or 0,
+                suspended_until=sender.chat_suspended_until,
+            )
+
+        skip_urls = conversation_type == ConversationType.ORDER
+        violations = detect_violations(content, skip_urls=skip_urls)
         if not violations:
-            return content, False  # clean message
+            return FilterOutcome(content=content, blocked=False)
 
         vtype, detected_text = violations[0]  # primary violation
         count = (sender.chat_violations or 0) + 1
@@ -133,20 +168,33 @@ class MessageFilterService:
 
         if count == 1:
             action = ViolationAction.WARNING
-            masked = mask_content(content)
-            blocked = False
-            final_content = masked
+            masked = mask_content(content, skip_urls=skip_urls)
+            outcome = FilterOutcome(
+                content=masked,
+                blocked=False,
+                warning=True,
+                code=vtype.value,
+                total_violations=count,
+            )
         elif count == 2:
             action = ViolationAction.BLOCKED
-            blocked = True
-            final_content = content  # not delivered, so no masking needed
+            outcome = FilterOutcome(
+                content=content,
+                blocked=True,
+                code=vtype.value,
+                total_violations=count,
+            )
         else:
             action = ViolationAction.SUSPENDED
-            blocked = True
-            final_content = content
             sender.chat_suspended_until = now + timedelta(hours=SUSPENSION_HOURS)
+            outcome = FilterOutcome(
+                content=content,
+                blocked=True,
+                code="suspended",
+                total_violations=count,
+                suspended_until=sender.chat_suspended_until,
+            )
 
-        # Log the violation
         log = ViolationLog(
             user_id=sender.id,
             message_id=message_id,
@@ -157,7 +205,6 @@ class MessageFilterService:
         self.db.add(log)
         await self.db.flush()
 
-        # Warn sender
         from app.services.notification_service import notify_background  # noqa: PLC0415
         if action == ViolationAction.WARNING:
             asyncio.create_task(notify_background(
@@ -186,7 +233,6 @@ class MessageFilterService:
                 link_type=None,
                 link_id=None,
             ))
-            # Notify admins on suspension
             from app.models.user import UserStatus  # noqa: PLC0415
             admin_result = await self.db.execute(
                 select(User).where(
@@ -205,4 +251,4 @@ class MessageFilterService:
                     actor_id=sender.id,
                 ))
 
-        return final_content, blocked
+        return outcome

@@ -10,6 +10,7 @@ import logging.handlers
 import sys
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from typing import Any
 
 import sentry_sdk
 from fastapi import FastAPI
@@ -320,11 +321,17 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ForbiddenError)
     async def forbidden_handler(request, exc: ForbiddenError):
-        return JSONResponse(status_code=403, content={"detail": exc.message})
+        body: dict[str, Any] = {"detail": exc.message}
+        if isinstance(exc.details, dict):
+            body.update(exc.details)
+        return JSONResponse(status_code=403, content=body)
 
     @app.exception_handler(BadRequestError)
     async def bad_request_handler(request, exc: BadRequestError):
-        return JSONResponse(status_code=400, content={"detail": exc.message})
+        body: dict[str, Any] = {"detail": exc.message}
+        if isinstance(exc.details, dict):
+            body.update(exc.details)
+        return JSONResponse(status_code=400, content=body)
 
     @app.exception_handler(UnauthorizedError)
     async def unauthorized_handler(request, exc: UnauthorizedError):

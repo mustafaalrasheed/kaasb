@@ -22,6 +22,35 @@ import { backendUrl } from "@/lib/utils";
 const TYPING_INDICATOR_MS = 3000;
 const TYPING_EMIT_MIN_MS = 1100;
 
+// Shape of the structured error body returned by the backend when a send is
+// rejected because of the off-platform-contact filter. ``code`` is stable —
+// "email" / "phone" / "url" / "external_app" / "blocked" / "suspended".
+interface ChatErrorBody {
+  detail?: string;
+  code?: string;
+  violation_count?: number;
+  suspended_until?: string | null;
+}
+
+interface AxiosLikeError {
+  response?: { data?: ChatErrorBody };
+}
+
+function extractChatError(err: unknown): ChatErrorBody | null {
+  const maybe = (err as AxiosLikeError | null)?.response?.data;
+  return maybe && typeof maybe === "object" ? maybe : null;
+}
+
+function formatCountdown(msLeft: number, ar: boolean): string {
+  if (msLeft <= 0) return ar ? "انتهى" : "ended";
+  const totalSec = Math.floor(msLeft / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
 function MessagesContent() {
   const { user } = useAuthStore();
   const { locale } = useLocale();
@@ -44,6 +73,18 @@ function MessagesContent() {
 
   const [presence, setPresence] = useState<Record<string, PresenceInfo>>({});
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+
+  // Chat policy state — suspension timestamp + violation counter. Seeded from
+  // the authenticated user and updated in place when a send call returns a
+  // structured error (so we don't need a round-trip to refresh /auth/me).
+  const [suspendedUntil, setSuspendedUntil] = useState<string | null>(
+    user?.chat_suspended_until ?? null
+  );
+  const [violationCount, setViolationCount] = useState<number>(
+    user?.chat_violations ?? 0
+  );
+  // Ticks every second while suspended so the countdown re-renders.
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeConvoRef = useRef<ConversationSummary | null>(null);
@@ -140,6 +181,38 @@ function MessagesContent() {
       timers.clear();
     };
   }, []);
+
+  // Re-seed suspension state when the authenticated user changes (e.g. after
+  // an auth refresh that pulled fresh chat_* fields).
+  useEffect(() => {
+    setSuspendedUntil(user?.chat_suspended_until ?? null);
+    setViolationCount(user?.chat_violations ?? 0);
+  }, [user?.chat_suspended_until, user?.chat_violations]);
+
+  // Tick the countdown once per second, but only while actually suspended —
+  // no reason to re-render every second when the banner isn't visible.
+  useEffect(() => {
+    if (!suspendedUntil) return;
+    const until = new Date(suspendedUntil).getTime();
+    if (until <= Date.now()) {
+      setSuspendedUntil(null);
+      return;
+    }
+    const i = setInterval(() => {
+      const now = Date.now();
+      setNowTick(now);
+      if (now >= until) {
+        setSuspendedUntil(null);
+        clearInterval(i);
+      }
+    }, 1000);
+    return () => clearInterval(i);
+  }, [suspendedUntil]);
+
+  const suspendedMsLeft = suspendedUntil
+    ? new Date(suspendedUntil).getTime() - nowTick
+    : 0;
+  const isSuspended = suspendedMsLeft > 0;
 
   // === WebSocket ===
 
@@ -247,8 +320,53 @@ function MessagesContent() {
 
   // === Send message ===
 
+  const handleChatError = (err: unknown, fallbackMsg: string) => {
+    const body = extractChatError(err);
+    if (body?.code === "suspended" && body.suspended_until) {
+      setSuspendedUntil(body.suspended_until);
+      setViolationCount(body.violation_count ?? violationCount);
+      toast.error(
+        ar
+          ? "تم تعليق محادثاتك بسبب انتهاك سياسة التواصل"
+          : "Chat suspended for violating off-platform policy"
+      );
+      return;
+    }
+    if (body?.code) {
+      // Non-suspended filter rejection (blocked — 2nd violation).
+      setViolationCount(body.violation_count ?? violationCount);
+      toast.error(
+        ar
+          ? "تم حجب رسالتك لاحتوائها على معلومات اتصال خارجية"
+          : "Message blocked — contains off-platform contact info"
+      );
+      return;
+    }
+    toast.error(body?.detail || fallbackMsg);
+  };
+
+  const handleWarning = (msg: MessageDetail) => {
+    if (!msg.chat_warning_code) return;
+    const count = msg.chat_violation_count ?? null;
+    setViolationCount(count ?? violationCount);
+    toast.warning(
+      ar
+        ? `تم حذف معلومات الاتصال من رسالتك. التكرار القادم سيؤدي لحجب الرسالة${count ? ` (${count}/3)` : ""}.`
+        : `Contact info was removed from your message. Next violation will block the message${count ? ` (${count}/3)` : ""}.`,
+      { duration: 6000 }
+    );
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
+    if (isSuspended) {
+      toast.error(
+        ar
+          ? "محادثاتك معلقة مؤقتاً — لا يمكن الإرسال الآن"
+          : "Chat is temporarily suspended — cannot send"
+      );
+      return;
+    }
     const content = newMessage.trim();
 
     if (!activeConvo && composeRecipient) {
@@ -263,8 +381,11 @@ function MessagesContent() {
         setComposeRecipient(null);
         setConversations((prev) => [newConvo, ...prev]);
         setActiveConvo(newConvo);
-      } catch {
-        toast.error(ar ? "تعذّر بدء المحادثة" : "Failed to start conversation");
+      } catch (err) {
+        handleChatError(
+          err,
+          ar ? "تعذّر بدء المحادثة" : "Failed to start conversation"
+        );
         setNewMessage(content);
       } finally {
         setSending(false);
@@ -302,9 +423,13 @@ function MessagesContent() {
       const res = await messagesApi.sendMessage(activeConvo.id, { content });
       const realMsg = res.data as MessageDetail;
       setMessages((prev) => prev.map((m) => m.id === tmpId ? realMsg : m));
+      handleWarning(realMsg);
       fetchConversations();
-    } catch {
-      toast.error(ar ? "تعذّر إرسال الرسالة" : "Failed to send message");
+    } catch (err) {
+      handleChatError(
+        err,
+        ar ? "تعذّر إرسال الرسالة" : "Failed to send message"
+      );
       setMessages((prev) => prev.filter((m) => m.id !== tmpId));
       setNewMessage(content);
     } finally {
@@ -524,6 +649,13 @@ function MessagesContent() {
               </div>
             </div>
             <div className="flex-1 bg-gray-50" />
+            {isSuspended && (
+              <SuspensionBanner
+                ar={ar}
+                msLeft={suspendedMsLeft}
+                violations={violationCount}
+              />
+            )}
             <MessageInput
               ar={ar}
               value={newMessage}
@@ -531,6 +663,7 @@ function MessagesContent() {
               onKeyDown={handleKeyDown}
               onSend={handleSend}
               sending={sending}
+              disabled={isSuspended}
             />
           </>
         ) : activeConvo ? (
@@ -657,6 +790,13 @@ function MessagesContent() {
               <div ref={messagesEndRef} />
             </div>
 
+            {isSuspended && (
+              <SuspensionBanner
+                ar={ar}
+                msLeft={suspendedMsLeft}
+                violations={violationCount}
+              />
+            )}
             <MessageInput
               ar={ar}
               value={newMessage}
@@ -664,6 +804,7 @@ function MessagesContent() {
               onKeyDown={handleKeyDown}
               onSend={handleSend}
               sending={sending}
+              disabled={isSuspended}
             />
           </>
         ) : (
@@ -752,6 +893,7 @@ function MessageInput({
   onKeyDown,
   onSend,
   sending,
+  disabled = false,
 }: {
   ar: boolean;
   value: string;
@@ -759,6 +901,7 @@ function MessageInput({
   onKeyDown: (e: React.KeyboardEvent) => void;
   onSend: () => void;
   sending: boolean;
+  disabled?: boolean;
 }) {
   return (
     <div className="px-4 py-3 border-t border-gray-200 bg-white">
@@ -767,10 +910,15 @@ function MessageInput({
           value={value}
           onChange={onChange}
           onKeyDown={onKeyDown}
-          placeholder={ar ? "اكتب رسالتك..." : "Type a message..."}
+          placeholder={
+            disabled
+              ? (ar ? "لا يمكن الإرسال حالياً" : "Sending is disabled")
+              : (ar ? "اكتب رسالتك..." : "Type a message...")
+          }
           rows={1}
           dir="auto"
-          className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+          disabled={disabled}
+          className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
           style={{ minHeight: "42px", maxHeight: "120px" }}
           onInput={(e) => {
             const el = e.currentTarget;
@@ -780,7 +928,7 @@ function MessageInput({
         />
         <button
           onClick={onSend}
-          disabled={!value.trim() || sending}
+          disabled={!value.trim() || sending || disabled}
           className="shrink-0 w-10 h-10 flex items-center justify-center bg-brand-500 text-white rounded-xl hover:bg-brand-600 disabled:opacity-40 transition-colors"
           aria-label={ar ? "إرسال" : "Send"}
         >
@@ -798,6 +946,39 @@ function MessageInput({
       <p className="text-[10px] text-gray-400 mt-1.5 text-center">
         {ar ? "Enter للإرسال · Shift+Enter لسطر جديد" : "Enter to send · Shift+Enter for new line"}
       </p>
+    </div>
+  );
+}
+
+function SuspensionBanner({
+  ar,
+  msLeft,
+  violations,
+}: {
+  ar: boolean;
+  msLeft: number;
+  violations: number;
+}) {
+  const countdown = formatCountdown(msLeft, ar);
+  return (
+    <div
+      className="px-4 py-3 bg-red-50 border-t border-red-200 text-red-800 text-sm flex items-start gap-3"
+      role="alert"
+    >
+      <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+      </svg>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold">
+          {ar ? "تم تعليق محادثاتك مؤقتاً" : "Chat temporarily suspended"}
+        </div>
+        <div className="text-xs mt-0.5 text-red-700">
+          {ar
+            ? `بسبب ${violations} انتهاكات لسياسة التواصل. يمكنك الإرسال مرة أخرى بعد ${countdown}.`
+            : `Due to ${violations} off-platform policy violations. You can send again in ${countdown}.`}
+        </div>
+      </div>
     </div>
   );
 }

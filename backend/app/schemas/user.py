@@ -143,6 +143,10 @@ class UserMe(UserProfile):
     total_earnings: float = 0.0
     total_spent: float = 0.0
     last_login: datetime | None = None
+    # Chat policy state — the messaging UI reads these to show the
+    # suspension banner + countdown and to pre-warn before the next violation.
+    chat_violations: int = 0
+    chat_suspended_until: datetime | None = None
 
 
 # === Password Management ===

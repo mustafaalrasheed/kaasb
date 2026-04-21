@@ -29,6 +29,9 @@ export interface User {
   last_login: string | null;
   created_at: string;
   updated_at: string;
+  // Chat policy state — drives the suspension banner + countdown on /dashboard/messages.
+  chat_violations?: number;
+  chat_suspended_until?: string | null;
 }
 
 export interface TokenResponse {

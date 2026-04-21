@@ -14,10 +14,11 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
-    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -53,10 +54,28 @@ class Conversation(BaseModel):
     """Conversation between two users or between a user and admin/support."""
 
     __tablename__ = "conversations"
+    # Three partial unique indexes. Postgres treats NULLs as distinct in plain
+    # unique constraints, which let concurrent start_conversation calls race
+    # and create duplicate (p1, p2, NULL, NULL) rows. Partial indexes enforce
+    # real uniqueness per conversation shape (bare / job-linked / order-linked).
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_conv_bare",
+            "participant_one_id", "participant_two_id",
+            unique=True,
+            postgresql_where=text("job_id IS NULL AND order_id IS NULL"),
+        ),
+        Index(
+            "uq_conv_by_job",
             "participant_one_id", "participant_two_id", "job_id",
-            name="uq_conversation_participants_job",
+            unique=True,
+            postgresql_where=text("job_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_conv_by_order",
+            "participant_one_id", "participant_two_id", "order_id",
+            unique=True,
+            postgresql_where=text("order_id IS NOT NULL"),
         ),
     )
 

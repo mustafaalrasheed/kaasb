@@ -7,11 +7,13 @@ realtime push) happen via domain events on ``app.services.events.bus`` so
 the service stays decoupled from notification internals.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +27,9 @@ from app.models.user import User, UserRole, UserStatus
 from app.schemas.message import ConversationCreate, MessageCreate
 from app.services.base import BaseService
 from app.services.events import MessageSentEvent, bus
+
+if TYPE_CHECKING:
+    from app.services.message_filter_service import FilterOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +138,17 @@ class MessageService(BaseService):
 
     async def send_message(
         self, sender: User, conversation_id: uuid.UUID, data: MessageCreate
-    ) -> Message:
-        """Send a message in an existing conversation."""
+    ) -> tuple[Message, FilterOutcome | None]:
+        """Send a message in an existing conversation.
+
+        Returns the persisted Message plus an optional ``FilterOutcome`` — set
+        only when the sender's first off-platform violation caused the message
+        to be delivered with contact info masked (UI shows a warning).
+
+        Blocks (2nd violation) and suspensions raise ``BadRequestError`` with
+        structured ``details`` so the client can distinguish ``blocked`` vs
+        ``suspended`` and render a countdown.
+        """
         conversation = await self._get_conversation(conversation_id)
 
         is_participant = sender.id in (
@@ -151,16 +165,42 @@ class MessageService(BaseService):
         if not is_participant and not is_staff_override:
             raise ForbiddenError("Not part of this conversation")
 
-        # F6: check for off-platform contact info before saving
+        # F6: check for off-platform contact info before saving. Staff bypass
+        # the filter — admins need to be able to paste links/contacts when
+        # mediating a dispute.
         from app.services.message_filter_service import MessageFilterService  # noqa: PLC0415
-        filter_svc = MessageFilterService(self.db)
-        filtered_content, blocked = await filter_svc.process_message(sender, data.content)
-        if blocked:
-            from app.core.exceptions import BadRequestError as _BadRequest  # noqa: PLC0415
-            raise _BadRequest(
-                "رسالتك تحتوي على معلومات اتصال خارجية ولا يمكن إرسالها. "
-                "/ Your message contains off-platform contact info and cannot be sent."
+
+        warning_outcome: FilterOutcome | None = None
+        filtered_content = data.content
+
+        if not _is_staff(sender):
+            filter_svc = MessageFilterService(self.db)
+            outcome = await filter_svc.process_message(
+                sender, data.content,
+                conversation_type=conversation.conversation_type,
             )
+            if outcome.blocked:
+                details: dict[str, Any] = {
+                    "code": outcome.code or "blocked",
+                    "violation_count": outcome.total_violations,
+                }
+                if outcome.suspended_until:
+                    details["suspended_until"] = outcome.suspended_until.isoformat()
+                if outcome.code == "suspended":
+                    msg_text = (
+                        "تم تعليق محادثاتك مؤقتاً بسبب انتهاك سياسة التواصل. "
+                        "/ Your chat is temporarily suspended for violating the off-platform policy."
+                    )
+                else:
+                    msg_text = (
+                        "رسالتك تحتوي على معلومات اتصال خارجية ولا يمكن إرسالها. "
+                        "/ Your message contains off-platform contact info and cannot be sent."
+                    )
+                raise BadRequestError(msg_text, details=details)
+
+            filtered_content = outcome.content
+            if outcome.warning:
+                warning_outcome = outcome
 
         attachments = [a.model_dump() for a in data.attachments]
         msg = await self._send_message(
@@ -171,7 +211,7 @@ class MessageService(BaseService):
         result = await self.db.execute(
             select(Message).options(selectinload(Message.sender)).where(Message.id == msg.id)
         )
-        return result.scalar_one()
+        return result.scalar_one(), warning_outcome
 
     async def send_system_message(
         self, conversation_id: uuid.UUID, content: str,

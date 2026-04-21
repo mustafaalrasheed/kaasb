@@ -51,6 +51,11 @@ export interface MessageDetail {
   attachments?: MessageAttachment[];
   sender: MessageUserInfo;
   created_at: string;
+  // Present on the response to the sender when their message was a first-time
+  // off-platform violation — delivered with contact info masked. UI uses these
+  // to surface an escalation warning.
+  chat_warning_code?: "email" | "phone" | "url" | "external_app" | null;
+  chat_violation_count?: number | null;
 }
 
 export interface MessageListResponse {

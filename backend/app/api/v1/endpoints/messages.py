@@ -169,7 +169,12 @@ async def send_message(
 ):
     """Send a message in an existing conversation."""
     service = MessageService(db)
-    return await service.send_message(current_user, conversation_id, data)
+    msg, warning = await service.send_message(current_user, conversation_id, data)
+    detail = MessageDetail.model_validate(msg)
+    if warning is not None:
+        detail.chat_warning_code = warning.code
+        detail.chat_violation_count = warning.total_violations
+    return detail
 
 
 # === Presence ===
