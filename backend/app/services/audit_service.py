@@ -66,6 +66,14 @@ class AuditService:
                 "audit: failed to write log entry (admin=%s action=%s target=%s/%s)",
                 admin_id, action.value, target_type, target_id,
             )
+            # Bump the Prometheus counter so ops alerting can page on audit
+            # gaps. Guarded so a metrics import failure never masks the
+            # original logger.exception above.
+            try:
+                from app.middleware.monitoring import AUDIT_LOG_FAILURES
+                AUDIT_LOG_FAILURES.labels(action=action.value).inc()
+            except Exception:
+                pass
             return None
 
     async def list_recent(

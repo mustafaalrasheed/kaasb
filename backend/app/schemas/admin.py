@@ -142,6 +142,30 @@ class MarkPayoutPaidBody(BaseModel):
     note: Optional[str] = None
 
 
+class StuckPendingPayer(BaseModel):
+    id: uuid.UUID
+    username: str
+    email: str
+
+
+class StuckPendingTransactionInfo(BaseModel):
+    """One PENDING transaction older than the reconciliation threshold.
+
+    These require manual reconciliation against the Qi Card merchant
+    dashboard until Kaasb wires up the v1 3DS status API.
+    """
+    transaction_id: uuid.UUID
+    external_order_id: str | None = None
+    amount: float
+    currency: str
+    transaction_type: str
+    created_at: datetime
+    age_minutes: int
+    provider: str | None = None
+    description: str | None = None
+    payer: StuckPendingPayer | None = None
+
+
 # === Payout Approval (Dual-Control) ===
 
 class ReleaseRequestResult(BaseModel):

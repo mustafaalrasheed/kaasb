@@ -47,6 +47,9 @@ export const adminApi = {
   markPayoutPaid: (transactionId: string, note?: string) =>
     api.post(`/admin/payouts/${transactionId}/mark-paid`, { note: note ?? null }),
 
+  getStuckPendingPayments: (minAgeMinutes: number = 30) =>
+    api.get("/admin/payments/stuck-pending", { params: { min_age_minutes: minAgeMinutes } }),
+
   getAuditLogs: (params?: { page?: number; page_size?: number }) =>
     api.get("/admin/audit-logs", { params }),
 

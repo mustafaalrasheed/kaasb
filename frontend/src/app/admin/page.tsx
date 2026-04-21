@@ -68,6 +68,14 @@ interface ProcessingPayout {
   freelancer: { id: string; username: string; email: string; phone: string | null; qi_card_phone: string | null };
 }
 
+interface StuckPendingTransaction {
+  transaction_id: string; external_order_id: string | null;
+  amount: number; currency: string; transaction_type: string;
+  created_at: string; age_minutes: number; provider: string | null;
+  description: string | null;
+  payer: { id: string; username: string; email: string } | null;
+}
+
 interface PendingGig {
   id: string; title: string; slug: string; description: string;
   status: string; rejection_reason: string | null; revision_note: string | null;
@@ -129,6 +137,7 @@ function AdminPageContent() {
   const [escrowActionLoading, setEscrowActionLoading] = useState<string | null>(null);
   const [processingPayouts, setProcessingPayouts] = useState<ProcessingPayout[]>([]);
   const [markPaidLoading, setMarkPaidLoading] = useState<string | null>(null);
+  const [stuckPending, setStuckPending] = useState<StuckPendingTransaction[]>([]);
 
   // ── Gig review ──
   const [pendingGigs, setPendingGigs] = useState<PendingGig[]>([]);
@@ -212,13 +221,15 @@ function AdminPageContent() {
   const fetchEscrows = useCallback(async () => {
     try {
       setLoading(true);
-      // Fetch both lists in parallel so the admin sees one unified payouts view.
-      const [escrowRes, payoutRes] = await Promise.all([
+      // Fetch all three lists in parallel so the admin sees one unified payouts view.
+      const [escrowRes, payoutRes, stuckRes] = await Promise.all([
         adminApi.getEscrows(),
         adminApi.getProcessingPayouts(),
+        adminApi.getStuckPendingPayments(),
       ]);
       setEscrows(escrowRes.data);
       setProcessingPayouts(payoutRes.data);
+      setStuckPending(stuckRes.data);
     } catch {
       toast.error(ar ? "تعذّر تحميل المدفوعات المعلقة" : "Failed to load pending payouts");
     } finally { setLoading(false); }
@@ -538,6 +549,7 @@ function AdminPageContent() {
             processingPayouts={processingPayouts}
             markPaidLoading={markPaidLoading}
             onMarkPaid={handleMarkPayoutPaid}
+            stuckPending={stuckPending}
           />
         )}
 

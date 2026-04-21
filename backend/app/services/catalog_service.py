@@ -780,6 +780,11 @@ class CatalogService(BaseService):
         escrow = escrow_result.scalar_one_or_none()
         if escrow:
             escrow.status = EscrowStatus.DISPUTED
+            try:
+                from app.middleware.monitoring import ESCROW_STATE_TRANSITIONS
+                ESCROW_STATE_TRANSITIONS.labels(from_status="funded", to_status="disputed").inc()
+            except Exception:
+                pass
 
         await self.db.commit()
         await self.db.refresh(order)

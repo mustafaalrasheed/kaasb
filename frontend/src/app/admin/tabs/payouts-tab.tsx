@@ -36,6 +36,19 @@ interface ProcessingPayout {
   };
 }
 
+interface StuckPendingTransaction {
+  transaction_id: string;
+  external_order_id: string | null;
+  amount: number;
+  currency: string;
+  transaction_type: string;
+  created_at: string;
+  age_minutes: number;
+  provider: string | null;
+  description: string | null;
+  payer: { id: string; username: string; email: string } | null;
+}
+
 interface PayoutsTabProps {
   escrows: AdminEscrow[];
   loading: boolean;
@@ -46,6 +59,7 @@ interface PayoutsTabProps {
   processingPayouts?: ProcessingPayout[];
   markPaidLoading?: string | null;
   onMarkPaid?: (payout: ProcessingPayout) => void;
+  stuckPending?: StuckPendingTransaction[];
 }
 
 export function PayoutsTab({
@@ -58,12 +72,64 @@ export function PayoutsTab({
   processingPayouts = [],
   markPaidLoading = null,
   onMarkPaid,
+  stuckPending = [],
 }: PayoutsTabProps) {
   const totalNet = escrows.reduce((s, e) => s + e.freelancer_amount, 0);
   const totalPending = processingPayouts.reduce((s, p) => s + p.amount, 0);
 
   return (
     <div className="space-y-6">
+      {/* ── Section 0: PENDING transactions that never confirmed (reconciliation queue) ── */}
+      {stuckPending.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="font-semibold text-gray-900">
+            {ar ? "مدفوعات معلقة بدون تأكيد" : "Payments pending without confirmation"}
+          </h3>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+            {ar
+              ? "هذه طلبات دفع عميل وصلت إلى Qi Card لكن لم يعد أي تأكيد. افتح لوحة Qi Card وتحقق يدوياً: إذا تم الدفع فعلاً قم بإنجاز العملية، وإذا لم يتم فاسترد الطلب."
+              : "These client payments were sent to Qi Card but no success callback came back. Look each one up in the Qi Card merchant dashboard — if the charge went through, reconcile manually; if not, refund."}
+          </div>
+          <div className="bg-white rounded-lg border overflow-x-auto">
+            <table className="min-w-[900px] w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-start p-3 font-medium text-gray-600">{ar ? "الدافع" : "Payer"}</th>
+                  <th className="text-start p-3 font-medium text-gray-600">{ar ? "مرجع الطلب" : "Order ref"}</th>
+                  <th className="text-start p-3 font-medium text-gray-600">{ar ? "المبلغ" : "Amount"}</th>
+                  <th className="text-start p-3 font-medium text-gray-600">{ar ? "النوع" : "Type"}</th>
+                  <th className="text-start p-3 font-medium text-gray-600">{ar ? "عمر الطلب" : "Age"}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {stuckPending.map((t) => (
+                  <tr key={t.transaction_id} className="hover:bg-gray-50">
+                    <td className="p-3">
+                      <div className="font-medium text-gray-900">{t.payer?.username ?? "—"}</div>
+                      <div className="text-xs text-gray-500">{t.payer?.email ?? ""}</div>
+                    </td>
+                    <td className="p-3 font-mono text-xs text-gray-700 break-all">
+                      {t.external_order_id ?? t.transaction_id}
+                    </td>
+                    <td className="p-3 font-semibold text-gray-900" dir="ltr">
+                      {t.amount.toLocaleString(ar ? "ar-IQ" : "en-US")} {t.currency}
+                    </td>
+                    <td className="p-3 text-gray-700 text-xs">{t.transaction_type}</td>
+                    <td className="p-3 text-gray-500 text-xs">
+                      {t.age_minutes < 60
+                        ? (ar ? `${t.age_minutes} دقيقة` : `${t.age_minutes}m`)
+                        : (ar
+                            ? `${Math.floor(t.age_minutes / 60)} ساعة`
+                            : `${Math.floor(t.age_minutes / 60)}h`)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* ── Section 1: freelancer-initiated payouts awaiting mark-paid ── */}
       {processingPayouts.length > 0 && onMarkPaid && (
         <div className="space-y-3">

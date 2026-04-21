@@ -57,6 +57,18 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def _record_escrow_transition(from_status: str, to_status: str) -> None:
+    """Emit the Prometheus transition counter. Isolated in a helper so service
+    call-sites stay readable and so the import doesn't fire at module load
+    time (the middleware package is only imported when FastAPI boots)."""
+    try:
+        from app.middleware.monitoring import ESCROW_STATE_TRANSITIONS
+        ESCROW_STATE_TRANSITIONS.labels(from_status=from_status, to_status=to_status).inc()
+    except Exception:
+        # Metrics must never block the money-state transition they observe.
+        logger.debug("metrics: escrow transition emit failed", exc_info=True)
+
+
 class PaymentService(BaseService):
     """Service for all payment operations."""
 
@@ -361,6 +373,7 @@ class PaymentService(BaseService):
         if escrow:
             escrow.status = EscrowStatus.FUNDED
             escrow.funded_at = datetime.now(UTC)
+            _record_escrow_transition("pending", "funded")
 
         # For service orders: transition the ServiceOrder from PENDING → IN_PROGRESS so
         # the freelancer can start work. Without this, mark_delivered() always rejects
@@ -439,6 +452,7 @@ class PaymentService(BaseService):
         escrow = result.scalar_one_or_none()
         if escrow:
             escrow.status = EscrowStatus.REFUNDED  # Nothing was actually charged
+            _record_escrow_transition("pending", "refunded")
 
         await self.db.flush()
         logger.info("Qi Card payment failed/cancelled: order_id=%s", order_id)
@@ -493,6 +507,7 @@ class PaymentService(BaseService):
 
         escrow.status = EscrowStatus.RELEASED
         escrow.released_at = datetime.now(UTC)
+        _record_escrow_transition("funded", "released")
         escrow.release_transaction_id = release_tx.id
         await self.db.flush()
 
@@ -603,8 +618,10 @@ class PaymentService(BaseService):
             description=reason,
         )
         self.db.add(refund_tx)
+        prev_status = "disputed" if escrow.status == EscrowStatus.DISPUTED else "funded"
         escrow.status = EscrowStatus.REFUNDED
         escrow.released_at = datetime.now(UTC)
+        _record_escrow_transition(prev_status, "refunded")
         await self.db.flush()
 
         await notify(
@@ -681,8 +698,10 @@ class PaymentService(BaseService):
         )
         self.db.add(refund_tx)
 
+        prev_status = "disputed" if escrow.status == EscrowStatus.DISPUTED else "funded"
         escrow.status = EscrowStatus.REFUNDED
         escrow.released_at = datetime.now(UTC)
+        _record_escrow_transition(prev_status, "refunded")
 
         await self.db.flush()
         logger.info("Escrow refunded: milestone=%s amount=%s", milestone_id, escrow.amount)

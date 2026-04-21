@@ -80,11 +80,39 @@ async def _run_with_lock(job_name: str, runner: JobRunner, interval_hours: int) 
                 raise
         await r.set(last_run_key, started.isoformat(), ex=_LAST_RUN_TTL_SECONDS)  # type: ignore[misc]
         elapsed = (datetime.now(UTC) - started).total_seconds()
+        # Update the Prometheus gauge so /health/scheduler and alerts can
+        # detect missed runs. Failure to emit must not stop the scheduler.
+        try:
+            from app.middleware.monitoring import SCHEDULER_LAST_RUN_TIMESTAMP
+            SCHEDULER_LAST_RUN_TIMESTAMP.labels(job_name=job_name).set(started.timestamp())
+        except Exception:
+            logger.debug("metrics: scheduler last-run emit failed", exc_info=True)
         logger.info("scheduler: job %s completed in %.1fs", job_name, elapsed)
     except Exception:
         logger.exception("scheduler: job %s FAILED — will retry on next tick", job_name)
     finally:
         await r.delete(lock_key)  # type: ignore[misc]
+
+
+async def get_last_run_timestamps() -> dict[str, datetime | None]:
+    """
+    Return the last-run timestamp for every tracked scheduled job. Reads
+    from Redis so the answer is consistent across workers. Used by
+    /health/scheduler to report staleness.
+    """
+    r = await _get_redis()
+    jobs = ("marketplace_daily",)
+    out: dict[str, datetime | None] = {}
+    for name in jobs:
+        raw = await r.get(f"kaasb:sched:last_run:{name}")  # type: ignore[misc]
+        if raw:
+            try:
+                out[name] = datetime.fromisoformat(raw)
+            except ValueError:
+                out[name] = None
+        else:
+            out[name] = None
+    return out
 
 
 async def _scheduler_loop() -> None:
