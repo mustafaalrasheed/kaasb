@@ -7,10 +7,16 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.models.notification import NotificationType
+
 
 class NotificationDetail(BaseModel):
     id: uuid.UUID
-    type: str
+    # Typed against the enum so the API surfaces the exact set of values the
+    # frontend can render, and so a typo in a new service-layer emission
+    # (e.g. NotificationType.FOO) fails fast at serialization time instead
+    # of silently reaching the bell.
+    type: NotificationType
     title: str
     message: str
     is_read: bool
@@ -19,7 +25,7 @@ class NotificationDetail(BaseModel):
     actor_id: uuid.UUID | None = None
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "use_enum_values": True}
 
 
 class NotificationListResponse(BaseModel):

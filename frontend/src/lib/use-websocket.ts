@@ -41,11 +41,13 @@ export interface WsTypingData {
   user_id: string;
 }
 
+import type { NotificationType } from "@/types/notification";
+
 export interface WsNotificationData {
   id: string;
   title: string;
   message: string;
-  type: string;
+  type: NotificationType;
   link_type?: string;
   link_id?: string;
   created_at: string;

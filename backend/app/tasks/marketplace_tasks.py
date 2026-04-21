@@ -21,6 +21,7 @@ import asyncio
 import logging
 import math
 import sys
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, update
@@ -84,16 +85,28 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
 
     Returns summary dict of level transitions.
     """
+    from app.models.notification import NotificationType
     from app.models.service import ServiceOrder, ServiceOrderStatus
     from app.models.user import SellerLevel, User, UserRole
+    from app.services.notification_service import notify_background
 
     summary = {"upgraded": 0, "downgraded": 0, "unchanged": 0}
     now = datetime.now(UTC)
+
+    # Human-readable labels for notification copy.
+    level_labels_ar = {
+        SellerLevel.LEVEL_1: "المستوى الأول",
+        SellerLevel.LEVEL_2: "المستوى الثاني",
+        SellerLevel.TOP_RATED: "الأعلى تقييماً",
+        SellerLevel.NEW_SELLER: "بائع جديد",
+    }
 
     freelancers_result = await db.execute(
         select(User).where(User.primary_role == UserRole.FREELANCER)
     )
     freelancers = list(freelancers_result.scalars().all())
+
+    upgraded_users: list[tuple[uuid.UUID, SellerLevel]] = []
 
     for user in freelancers:
         completed_result = await db.execute(
@@ -155,6 +168,7 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
         if new_level != old_level:
             if list(SellerLevel).index(new_level) > list(SellerLevel).index(old_level):
                 summary["upgraded"] += 1
+                upgraded_users.append((user.id, new_level))
             else:
                 summary["downgraded"] += 1
         else:
@@ -165,6 +179,23 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
         "Seller levels recalculated: %d upgraded, %d downgraded, %d unchanged",
         summary["upgraded"], summary["downgraded"], summary["unchanged"],
     )
+
+    # Notify users who moved up a level. We only notify on upgrade (never on
+    # downgrade) — demotions are silent to avoid demoralising freelancers, and
+    # will eventually be visible on their profile anyway.
+    for user_id, new_level in upgraded_users:
+        label = level_labels_ar.get(new_level, new_level.value)
+        asyncio.create_task(
+            notify_background(
+                user_id=user_id,
+                type=NotificationType.SELLER_LEVEL_UPGRADED,
+                title="تمت ترقية مستوى حسابك",
+                message=f"تهانينا — تمت ترقيتك إلى: {label}",
+                link_type=None,
+                link_id=None,
+            )
+        )
+
     return summary
 
 
