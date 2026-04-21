@@ -14,7 +14,15 @@ export type WsMessage =
   | { type: "messages_read"; data: WsMessagesReadData }
   | { type: "typing"; data: WsTypingData }
   | { type: "notification"; data: WsNotificationData }
+  | { type: "notification_read"; data: WsNotificationReadData }
   | { type: "ping" };
+
+export interface WsNotificationReadData {
+  /** Number of notifications flipped to read. */
+  marked: number;
+  /** True when the server ran mark_all_read; false for a specific id list. */
+  all: boolean;
+}
 
 export interface WsMessageData {
   conversation_id: string;
@@ -58,6 +66,7 @@ interface UseWebSocketOptions {
   onMessagesRead?: (data: WsMessagesReadData) => void;
   onTyping?: (data: WsTypingData) => void;
   onNotification?: (data: WsNotificationData) => void;
+  onNotificationRead?: (data: WsNotificationReadData) => void;
   enabled?: boolean;
 }
 
@@ -80,6 +89,7 @@ export function useWebSocket({
   onMessagesRead,
   onTyping,
   onNotification,
+  onNotificationRead,
   enabled = true,
 }: UseWebSocketOptions): UseWebSocketApi {
   const wsRef = useRef<WebSocket | null>(null);
@@ -91,10 +101,12 @@ export function useWebSocket({
   const onMessagesReadRef = useRef(onMessagesRead);
   const onTypingRef = useRef(onTyping);
   const onNotificationRef = useRef(onNotification);
+  const onNotificationReadRef = useRef(onNotificationRead);
   onMessageRef.current = onMessage;
   onMessagesReadRef.current = onMessagesRead;
   onTypingRef.current = onTyping;
   onNotificationRef.current = onNotification;
+  onNotificationReadRef.current = onNotificationRead;
 
   const connect = useCallback(async () => {
     if (!mountedRef.current || !enabled) return;
@@ -141,6 +153,8 @@ export function useWebSocket({
         onTypingRef.current?.(parsed.data);
       } else if (parsed.type === "notification") {
         onNotificationRef.current?.(parsed.data);
+      } else if (parsed.type === "notification_read") {
+        onNotificationReadRef.current?.(parsed.data);
       }
     };
 

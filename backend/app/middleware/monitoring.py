@@ -161,6 +161,16 @@ SCHEDULER_LAST_RUN_TIMESTAMP = Gauge(
     ["job_name"],
 )
 
+# Notification dispatch — tracks the in-app insert success rate and the
+# WS push success rate separately so ops can alert on each independently.
+# A sustained WS fail rate is normal (offline users); a sustained in_app
+# fail rate means notifications are being dropped entirely.
+NOTIFICATION_DISPATCH_TOTAL = Counter(
+    "kaasb_notification_dispatch_total",
+    "Notification dispatch counts by channel and outcome",
+    ["channel", "status"],  # channel: in_app|ws; status: ok|fail
+)
+
 
 # ─── Request context middleware ───────────────────────────────────────────────
 

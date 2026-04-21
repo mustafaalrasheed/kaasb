@@ -33,6 +33,30 @@ _SUPPORTED_LOCALES = ("ar", "en")
 _DEFAULT_LOCALE = "ar"
 
 
+def _bump_dispatch(channel: str, status: str) -> None:
+    """Increment the notification dispatch counter. Guarded so a metrics
+    import failure never blocks the actual delivery path."""
+    try:
+        from app.middleware.monitoring import NOTIFICATION_DISPATCH_TOTAL
+        NOTIFICATION_DISPATCH_TOTAL.labels(channel=channel, status=status).inc()
+    except Exception:
+        pass
+
+
+def _push_read_event(user_id: uuid.UUID, *, marked: int, all: bool) -> None:
+    """Broadcast a notification_read WS event so other tabs/devices decrement
+    their bell without waiting for the next poll. Fire-and-forget — missed
+    events degrade to a slightly stale badge, not a correctness bug."""
+    payload = {
+        "type": "notification_read",
+        "data": {"marked": marked, "all": all},
+    }
+    try:
+        asyncio.create_task(manager.send_to_user(user_id, payload))
+    except Exception:
+        logger.debug("notification_read WS emit failed", exc_info=True)
+
+
 async def _resolve_locale(db: AsyncSession, user_id: uuid.UUID) -> str:
     """Fetch the target user's preferred UI locale. Defaults to 'ar' when the
     user is missing or the locale column is null/invalid so a DB hiccup never
@@ -85,9 +109,17 @@ class NotificationService(BaseService):
             actor_id=actor_id,
         )
         self.db.add(notification)
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except Exception:
+            _bump_dispatch("in_app", "fail")
+            raise
+        _bump_dispatch("in_app", "ok")
 
-        # Push real-time event to the user via WebSocket (non-blocking)
+        # Push real-time event to the user via WebSocket (non-blocking).
+        # WS delivery is best-effort — a user who's offline will still see
+        # the notification on next fetch; we only count failures for
+        # observability, never retry.
         ws_payload = {
             "type": "notification",
             "data": {
@@ -100,7 +132,16 @@ class NotificationService(BaseService):
                 "created_at": notification.created_at.isoformat(),
             },
         }
-        asyncio.create_task(manager.send_to_user(user_id, ws_payload))
+
+        async def _send_ws() -> None:
+            try:
+                await manager.send_to_user(user_id, ws_payload)
+                _bump_dispatch("ws", "ok")
+            except Exception:
+                _bump_dispatch("ws", "fail")
+                logger.debug("WS notification push failed", exc_info=True)
+
+        asyncio.create_task(_send_ws())
 
         return notification
 
@@ -161,11 +202,17 @@ class NotificationService(BaseService):
             .where(
                 Notification.id.in_(notification_ids),
                 Notification.user_id == user.id,
+                # Only flip UNREAD → READ so the rowcount we return + the WS
+                # decrement is accurate.
+                Notification.is_read.is_(False),
             )
             .values(is_read=True)
         )
         await self.db.flush()
-        return result.rowcount
+        marked = result.rowcount or 0
+        if marked:
+            _push_read_event(user.id, marked=marked, all=False)
+        return marked
 
     async def mark_all_read(self, user: User) -> int:
         """Mark all notifications as read."""
@@ -178,7 +225,10 @@ class NotificationService(BaseService):
             .values(is_read=True)
         )
         await self.db.flush()
-        return result.rowcount
+        marked = result.rowcount or 0
+        if marked:
+            _push_read_event(user.id, marked=marked, all=True)
+        return marked
 
 
 # === Notification helpers ===
