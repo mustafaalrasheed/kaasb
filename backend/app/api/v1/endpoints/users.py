@@ -111,6 +111,32 @@ async def update_profile(
     return await service.update_profile(current_user, data)
 
 
+@router.put(
+    "/me/locale",
+    summary="Update the authenticated user's preferred UI locale",
+)
+async def update_my_locale(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Persist the authenticated user's preferred UI locale. Used by the
+    server-side notification service to pick the right title/message at
+    emission time. Accepts {"locale": "ar" | "en"}; other values reject.
+    """
+    locale = (payload or {}).get("locale", "").strip().lower()
+    if locale not in ("ar", "en"):
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="locale must be 'ar' or 'en'",
+        )
+    current_user.locale = locale
+    await db.commit()
+    return {"locale": locale}
+
+
 @router.post(
     "/avatar",
     response_model=UserMe,

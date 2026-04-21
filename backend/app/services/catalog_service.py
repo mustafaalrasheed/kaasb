@@ -152,8 +152,10 @@ class CatalogService(BaseService):
             asyncio.create_task(notify_background(
                 user_id=admin_id,
                 type=NotificationType.SERVICE_SUBMITTED,
-                title="New service pending review",
-                message=f'"{service_title}" by {freelancer_username} is awaiting approval.',
+                title_ar="خدمة جديدة بانتظار المراجعة",
+                title_en="New service pending review",
+                message_ar=f'"{service_title}" من {freelancer_username} بانتظار الموافقة.',
+                message_en=f'"{service_title}" by {freelancer_username} is awaiting approval.',
                 link_type="service",
                 link_id=service_id_str,
             ))
@@ -338,8 +340,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=freelancer_id,
             type=NotificationType.SERVICE_APPROVED,
-            title="Your service was approved",
-            message=f'Your service "{service_title}" is now live and visible to clients.',
+            title_ar="تمت الموافقة على خدمتك",
+            title_en="Your service was approved",
+            message_ar=f'خدمتك "{service_title}" منشورة الآن وظاهرة للعملاء.',
+            message_en=f'Your service "{service_title}" is now live and visible to clients.',
             link_type="service",
             link_id=service_id_str,
         ))
@@ -372,8 +376,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=freelancer_id,
             type=NotificationType.SERVICE_NEEDS_REVISION,
-            title="Your service needs edits before it can go live",
-            message=f'Your service "{service_title}" needs changes: {note}',
+            title_ar="خدمتك تحتاج تعديلات قبل النشر",
+            title_en="Your service needs edits before it can go live",
+            message_ar=f'خدمتك "{service_title}" تحتاج إلى تعديلات: {note}',
+            message_en=f'Your service "{service_title}" needs changes: {note}',
             link_type="service",
             link_id=service_id_str,
         ))
@@ -407,8 +413,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=freelancer_id,
             type=NotificationType.SERVICE_REJECTED,
-            title="Your service was rejected",
-            message=f'Your service "{service_title}" was rejected. Reason: {reason}',
+            title_ar="تم رفض خدمتك",
+            title_en="Your service was rejected",
+            message_ar=f'خدمتك "{service_title}" مرفوضة. السبب: {reason}',
+            message_en=f'Your service "{service_title}" was rejected. Reason: {reason}',
             link_type="service",
             link_id=service_id_str,
         ))
@@ -628,8 +636,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=order.freelancer_id,
             type=NotificationType.ORDER_REQUIREMENTS_SUBMITTED,
-            title="العميل أرسل متطلبات الطلب",
-            message="قدّم العميل إجاباته على أسئلة المتطلبات — يمكنك البدء بالعمل الآن.",
+            title_ar="العميل أرسل متطلبات الطلب",
+            title_en="Client submitted order requirements",
+            message_ar="قدّم العميل إجاباته على أسئلة المتطلبات — يمكنك البدء بالعمل الآن.",
+            message_en="The client answered the requirement questions — you can start work now.",
             link_type="service_order",
             link_id=str(order_id),
             actor_id=client.id,
@@ -673,8 +683,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=order.client_id,
             type=NotificationType.ORDER_DELIVERED,
-            title="تم تسليم طلبك",
-            message="قدّم المستقل العمل المطلوب — راجعه وأبدِ رأيك.",
+            title_ar="تم تسليم طلبك",
+            title_en="Your order was delivered",
+            message_ar="قدّم المستقل العمل المطلوب — راجعه وأبدِ رأيك.",
+            message_en="The freelancer delivered your order — please review and respond.",
             link_type="service_order",
             link_id=str(order_id),
             actor_id=freelancer.id,
@@ -809,8 +821,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=order.freelancer_id,
             type=NotificationType.DISPUTE_OPENED,
-            title="نزاع تم فتحه على طلبك",
-            message=f"قدّم العميل نزاعاً على الطلب. السبب: {reason[:200]}",
+            title_ar="نزاع تم فتحه على طلبك",
+            title_en="A dispute was opened on your order",
+            message_ar=f"قدّم العميل نزاعاً على الطلب. السبب: {reason[:200]}",
+            message_en=f"The client raised a dispute on this order. Reason: {reason[:200]}",
             link_type="service_order",
             link_id=str(order_id),
             actor_id=client.id,
@@ -825,8 +839,10 @@ class CatalogService(BaseService):
             asyncio.create_task(notify_background(
                 user_id=admin.id,
                 type=NotificationType.DISPUTE_OPENED,
-                title="New dispute opened",
-                message=f"Client raised a dispute on order {order_id}. Reason: {reason[:200]}",
+                title_ar="نزاع جديد مفتوح",
+                title_en="New dispute opened",
+                message_ar=f"فتح العميل نزاعاً على الطلب {order_id}. السبب: {reason[:200]}",
+                message_en=f"Client raised a dispute on order {order_id}. Reason: {reason[:200]}",
                 link_type="service_order",
                 link_id=str(order_id),
                 actor_id=client.id,
@@ -871,8 +887,10 @@ class CatalogService(BaseService):
             order.status = ServiceOrderStatus.COMPLETED
             order.completed_at = datetime.now(UTC)
             order.dispute_resolution = "released_to_freelancer"
-            notify_client_msg = "تم حل النزاع: تم تحرير المبلغ للمستقل."
-            notify_freelancer_msg = "تم حل النزاع لصالحك: تم تحرير المبلغ."
+            client_msg_ar = "تم حل النزاع: تم تحرير المبلغ للمستقل."
+            client_msg_en = "Dispute resolved: the amount was released to the freelancer."
+            freelancer_msg_ar = "تم حل النزاع لصالحك: تم تحرير المبلغ."
+            freelancer_msg_en = "Dispute resolved in your favour — payment released."
         else:  # refund
             if escrow:
                 from app.services.payment_service import PaymentService  # noqa: PLC0415
@@ -881,8 +899,10 @@ class CatalogService(BaseService):
             order.cancellation_reason = f"Dispute resolved: refund to client. {admin_note}"
             order.cancelled_by = admin.id
             order.dispute_resolution = "refunded_to_client"
-            notify_client_msg = "تم حل النزاع: تم استرداد المبلغ إليك."
-            notify_freelancer_msg = "تم حل النزاع: تم إرجاع المبلغ للعميل."
+            client_msg_ar = "تم حل النزاع: تم استرداد المبلغ إليك."
+            client_msg_en = "Dispute resolved: refund issued to you."
+            freelancer_msg_ar = "تم حل النزاع: تم إرجاع المبلغ للعميل."
+            freelancer_msg_en = "Dispute resolved: the amount was refunded to the client."
 
         order.dispute_resolved_at = datetime.now(UTC)
         await self.db.commit()
@@ -909,15 +929,18 @@ class CatalogService(BaseService):
             )
             await self.db.commit()
 
-        for user_id, msg in [
-            (order.client_id, notify_client_msg),
-            (order.freelancer_id, notify_freelancer_msg),
+        # Notify both parties
+        for user_id, msg_ar, msg_en in [
+            (order.client_id, client_msg_ar, client_msg_en),
+            (order.freelancer_id, freelancer_msg_ar, freelancer_msg_en),
         ]:
             asyncio.create_task(notify_background(
                 user_id=user_id,
                 type=NotificationType.DISPUTE_RESOLVED,
-                title="تم حل النزاع",
-                message=msg,
+                title_ar="تم حل النزاع",
+                title_en="Dispute resolved",
+                message_ar=msg_ar,
+                message_en=msg_en,
                 link_type="service_order",
                 link_id=str(order_id),
                 actor_id=admin.id,

@@ -56,11 +56,14 @@ async def _create_notification_for_message(event: MessageSentEvent) -> None:
         return
 
     if event.conversation_type == ConversationType.SUPPORT:
-        # Bilingual prefix so the admin's bell is clearly a support request.
-        title = f"دعم / Support — {event.sender_first_name}"[:100]
+        title_ar = f"دعم — {event.sender_first_name}"[:100]
+        title_en = f"Support — {event.sender_first_name}"[:100]
     else:
-        title = f"رسالة من {event.sender_first_name}"[:100]
+        title_ar = f"رسالة من {event.sender_first_name}"[:100]
+        title_en = f"Message from {event.sender_first_name}"[:100]
 
+    # The message body is the actual content typed by the sender, so the same
+    # string is used regardless of the recipient's locale.
     body = event.content[:200]
 
     async with async_session() as db:
@@ -69,8 +72,10 @@ async def _create_notification_for_message(event: MessageSentEvent) -> None:
             await svc.create_notification(
                 user_id=event.recipient_id,
                 type=NotificationType.NEW_MESSAGE,
-                title=title,
-                message=body,
+                title_ar=title_ar,
+                title_en=title_en,
+                message_ar=body,
+                message_en=body,
                 link_type="message",
                 link_id=event.conversation_id,
                 actor_id=event.sender_id,

@@ -1,6 +1,13 @@
 """
 Kaasb Platform - Notification Service
 Create and manage in-app notifications.
+
+Localization:
+  create_notification resolves the target user's locale at emission time
+  using users.locale (default 'ar'). Callers pass both Arabic and English
+  strings; the resolved copy is persisted to the notifications table. If
+  the user later changes their locale preference, already-stored
+  notifications keep their original copy — we don't re-render history.
 """
 
 import asyncio
@@ -20,6 +27,24 @@ logger = logging.getLogger(__name__)
 # Note: Notification queries intentionally do NOT load the user relationship —
 # the endpoint already knows the user from auth context, avoiding wasteful JOINs.
 
+# Supported locales. Adding a new one requires updating every notify() caller
+# to pass the new string — the enum enforces completeness at signature time.
+_SUPPORTED_LOCALES = ("ar", "en")
+_DEFAULT_LOCALE = "ar"
+
+
+async def _resolve_locale(db: AsyncSession, user_id: uuid.UUID) -> str:
+    """Fetch the target user's preferred UI locale. Defaults to 'ar' when the
+    user is missing or the locale column is null/invalid so a DB hiccup never
+    blocks a notification."""
+    try:
+        result = await db.execute(select(User.locale).where(User.id == user_id))
+        locale = (result.scalar_one_or_none() or _DEFAULT_LOCALE).lower()
+    except Exception:
+        logger.warning("locale: failed to load for user=%s, defaulting to 'ar'", user_id)
+        return _DEFAULT_LOCALE
+    return locale if locale in _SUPPORTED_LOCALES else _DEFAULT_LOCALE
+
 
 class NotificationService(BaseService):
     """Service for notification operations."""
@@ -31,13 +56,25 @@ class NotificationService(BaseService):
         self,
         user_id: uuid.UUID,
         type: NotificationType,
-        title: str,
-        message: str,
+        title_ar: str,
+        title_en: str,
+        message_ar: str,
+        message_en: str,
         link_type: str | None = None,
-        link_id: uuid.UUID | None = None,
+        # Accept str in addition to UUID: many callers already stringify the
+        # id (e.g. str(order_id)) and PostgreSQL UUID columns accept either.
+        link_id: uuid.UUID | str | None = None,
         actor_id: uuid.UUID | None = None,
     ) -> Notification:
-        """Create a notification for a user."""
+        """Create a notification for a user in their preferred locale.
+
+        Both Arabic and English copy must be supplied. The user's locale
+        preference (users.locale) decides which pair is persisted and pushed.
+        """
+        locale = await _resolve_locale(self.db, user_id)
+        title = title_en if locale == "en" else title_ar
+        message = message_en if locale == "en" else message_ar
+
         notification = Notification(
             user_id=user_id,
             type=type,
@@ -150,27 +187,39 @@ async def notify(
     db,
     user_id: uuid.UUID,
     type: NotificationType,
-    title: str,
-    message: str,
-    **kwargs,
+    title_ar: str,
+    title_en: str,
+    message_ar: str,
+    message_en: str,
+    link_type: str | None = None,
+    link_id: uuid.UUID | str | None = None,
+    actor_id: uuid.UUID | None = None,
 ) -> Notification:
     """Send a notification using an existing DB session (in-request context)."""
     service = NotificationService(db)
     return await service.create_notification(
         user_id=user_id,
         type=type,
-        title=title,
-        message=message,
-        **kwargs,
+        title_ar=title_ar,
+        title_en=title_en,
+        message_ar=message_ar,
+        message_en=message_en,
+        link_type=link_type,
+        link_id=link_id,
+        actor_id=actor_id,
     )
 
 
 async def notify_background(
     user_id: uuid.UUID,
     type: NotificationType,
-    title: str,
-    message: str,
-    **kwargs,
+    title_ar: str,
+    title_en: str,
+    message_ar: str,
+    message_en: str,
+    link_type: str | None = None,
+    link_id: uuid.UUID | str | None = None,
+    actor_id: uuid.UUID | None = None,
 ) -> None:
     """
     Send a notification from a background asyncio task using its own DB session.
@@ -187,9 +236,13 @@ async def notify_background(
             await service.create_notification(
                 user_id=user_id,
                 type=type,
-                title=title,
-                message=message,
-                **kwargs,
+                title_ar=title_ar,
+                title_en=title_en,
+                message_ar=message_ar,
+                message_en=message_en,
+                link_type=link_type,
+                link_id=link_id,
+                actor_id=actor_id,
             )
             await session.commit()
     except Exception as exc:

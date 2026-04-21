@@ -378,14 +378,20 @@ class PaymentService(BaseService):
             # path only — service orders are handled by the in-progress transition
             # below and have their own ORDER_* notification flow).
             if escrow.milestone_id is not None:
+                amount_int = int(escrow.freelancer_amount)
                 await notify(
                     self.db,
                     user_id=escrow.freelancer_id,
                     type=NotificationType.MILESTONE_FUNDED,
-                    title="تم إيداع المبلغ في الضمان",
-                    message=(
-                        f"تم إيداع {int(escrow.freelancer_amount):,} د.ع "
+                    title_ar="تم إيداع المبلغ في الضمان",
+                    title_en="Milestone funded",
+                    message_ar=(
+                        f"تم إيداع {amount_int:,} د.ع "
                         "في الضمان للمرحلة — يمكنك بدء العمل"
+                    ),
+                    message_en=(
+                        f"{amount_int:,} IQD is held in escrow — "
+                        "you can start working on this milestone"
                     ),
                     link_type="contract",
                     link_id=escrow.contract_id,
@@ -563,12 +569,15 @@ class PaymentService(BaseService):
             escrow.id, escrow.milestone_id, escrow.freelancer_amount, escrow.version,
         )
 
+        amount_iqd = int(escrow.freelancer_amount)
         await notify(
             self.db,
             user_id=escrow.freelancer_id,
             type=NotificationType.PAYMENT_RECEIVED,
-            title="تم استلام دفعة",
-            message=f"تم تحرير مبلغ ${escrow.freelancer_amount:.2f} إلى رصيدك",
+            title_ar="تم استلام دفعة",
+            title_en="Payment received",
+            message_ar=f"تم تحرير مبلغ {amount_iqd:,} د.ع إلى رصيدك",
+            message_en=f"{amount_iqd:,} IQD has been released to your balance",
             link_type="contract",
             link_id=escrow.contract_id,
             actor_id=escrow.client_id,
@@ -671,12 +680,15 @@ class PaymentService(BaseService):
         _record_escrow_transition(prev_status, "refunded")
         await self.db.flush()
 
+        refund_amount = int(escrow.amount)
         await notify(
             self.db,
             user_id=escrow.client_id,
             type=NotificationType.PAYMENT_RECEIVED,
-            title="تم بدء استرداد المبلغ",
-            message=f"سيتم إعادة ${escrow.amount:.2f} إلى حسابك خلال 3-5 أيام عمل.",
+            title_ar="تم بدء استرداد المبلغ",
+            title_en="Refund initiated",
+            message_ar=f"سيتم إعادة {refund_amount:,} د.ع إلى حسابك خلال 3-5 أيام عمل.",
+            message_en=f"{refund_amount:,} IQD will be returned to you within 3-5 business days.",
             link_type="service_order",
             link_id=escrow.service_order_id,
         )
@@ -852,8 +864,10 @@ class PaymentService(BaseService):
                 self.db,
                 user_id=freelancer.id,
                 type=NotificationType.PAYOUT_COMPLETED,
-                title="تم سحب الأموال بنجاح",
-                message=f"تم تحويل {amount_iqd:,} د.ع (${data.amount:.2f}) إلى حسابك",
+                title_ar="تم سحب الأموال بنجاح",
+                title_en="Payout completed",
+                message_ar=f"تم تحويل {amount_iqd:,} د.ع إلى حسابك",
+                message_en=f"{amount_iqd:,} IQD has been transferred to your account",
                 link_type=None,
                 link_id=None,
             )
@@ -941,8 +955,10 @@ class PaymentService(BaseService):
                 self.db,
                 user_id=tx.payee_id,
                 type=NotificationType.PAYOUT_COMPLETED,
-                title="تم سحب الأموال بنجاح",
-                message=f"تم تحويل {amount_iqd:,} د.ع إلى حسابك",
+                title_ar="تم سحب الأموال بنجاح",
+                title_en="Payout completed",
+                message_ar=f"تم تحويل {amount_iqd:,} د.ع إلى حسابك",
+                message_en=f"{amount_iqd:,} IQD has been transferred to your account",
                 link_type=None,
                 link_id=None,
             )

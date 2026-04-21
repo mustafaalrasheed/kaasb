@@ -34,5 +34,8 @@ export const usersApi = {
     new_password: string;
   }) => api.put("/users/password", data),
 
+  updateLocale: (locale: "ar" | "en") =>
+    api.put("/users/me/locale", { locale }),
+
   deactivateAccount: () => api.delete("/users/account"),
 };
