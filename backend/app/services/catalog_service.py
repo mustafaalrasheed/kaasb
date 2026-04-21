@@ -534,10 +534,13 @@ class CatalogService(BaseService):
         base = f"https://{settings.DOMAIN}"
         payment_url: str | None = None
 
+        # Round to the nearest whole IQD; plain int() truncates toward zero and
+        # systematically underpays by up to 0.99 IQD per order.
+        amount_iqd_int = int(price_d.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         try:
             qi_card = QiCardClient()
             qi_result = await qi_card.create_payment(
-                amount_iqd=int(price_d),
+                amount_iqd=amount_iqd_int,
                 order_id=order_ref,
                 success_url=f"{base}/api/v1/payments/qi-card/success?sig={sig}",
                 failure_url=f"{base}/api/v1/payments/qi-card/failure?sig={sig}",

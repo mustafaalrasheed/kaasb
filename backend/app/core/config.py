@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     QI_CARD_SANDBOX_URL: str = "https://api.uat.pay.qi.iq/api/v0/transactions/business/token"
     QI_CARD_SANDBOX: bool = True  # Set to False in production
     QI_CARD_CURRENCY: str = "IQD"  # Iraqi Dinar
+    # Idempotency window for create_payment — within this many seconds a repeat
+    # call with the same order_id returns the cached redirect link instead of
+    # creating a new Qi Card charge. Matches Qi Card's own payment-session TTL.
+    QI_CARD_IDEMPOTENCY_TTL_SEC: int = 900  # 15 minutes
 
     # === Domain ===
     DOMAIN: str = "localhost"
