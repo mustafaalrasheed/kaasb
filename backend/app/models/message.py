@@ -138,11 +138,11 @@ class Conversation(BaseModel):
 
     order_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("gig_orders.id", ondelete="SET NULL"),
+        ForeignKey("service_orders.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    order: Mapped[Optional["GigOrder"]] = relationship("GigOrder", lazy="raise")
+    order: Mapped[Optional["ServiceOrder"]] = relationship("ServiceOrder", lazy="raise")
 
     # === Last message cache for fast listing ===
     last_message_text: Mapped[str | None] = mapped_column(
