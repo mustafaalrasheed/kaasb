@@ -20,9 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
+from app.models.contract import Contract
 from app.models.gig import GigOrder
-from app.models.job import Job
+from app.models.job import Job, JobStatus
 from app.models.message import Conversation, ConversationType, Message, SenderRole
+from app.models.proposal import Proposal, ProposalStatus
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.message import ConversationCreate, MessageCreate
 from app.services.base import BaseService
@@ -54,6 +56,92 @@ class MessageService(BaseService):
     def __init__(self, db: AsyncSession):
         super().__init__(db)
 
+    async def _can_initiate(
+        self, sender: User, recipient: User,
+        job_id: uuid.UUID | None, order_id: uuid.UUID | None,
+    ) -> None:
+        """
+        Enforce Fiverr-hybrid rules on who may START a new USER conversation.
+
+        Allowed paths:
+          * Staff is involved on either side (SUPPORT thread — always allowed).
+          * Order context: participant on an existing order/contract.
+          * Job context: freelancer cold-DMs on an open job, OR client messages
+            a freelancer who has submitted a proposal to that job.
+          * Prior relationship: the pair already shares any contract/order
+            (completed work unlocks permanent DM between them).
+
+        Everything else — generic profile-page cold DMs between strangers — is
+        rejected. Kaasb is gig-first: purchase intent or active hiring is the
+        legitimate trigger for a conversation.
+        """
+        # SUPPORT always bypasses — handled by type classification in the caller.
+        if _is_staff(sender) or _is_staff(recipient):
+            return
+
+        # ORDER context: caller validates participation further down.
+        if order_id is not None:
+            return
+
+        # JOB context.
+        if job_id is not None:
+            job = (await self.db.execute(
+                select(Job).where(Job.id == job_id)
+            )).scalar_one_or_none()
+            if job is None:
+                raise NotFoundError("Job")
+            is_sender_client = sender.id == job.client_id
+            is_recipient_client = recipient.id == job.client_id
+            # The client owns the job; the other party must be the freelancer.
+            if not (is_sender_client ^ is_recipient_client):
+                raise ForbiddenError("This job conversation is not between its parties")
+            freelancer_id = recipient.id if is_sender_client else sender.id
+            if is_sender_client:
+                # Client → freelancer: only if they've submitted a proposal.
+                has_proposal = (await self.db.execute(
+                    select(func.count()).select_from(Proposal).where(
+                        Proposal.job_id == job_id,
+                        Proposal.freelancer_id == freelancer_id,
+                        Proposal.status != ProposalStatus.WITHDRAWN,
+                    )
+                )).scalar_one()
+                if not has_proposal:
+                    raise ForbiddenError(
+                        "You can only message freelancers who've proposed on this job"
+                    )
+            else:
+                # Freelancer → client: the job must be open to new proposals.
+                if job.status != JobStatus.OPEN:
+                    raise ForbiddenError("This job is no longer open")
+            return
+
+        # No explicit context → require a prior working relationship.
+        pair = (min(sender.id, recipient.id), max(sender.id, recipient.id))
+        contract_exists = (await self.db.execute(
+            select(func.count()).select_from(Contract).where(
+                or_(
+                    (Contract.client_id == pair[0]) & (Contract.freelancer_id == pair[1]),
+                    (Contract.client_id == pair[1]) & (Contract.freelancer_id == pair[0]),
+                )
+            )
+        )).scalar_one()
+        if contract_exists:
+            return
+        order_exists = (await self.db.execute(
+            select(func.count()).select_from(GigOrder).where(
+                or_(
+                    (GigOrder.client_id == pair[0]) & (GigOrder.freelancer_id == pair[1]),
+                    (GigOrder.client_id == pair[1]) & (GigOrder.freelancer_id == pair[0]),
+                )
+            )
+        )).scalar_one()
+        if order_exists:
+            return
+
+        raise ForbiddenError(
+            "You can only message this user through a job, an order, or support"
+        )
+
     async def start_conversation(
         self, sender: User, data: ConversationCreate
     ) -> Conversation:
@@ -69,6 +157,11 @@ class MessageService(BaseService):
         recipient = result.scalar_one_or_none()
         if not recipient:
             raise NotFoundError("Recipient")
+
+        # Initiation gate — only applied to the first message. If the thread
+        # already exists (checked below) the rules are waived: the parties
+        # have already been matched, so follow-ups are free.
+        # Check happens before expensive work so we fail fast.
 
         # Normalize participant order (smaller UUID first for consistency)
         p1 = min(sender.id, data.recipient_id)
@@ -103,12 +196,10 @@ class MessageService(BaseService):
             await self._send_message(existing, sender, data.initial_message)
             return await self._get_conversation(existing.id)
 
-        if data.job_id:
-            job_result = await self.db.execute(
-                select(Job).where(Job.id == data.job_id)
-            )
-            if not job_result.scalar_one_or_none():
-                raise NotFoundError("Job")
+        # No thread yet — enforce initiation rules before creating one.
+        await self._can_initiate(
+            sender, recipient, data.job_id, data.order_id,
+        )
 
         if data.order_id:
             order_result = await self.db.execute(
@@ -135,6 +226,65 @@ class MessageService(BaseService):
         await self._send_message(conversation, sender, data.initial_message)
 
         return await self._get_conversation(conversation.id)
+
+    async def get_or_create_system_conversation(
+        self,
+        client_id: uuid.UUID,
+        freelancer_id: uuid.UUID,
+        *,
+        job_id: uuid.UUID | None = None,
+        order_id: uuid.UUID | None = None,
+        system_message: str | None = None,
+    ) -> Conversation:
+        """
+        Idempotently create a conversation between two known parties as part of
+        a lifecycle transition (proposal accepted, order placed, buyer-request
+        offer accepted). The initiation gate is BYPASSED because the business
+        event itself is the authorization — the rule engine only gates
+        *human-initiated* cold starts.
+
+        If ``system_message`` is provided, a SYSTEM message is posted (or
+        appended if the thread already exists) so both sides see context like
+        "Order #123 was placed — coordinate delivery here."
+        """
+        if client_id == freelancer_id:
+            raise BadRequestError("Cannot start conversation with yourself")
+
+        p1 = min(client_id, freelancer_id)
+        p2 = max(client_id, freelancer_id)
+
+        conv_type = ConversationType.ORDER if order_id else ConversationType.USER
+
+        stmt = select(Conversation).where(
+            Conversation.participant_one_id == p1,
+            Conversation.participant_two_id == p2,
+        )
+        if order_id:
+            stmt = stmt.where(Conversation.order_id == order_id)
+        elif job_id:
+            stmt = stmt.where(Conversation.job_id == job_id)
+        else:
+            stmt = stmt.where(
+                Conversation.job_id.is_(None),
+                Conversation.order_id.is_(None),
+            )
+
+        existing = (await self.db.execute(stmt)).scalar_one_or_none()
+        if existing is None:
+            existing = Conversation(
+                participant_one_id=p1,
+                participant_two_id=p2,
+                conversation_type=conv_type,
+                job_id=job_id,
+                order_id=order_id,
+            )
+            self.db.add(existing)
+            await self.db.flush()
+
+        if system_message:
+            await self.send_system_message(existing.id, system_message)
+
+        return existing
 
     async def send_message(
         self, sender: User, conversation_id: uuid.UUID, data: MessageCreate

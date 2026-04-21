@@ -247,6 +247,21 @@ class ProposalService(BaseService):
             contract_service = ContractService(self.db)
             await contract_service.create_contract_from_proposal(job, proposal)
 
+            # Auto-create the working-relationship chat so both parties land
+            # directly in a ready thread after acceptance. Bypasses the
+            # initiation gate — acceptance IS the authorization event.
+            from app.services.message_service import MessageService
+            msg_service = MessageService(self.db)
+            await msg_service.get_or_create_system_conversation(
+                client_id=client.id,
+                freelancer_id=proposal.freelancer_id,
+                job_id=proposal.job_id,
+                system_message=(
+                    f"تم قبول العرض — يمكنكما الآن التنسيق هنا بخصوص: {job.title}\n"
+                    f"Proposal accepted — you can now coordinate here about: {job.title}"
+                ),
+            )
+
         if new_status == ProposalStatus.ACCEPTED:
             logger.info("Proposal accepted: %s by client=%s", proposal_id, client.id)
         elif new_status == ProposalStatus.REJECTED:

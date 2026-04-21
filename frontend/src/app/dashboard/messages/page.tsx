@@ -57,6 +57,12 @@ function MessagesContent() {
   const ar = locale === "ar";
   const searchParams = useSearchParams();
   const withUserId = searchParams.get("with");
+  // Context passed through from job / proposal / order pages so the initiation
+  // gate can verify the pair has a legit relationship. Without these, a
+  // plain "?with=" cold-DM falls back to the prior-relationship check and is
+  // rejected for strangers (Fiverr-hybrid rule).
+  const composeJobId = searchParams.get("job");
+  const composeOrderId = searchParams.get("order");
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConvo, setActiveConvo] = useState<ConversationSummary | null>(null);
@@ -376,6 +382,8 @@ function MessagesContent() {
         const res = await messagesApi.startConversation({
           recipient_id: composeRecipient,
           initial_message: content,
+          ...(composeJobId ? { job_id: composeJobId } : {}),
+          ...(composeOrderId ? { order_id: composeOrderId } : {}),
         });
         const newConvo = res.data as ConversationSummary;
         setComposeRecipient(null);

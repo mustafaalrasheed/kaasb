@@ -7,6 +7,7 @@ export const messagesApi = {
   startConversation: (data: {
     recipient_id: string;
     job_id?: string;
+    order_id?: string;
     initial_message: string;
   }) => api.post("/messages/conversations", data),
 
