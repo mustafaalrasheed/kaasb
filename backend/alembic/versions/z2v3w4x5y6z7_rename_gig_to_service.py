@@ -118,6 +118,26 @@ def upgrade() -> None:
     _rename_index_if_exists(
         "ix_gig_orders_status", "ix_service_orders_status"
     )
+    # Primary-key indexes + the order_deliveries.order_id index — created with
+    # `index=True` / primary_key defaults; Postgres auto-named them after the
+    # OLD table so rename_table doesn't touch them.
+    _rename_index_if_exists("ix_gigs_id", "ix_services_id")
+    _rename_index_if_exists("ix_gig_orders_id", "ix_service_orders_id")
+    _rename_index_if_exists("ix_gig_packages_id", "ix_service_packages_id")
+    _rename_index_if_exists("ix_gig_categories_id", "ix_service_categories_id")
+    _rename_index_if_exists(
+        "ix_gig_subcategories_id", "ix_service_subcategories_id"
+    )
+    _rename_index_if_exists(
+        "ix_gig_order_deliveries_id", "ix_service_order_deliveries_id"
+    )
+    _rename_index_if_exists(
+        "ix_gig_order_deliveries_order_id",
+        "ix_service_order_deliveries_order_id",
+    )
+    _rename_index_if_exists(
+        "ix_escrows_gig_order_id", "ix_escrows_service_order_id"
+    )
 
     # ── 7. Update in-row notification link_type values ─────────────────────
     op.execute(
@@ -142,6 +162,23 @@ def downgrade() -> None:
         "UPDATE notifications SET link_type = 'gig' WHERE link_type = 'service'"
     )
 
+    _rename_index_if_exists(
+        "ix_escrows_service_order_id", "ix_escrows_gig_order_id"
+    )
+    _rename_index_if_exists(
+        "ix_service_order_deliveries_order_id",
+        "ix_gig_order_deliveries_order_id",
+    )
+    _rename_index_if_exists(
+        "ix_service_order_deliveries_id", "ix_gig_order_deliveries_id"
+    )
+    _rename_index_if_exists(
+        "ix_service_subcategories_id", "ix_gig_subcategories_id"
+    )
+    _rename_index_if_exists("ix_service_categories_id", "ix_gig_categories_id")
+    _rename_index_if_exists("ix_service_packages_id", "ix_gig_packages_id")
+    _rename_index_if_exists("ix_service_orders_id", "ix_gig_orders_id")
+    _rename_index_if_exists("ix_services_id", "ix_gigs_id")
     _rename_index_if_exists(
         "ix_service_orders_status", "ix_gig_orders_status"
     )
