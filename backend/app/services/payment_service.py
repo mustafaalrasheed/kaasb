@@ -208,10 +208,15 @@ class PaymentService(BaseService):
         failure_url = f"{base}/api/v1/payments/qi-card/failure?sig={sig}"
         cancel_url  = f"{base}/api/v1/payments/qi-card/cancel?sig={sig}"
 
-        # Initiate Qi Card payment (milestone.amount is already IQD)
+        # Initiate Qi Card payment (milestone.amount is already IQD).
+        # Round to the nearest whole IQD (Qi Card requires int amounts); plain
+        # int() truncates toward zero and systematically underpays by up to 0.99.
+        amount_iqd_int = int(
+            Decimal(str(fees["amount"])).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
         try:
             qi_result = await self.qi_card.create_payment(
-                amount_iqd=int(fees["amount"]),
+                amount_iqd=amount_iqd_int,
                 order_id=order_id,
                 success_url=success_url,
                 failure_url=failure_url,
@@ -591,7 +596,9 @@ class PaymentService(BaseService):
             original_tx = tx_result.scalar_one_or_none()
 
         qi_payment_id = original_tx.external_transaction_id if original_tx else None
-        amount_iqd = int(escrow.amount)
+        amount_iqd = int(
+            Decimal(str(escrow.amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
 
         gateway_refund_succeeded = False
         if qi_payment_id:
@@ -677,7 +684,9 @@ class PaymentService(BaseService):
         if data.amount > available:
             raise BadRequestError(f"Insufficient balance. Available: {available:,.0f} IQD")
 
-        amount_iqd = int(data.amount)
+        amount_iqd = int(
+            Decimal(str(data.amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
 
         # For Qi Card payouts: in production, call Qi Card payout/transfer API
         # Currently logged as processing — admin confirms manually until payout API is available

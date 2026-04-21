@@ -41,14 +41,25 @@ Response:
   }
 
 Currency: IQD (Iraqi Dinar). 1 USD ≈ 1,310 IQD.
+
+Idempotency:
+  create_payment is wrapped in a Redis-backed link cache keyed by order_id.
+  If the same order_id arrives within QI_CARD_IDEMPOTENCY_TTL_SEC (default
+  900s) the cached link is returned without re-calling Qi Card. This protects
+  against duplicate charges from browser double-clicks, retries after network
+  hiccups, or concurrent requests reaching different Gunicorn workers. If
+  Redis is unavailable the cache is skipped (fail-open) so payments still work.
 """
 
+import json
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import ClassVar
 
 import httpx
+import redis.asyncio as aioredis
 
 from app.core.config import get_settings
 from app.utils.circuit_breaker import CircuitBreaker, CircuitOpenError
@@ -56,12 +67,56 @@ from app.utils.retry import async_retry
 
 logger = logging.getLogger(__name__)
 
+# ---- Log-sanitization helpers -------------------------------------------------
+
+_LOG_BODY_MAX_LEN = 300
+# Any of these JSON field names, if present, will be redacted in log previews.
+_SENSITIVE_FIELDS = ("api_key", "apiKey", "authorization", "password", "token", "secret")
+_SENSITIVE_RE = re.compile(
+    r'("(?:' + "|".join(_SENSITIVE_FIELDS) + r')"\s*:\s*)"[^"]*"',
+    re.IGNORECASE,
+)
+
+
+def _safe_preview(body: str | None, max_len: int = _LOG_BODY_MAX_LEN) -> str:
+    """Return a truncated, sensitive-field-redacted preview safe to emit to logs."""
+    if not body:
+        return "(empty)"
+    redacted = _SENSITIVE_RE.sub(r'\1"***"', body)
+    if len(redacted) <= max_len:
+        return redacted
+    return redacted[:max_len] + "...(truncated)"
+
+
+# ---- Idempotency cache --------------------------------------------------------
+
+_redis_client: aioredis.Redis | None = None
+_inmem_cache: dict[str, tuple[dict, float]] = {}  # fallback for tests/dev with no Redis
+_INMEM_CACHE_MAX = 1024
+
+
+async def _get_redis() -> aioredis.Redis | None:
+    """Lazily open a shared async Redis client; returns None if unreachable."""
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        settings = get_settings()
+        _redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        await _redis_client.ping()
+    except Exception as exc:
+        logger.warning("Qi Card idempotency cache disabled — Redis unreachable: %s", exc)
+        _redis_client = None
+    return _redis_client
+
 
 class QiCardError(Exception):
     """Raised when the Qi Card API returns an error or network failure."""
     def __init__(self, message: str, status_code: int = 0, response_body: str = ""):
         super().__init__(message)
         self.status_code = status_code
+        # Kept as an attribute for programmatic access by callers; the exception's
+        # str() form deliberately excludes it so it never ends up in un-sanitized logs.
         self.response_body = response_body
 
 
@@ -110,6 +165,51 @@ class QiCardClient:
         }
 
     # =========================================================================
+    # Idempotency cache — keyed by order_id
+    # =========================================================================
+
+    def _cache_key(self, order_id: str) -> str:
+        return f"qi_card:link:{order_id}"
+
+    async def _cache_get(self, order_id: str) -> dict | None:
+        """Return a previously cached create_payment response, or None."""
+        redis = await _get_redis()
+        if redis is not None:
+            try:
+                raw = await redis.get(self._cache_key(order_id))
+                return json.loads(raw) if raw else None
+            except Exception as exc:
+                logger.warning("Qi Card idempotency cache read failed: %s", exc)
+                return None
+        # In-memory fallback (bounded). Used only when Redis is unreachable —
+        # e.g. unit tests. TTL is enforced by _inmem_expiry_sweep.
+        now = datetime.now(UTC).timestamp()
+        entry = _inmem_cache.get(order_id)
+        if entry is None:
+            return None
+        value, expires_at = entry
+        if expires_at < now:
+            _inmem_cache.pop(order_id, None)
+            return None
+        return value
+
+    async def _cache_set(self, order_id: str, value: dict, ttl_seconds: int) -> None:
+        redis = await _get_redis()
+        if redis is not None:
+            try:
+                await redis.setex(self._cache_key(order_id), ttl_seconds, json.dumps(value))
+                return
+            except Exception as exc:
+                logger.warning("Qi Card idempotency cache write failed: %s", exc)
+                # fall through to in-memory fallback
+        if len(_inmem_cache) >= _INMEM_CACHE_MAX:
+            # Crude eviction: drop ~10% of entries ordered by insertion.
+            for k in list(_inmem_cache.keys())[: _INMEM_CACHE_MAX // 10]:
+                _inmem_cache.pop(k, None)
+        expires_at = datetime.now(UTC).timestamp() + ttl_seconds
+        _inmem_cache[order_id] = (value, expires_at)
+
+    # =========================================================================
     # Create Payment
     # =========================================================================
 
@@ -126,6 +226,9 @@ class QiCardClient:
         """
         Initiate a Qi Card payment.
 
+        Idempotent per order_id within QI_CARD_IDEMPOTENCY_TTL_SEC: a repeat call
+        within the window returns the cached link instead of re-calling Qi Card.
+
         Returns:
             {
                 "link":       "https://pay.qi.iq/...",  # redirect user here
@@ -133,8 +236,18 @@ class QiCardClient:
                 "amount_iqd": 196500,
             }
         """
+        # Return the cached response if we've already created a link for this
+        # order_id recently. This is the primary idempotency guarantee — even
+        # double-clicks that reach different workers will get the same link.
+        cached = await self._cache_get(order_id)
+        if cached is not None:
+            logger.info("Qi Card create_payment idempotent hit: order_id=%s", order_id)
+            return cached
+
         if not self._is_configured():
-            return self._mock_create(amount_iqd, order_id)
+            result = self._mock_create(amount_iqd, order_id)
+            await self._cache_set(order_id, result, self.settings.QI_CARD_IDEMPOTENCY_TTL_SEC)
+            return result
 
         payload = {
             "order": {
@@ -164,7 +277,7 @@ class QiCardClient:
         if response.status_code not in (200, 201):
             logger.error(
                 "Qi Card create_payment failed: status=%s body=%s",
-                response.status_code, response.text,
+                response.status_code, _safe_preview(response.text),
             )
             raise QiCardError(
                 "Qi Card rejected payment creation",
@@ -172,20 +285,34 @@ class QiCardClient:
                 response_body=response.text,
             )
 
-        body = response.json()
+        try:
+            body = response.json()
+        except ValueError as e:
+            logger.error(
+                "Qi Card returned non-JSON body: %s",
+                _safe_preview(response.text),
+            )
+            raise QiCardError("Qi Card returned an invalid response") from e
 
         if not body.get("success"):
-            logger.error("Qi Card create_payment returned success=false: %s", body)
+            logger.error(
+                "Qi Card create_payment returned success=false: %s",
+                _safe_preview(json.dumps(body)),
+            )
             raise QiCardError(
-                f"Qi Card payment creation failed: {body}",
+                "Qi Card payment creation failed",
                 status_code=response.status_code,
                 response_body=response.text,
             )
 
         link = body.get("data", {}).get("link")
         if not link:
+            logger.error(
+                "Qi Card response missing data.link: %s",
+                _safe_preview(json.dumps(body)),
+            )
             raise QiCardError(
-                f"Qi Card response missing data.link: {body}",
+                "Qi Card response missing data.link",
                 response_body=response.text,
             )
 
@@ -194,11 +321,13 @@ class QiCardClient:
             order_id, amount_iqd,
         )
 
-        return {
+        result = {
             "link": link,
             "order_id": order_id,
             "amount_iqd": amount_iqd,
         }
+        await self._cache_set(order_id, result, self.settings.QI_CARD_IDEMPOTENCY_TTL_SEC)
+        return result
 
     # =========================================================================
     # Refund Payment
