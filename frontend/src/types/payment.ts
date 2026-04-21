@@ -6,6 +6,7 @@ export interface PaymentAccount {
   status: string;
   external_account_id?: string;
   qi_card_phone?: string;
+  qi_card_holder_name?: string;
   is_default: boolean;
   verified_at?: string;
   created_at: string;

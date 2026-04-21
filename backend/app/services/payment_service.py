@@ -28,7 +28,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError, ConflictError, ExternalServiceError, ForbiddenError, NotFoundError
 from app.models.contract import Contract, Milestone, MilestoneStatus
-from app.models.gig import GigOrder, GigOrderStatus
 from app.models.notification import NotificationType
 from app.models.payment import (
     Escrow,
@@ -40,6 +39,7 @@ from app.models.payment import (
     TransactionStatus,
     TransactionType,
 )
+from app.models.service import ServiceOrder, ServiceOrderStatus
 from app.models.user import User
 from app.schemas.payment import (
     EscrowFundRequest,
@@ -117,25 +117,39 @@ class PaymentService(BaseService):
     async def setup_payment_account(
         self, user: User, data: PaymentAccountSetup
     ) -> PaymentAccount:
-        """Set up a payment account for a user."""
+        """
+        Create the freelancer's QiCard payout account, or update mutable fields
+        on an existing one. The phone field is immutable post-creation (account
+        deletion + re-creation is the only path to change it — a future OTP
+        flow could relax this). Holder name is freely editable because it is a
+        payout-reconciliation label, not an auth credential.
+        """
+        provider = PaymentProvider(data.provider)
         existing = await self.db.execute(
             select(PaymentAccount).where(
                 PaymentAccount.user_id == user.id,
-                PaymentAccount.provider == PaymentProvider(data.provider),
+                PaymentAccount.provider == provider,
             )
         )
-        if existing.scalar_one_or_none():
-            raise BadRequestError(f"You already have a {data.provider} payment account")
+        account = existing.scalar_one_or_none()
 
-        provider = PaymentProvider(data.provider)
+        if account is not None:
+            # Upsert: update holder name when provided; ignore phone changes.
+            if data.qi_card_holder_name is not None:
+                account.qi_card_holder_name = data.qi_card_holder_name
+            await self.db.flush()
+            await self.db.refresh(account)
+            logger.info("Payment account updated: user=%s provider=%s", user.id, provider.value)
+            return account
+
         external_id = f"qc_acct_{uuid.uuid4().hex[:12]}"
-
         account = PaymentAccount(
             user_id=user.id,
             provider=provider,
             status=PaymentAccountStatus.VERIFIED,
             external_account_id=external_id,
             qi_card_phone=data.qi_card_phone,
+            qi_card_holder_name=data.qi_card_holder_name,
             is_default=True,
             verified_at=datetime.now(UTC),
         )
@@ -343,31 +357,43 @@ class PaymentService(BaseService):
             escrow.status = EscrowStatus.FUNDED
             escrow.funded_at = datetime.now(UTC)
 
-        # For gig orders: transition the GigOrder from PENDING → IN_PROGRESS so the
-        # freelancer can start work.  Without this, mark_delivered() always rejects
-        # because it requires IN_PROGRESS, making the entire gig order lifecycle broken.
+        # For service orders: transition the ServiceOrder from PENDING → IN_PROGRESS so
+        # the freelancer can start work. Without this, mark_delivered() always rejects
+        # because it requires IN_PROGRESS, breaking the entire service order lifecycle.
+        #
+        # The "gig-order-" prefix on the external order_id is preserved for backward
+        # compatibility with in-flight Qi Card records created before the rename —
+        # changing it would orphan payments that are mid-flow.
         if order_id.startswith("gig-order-"):
             try:
-                gig_order_id = uuid.UUID(order_id[len("gig-order-"):])
-                go_result = await self.db.execute(
-                    select(GigOrder).where(GigOrder.id == gig_order_id).with_for_update()
+                service_order_id = uuid.UUID(order_id[len("gig-order-"):])
+                so_result = await self.db.execute(
+                    select(ServiceOrder).where(ServiceOrder.id == service_order_id).with_for_update()
                 )
-                gig_order = go_result.scalar_one_or_none()
-                if gig_order and gig_order.status == GigOrderStatus.PENDING:
-                    # F3: if the gig has requirement questions, wait for client answers first
-                    from app.models.gig import Gig as _Gig  # noqa: PLC0415
-                    gig_result = await self.db.execute(
-                        select(_Gig).where(_Gig.id == gig_order.gig_id)
+                service_order = so_result.scalar_one_or_none()
+                if service_order and service_order.status == ServiceOrderStatus.PENDING:
+                    # F3: if the service has requirement questions, wait for client answers first
+                    from app.models.service import Service as _Service  # noqa: PLC0415
+                    svc_result = await self.db.execute(
+                        select(_Service).where(_Service.id == service_order.service_id)
                     )
-                    linked_gig = gig_result.scalar_one_or_none()
-                    if linked_gig and linked_gig.requirement_questions:
-                        gig_order.status = GigOrderStatus.PENDING_REQUIREMENTS
-                        logger.info("GigOrder %s → PENDING_REQUIREMENTS (has questions)", gig_order_id)
+                    linked_service = svc_result.scalar_one_or_none()
+                    if linked_service and linked_service.requirement_questions:
+                        service_order.status = ServiceOrderStatus.PENDING_REQUIREMENTS
+                        logger.info(
+                            "ServiceOrder %s → PENDING_REQUIREMENTS (has questions)",
+                            service_order_id,
+                        )
                     else:
-                        gig_order.status = GigOrderStatus.IN_PROGRESS
-                        logger.info("GigOrder %s → IN_PROGRESS after payment confirmed", gig_order_id)
+                        service_order.status = ServiceOrderStatus.IN_PROGRESS
+                        logger.info(
+                            "ServiceOrder %s → IN_PROGRESS after payment confirmed",
+                            service_order_id,
+                        )
             except (ValueError, AttributeError) as exc:
-                logger.warning("Could not parse gig_order_id from order_id=%s: %s", order_id, exc)
+                logger.warning(
+                    "Could not parse service_order_id from order_id=%s: %s", order_id, exc
+                )
 
         try:
             await self.db.flush()
@@ -511,6 +537,11 @@ class PaymentService(BaseService):
         """
         Release escrow by its primary key. Used by admin manual payout and gig
         order completion — works for both contract-milestone and gig-order escrows.
+
+        Blocks release when the freelancer's QiCard account is missing the phone
+        or cardholder name, since the admin cannot reconcile a manual payout
+        without both fields. Gig-order auto-completion bypasses this check by
+        calling ``_release_locked_escrow`` directly.
         """
         result = await self.db.execute(
             select(Escrow).where(
@@ -521,17 +552,32 @@ class PaymentService(BaseService):
         escrow = result.scalar_one_or_none()
         if not escrow:
             return None
+
+        acct_result = await self.db.execute(
+            select(PaymentAccount.qi_card_phone, PaymentAccount.qi_card_holder_name).where(
+                PaymentAccount.user_id == escrow.freelancer_id,
+                PaymentAccount.provider == PaymentProvider.QI_CARD,
+                PaymentAccount.status == PaymentAccountStatus.VERIFIED,
+            )
+        )
+        acct_row = acct_result.first()
+        if not acct_row or not acct_row[0] or not acct_row[1]:
+            raise BadRequestError(
+                "Freelancer's QiCard payout details are incomplete (phone + cardholder "
+                "name required). Ask them to finish payment-account setup before release."
+            )
+
         return await self._release_locked_escrow(escrow)
 
     # === Escrow: Refund ===
 
-    async def refund_escrow_by_gig_order(
-        self, gig_order_id: uuid.UUID, reason: str = "Dispute resolved: refund to client"
+    async def refund_escrow_by_service_order(
+        self, service_order_id: uuid.UUID, reason: str = "Dispute resolved: refund to client"
     ) -> bool:
-        """Refund a gig-order escrow (used by dispute resolution)."""
+        """Refund a service-order escrow (used by dispute resolution)."""
         result = await self.db.execute(
             select(Escrow).where(
-                Escrow.gig_order_id == gig_order_id,
+                Escrow.service_order_id == service_order_id,
                 Escrow.status.in_([EscrowStatus.FUNDED, EscrowStatus.DISPUTED]),
             ).with_for_update()
         )
@@ -562,10 +608,13 @@ class PaymentService(BaseService):
             type=NotificationType.PAYMENT_RECEIVED,
             title="تم بدء استرداد المبلغ",
             message=f"سيتم إعادة ${escrow.amount:.2f} إلى حسابك خلال 3-5 أيام عمل.",
-            link_type="gig_order",
-            link_id=escrow.gig_order_id,
+            link_type="service_order",
+            link_id=escrow.service_order_id,
         )
-        logger.info("Gig order escrow refunded: gig_order_id=%s amount=%s", gig_order_id, escrow.amount)
+        logger.info(
+            "Service order escrow refunded: service_order_id=%s amount=%s",
+            service_order_id, escrow.amount,
+        )
         return True
 
     async def refund_escrow(

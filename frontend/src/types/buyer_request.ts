@@ -16,7 +16,7 @@ export interface BuyerRequestClient {
   avatar_url?: string;
 }
 
-export interface BuyerRequestGig {
+export interface BuyerRequestService {
   id: string;
   title: string;
   slug: string;
@@ -54,6 +54,8 @@ export interface BuyerRequestOffer {
   id: string;
   request_id: string;
   freelancer_id: string;
+  service_id?: string;
+  /** @deprecated — backend still emits gig_id during rename deprecation window */
   gig_id?: string;
   price: number;
   delivery_days: number;
@@ -62,7 +64,9 @@ export interface BuyerRequestOffer {
   created_at: string;
   updated_at: string;
   freelancer?: BuyerRequestFreelancer;
-  gig?: BuyerRequestGig;
+  service?: BuyerRequestService;
+  /** @deprecated — backend still emits `gig` during rename deprecation window */
+  gig?: BuyerRequestService;
 }
 
 export interface BuyerRequestListResponse {

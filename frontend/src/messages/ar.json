@@ -43,7 +43,7 @@
   "nav": {
     "findWork": "ابحث عن عمل",
     "findFreelancers": "ابحث عن مستقل",
-    "gigs": "الخدمات",
+    "services": "الخدمات",
     "jobs": "الوظائف",
     "howItWorks": "كيف يعمل",
     "login": "تسجيل الدخول",
@@ -188,7 +188,7 @@
     },
     "empty": "لا توجد وظائف متاحة حالياً. كن أول من ينشر وظيفة!"
   },
-  "gigs": {
+  "services": {
     "title": "الخدمات المتاحة",
     "subtitle": "استأجر مستقلاً لخدمة محددة",
     "create": "أضف خدمتك",
@@ -237,8 +237,8 @@
         "gallery": "المعرض",
         "publish": "النشر"
       },
-      "gigTitle": "عنوان الخدمة",
-      "gigTitlePlaceholder": "مثال: سأصمم لك شعاراً احترافياً",
+      "serviceTitle": "عنوان الخدمة",
+      "serviceTitlePlaceholder": "مثال: سأصمم لك شعاراً احترافياً",
       "category": "التصنيف",
       "subcategory": "التصنيف الفرعي",
       "tags": "الوسوم",
@@ -264,17 +264,17 @@
     "detail": {
       "aboutSeller": "عن البائع",
       "reviews": "التقييمات",
-      "relatedGigs": "خدمات مشابهة",
+      "relatedServices": "خدمات مشابهة",
       "contactSeller": "التواصل مع البائع",
       "share": "مشاركة",
       "save": "حفظ",
       "comparePackages": "مقارنة الباقات"
     },
     "empty": "لا توجد خدمات في هذا التصنيف حالياً",
-    "myGigs": {
+    "myServices": {
       "title": "خدماتي",
       "manage": "إدارة الخدمات",
-      "noGigs": "لم تنشر أي خدمات بعد",
+      "noServices": "لم تنشر أي خدمات بعد",
       "createFirst": "أنشئ خدمتك الأولى الآن"
     }
   },
@@ -359,7 +359,7 @@
       "language": "اللغة",
       "changePassword": "تغيير كلمة المرور"
     },
-    "gigs": {
+    "services": {
       "title": "خدماتي",
       "active": "نشطة",
       "pending": "قيد المراجعة",

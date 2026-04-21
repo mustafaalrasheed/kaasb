@@ -35,7 +35,7 @@ class DisputeStatus(str, enum.Enum):
 
 class Dispute(BaseModel):
     """
-    Formal dispute record associated with a GigOrder.
+    Formal dispute record associated with a ServiceOrder.
     One dispute per order (unique constraint on order_id).
     """
 
@@ -43,7 +43,7 @@ class Dispute(BaseModel):
 
     order_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("gig_orders.id", ondelete="CASCADE"),
+        ForeignKey("service_orders.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
         index=True,
@@ -75,7 +75,7 @@ class Dispute(BaseModel):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    order: Mapped[GigOrder] = relationship("GigOrder")  # type: ignore[name-defined]
+    order: Mapped[ServiceOrder] = relationship("ServiceOrder")  # type: ignore[name-defined]
     admin: Mapped[User | None] = relationship("User", foreign_keys=[admin_id])  # type: ignore[name-defined]
 
     def __repr__(self) -> str:

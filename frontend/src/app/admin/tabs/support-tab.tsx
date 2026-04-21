@@ -5,6 +5,7 @@ import { adminApi, messagesApi } from "@/lib/api";
 import type {
   ConversationSummary,
   MessageDetail,
+  SupportTicketStatus,
 } from "@/types/message";
 import { toast } from "sonner";
 import { backendUrl, getApiError } from "@/lib/utils";
@@ -17,7 +18,9 @@ interface SupportTabProps {
 export function SupportTab({ ar, dateLocale }: SupportTabProps) {
   const [threads, setThreads] = useState<ConversationSummary[]>([]);
   const [total, setTotal] = useState(0);
-  const [onlyUnread, setOnlyUnread] = useState(true);
+  const [onlyUnread, setOnlyUnread] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<SupportTicketStatus | "">("open");
+  const [mineOnly, setMineOnly] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [active, setActive] = useState<ConversationSummary | null>(null);
@@ -25,13 +28,18 @@ export function SupportTab({ ar, dateLocale }: SupportTabProps) {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [ticketActionLoading, setTicketActionLoading] = useState(false);
 
   const scrollEndRef = useRef<HTMLDivElement>(null);
 
   const fetchThreads = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await adminApi.getSupportConversations({ only_unread: onlyUnread });
+      const res = await adminApi.getSupportConversations({
+        only_unread: onlyUnread,
+        status: statusFilter || undefined,
+        mine: mineOnly || undefined,
+      });
       setThreads(res.data.conversations);
       setTotal(res.data.total);
     } catch (err) {
@@ -39,7 +47,7 @@ export function SupportTab({ ar, dateLocale }: SupportTabProps) {
     } finally {
       setLoading(false);
     }
-  }, [onlyUnread, ar]);
+  }, [onlyUnread, statusFilter, mineOnly, ar]);
 
   const fetchMessages = useCallback(async (convoId: string) => {
     try {
@@ -90,6 +98,62 @@ export function SupportTab({ ar, dateLocale }: SupportTabProps) {
     }
   };
 
+  const runTicketAction = async (
+    action: "claim" | "resolve" | "reopen",
+    successMsg: string,
+    errorMsg: string,
+  ) => {
+    if (!active || ticketActionLoading) return;
+    setTicketActionLoading(true);
+    try {
+      const fn =
+        action === "claim" ? adminApi.claimSupportTicket
+        : action === "resolve" ? adminApi.resolveSupportTicket
+        : adminApi.reopenSupportTicket;
+      const res = await fn(active.id);
+      setActive(res.data);
+      toast.success(successMsg);
+      fetchThreads();
+    } catch (err) {
+      toast.error(getApiError(err, errorMsg));
+    } finally {
+      setTicketActionLoading(false);
+    }
+  };
+
+  const handleClaim = () =>
+    runTicketAction(
+      "claim",
+      ar ? "تم استلام التذكرة" : "Ticket claimed",
+      ar ? "تعذّر استلام التذكرة" : "Failed to claim ticket",
+    );
+
+  const handleResolve = () =>
+    runTicketAction(
+      "resolve",
+      ar ? "تم إغلاق التذكرة" : "Ticket resolved",
+      ar ? "تعذّر الإغلاق" : "Failed to resolve",
+    );
+
+  const handleReopen = () =>
+    runTicketAction(
+      "reopen",
+      ar ? "تم إعادة فتح التذكرة" : "Ticket reopened",
+      ar ? "تعذّر إعادة الفتح" : "Failed to reopen",
+    );
+
+  const statusLabel = (s: SupportTicketStatus | null | undefined) => {
+    if (!s) return "";
+    if (ar) return s === "open" ? "مفتوحة" : s === "in_progress" ? "قيد المعالجة" : "مغلقة";
+    return s === "open" ? "Open" : s === "in_progress" ? "In Progress" : "Resolved";
+  };
+
+  const statusPillClass = (s: SupportTicketStatus | null | undefined) => {
+    if (s === "in_progress") return "bg-blue-100 text-blue-700";
+    if (s === "resolved") return "bg-gray-100 text-gray-600";
+    return "bg-amber-100 text-amber-800";
+  };
+
   const avatarLetters = (f: string, l: string) =>
     `${f?.[0] ?? ""}${l?.[0] ?? ""}`.toUpperCase();
 
@@ -116,14 +180,33 @@ export function SupportTab({ ar, dateLocale }: SupportTabProps) {
               : `${total} ticket${total !== 1 ? "s" : ""}${onlyUnread ? " awaiting reply" : ""}`}
           </p>
         </div>
-        <label className="ms-auto flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as SupportTicketStatus | "")}
+          className="ms-auto border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+        >
+          <option value="">{ar ? "كل الحالات" : "All statuses"}</option>
+          <option value="open">{ar ? "مفتوحة" : "Open"}</option>
+          <option value="in_progress">{ar ? "قيد المعالجة" : "In Progress"}</option>
+          <option value="resolved">{ar ? "مغلقة" : "Resolved"}</option>
+        </select>
+        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={mineOnly}
+            onChange={(e) => setMineOnly(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          {ar ? "المُسندة لي" : "Assigned to me"}
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
           <input
             type="checkbox"
             checked={onlyUnread}
             onChange={(e) => setOnlyUnread(e.target.checked)}
             className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
-          {ar ? "إظهار غير المقروءة فقط" : "Unread only"}
+          {ar ? "غير المقروءة فقط" : "Unread only"}
         </label>
         <button
           onClick={fetchThreads}
@@ -190,6 +273,18 @@ export function SupportTab({ ar, dateLocale }: SupportTabProps) {
                     <p className="text-xs text-gray-500 truncate mt-0.5">
                       @{t.other_user.username}
                     </p>
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
+                      {t.support_status && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusPillClass(t.support_status)}`}>
+                          {statusLabel(t.support_status)}
+                        </span>
+                      )}
+                      {t.support_assignee && (
+                        <span className="text-[10px] text-gray-500 truncate">
+                          {ar ? "لـ" : "by"} @{t.support_assignee.username}
+                        </span>
+                      )}
+                    </div>
                     <p className={`text-xs truncate mt-1 ${t.unread_count > 0 ? "text-gray-800" : "text-gray-400"}`}>
                       {t.last_message_text || (ar ? "لا رسائل" : "No messages")}
                     </p>
@@ -213,17 +308,59 @@ export function SupportTab({ ar, dateLocale }: SupportTabProps) {
             </div>
           ) : (
             <>
-              <div className="px-5 py-3 border-b border-gray-200 bg-white">
-                <div className="font-semibold text-sm text-gray-900">
-                  {active.other_user.first_name} {active.other_user.last_name}
-                  <span className="text-gray-400 font-normal ms-2">@{active.other_user.username}</span>
+              <div className="px-5 py-3 border-b border-gray-200 bg-white flex items-start gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-gray-900 flex items-center gap-2 flex-wrap">
+                    <span>
+                      {active.other_user.first_name} {active.other_user.last_name}
+                    </span>
+                    <span className="text-gray-400 font-normal">@{active.other_user.username}</span>
+                    {active.support_status && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusPillClass(active.support_status)}`}>
+                        {statusLabel(active.support_status)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {ar ? "تذكرة دعم" : "Support ticket"}
+                    {" · "}
+                    {active.message_count} {ar ? "رسالة" : "messages"}
+                    {active.support_assignee && (
+                      <>
+                        {" · "}
+                        {ar ? "المسؤول" : "Handled by"} @{active.support_assignee.username}
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {ar ? "تذكرة دعم" : "Support ticket"}
-                  {" · "}
-                  {active.message_count}
-                  {" "}
-                  {ar ? "رسالة" : "messages"}
+                <div className="flex items-center gap-2 shrink-0">
+                  {active.support_status !== "in_progress" && active.support_status !== "resolved" && (
+                    <button
+                      onClick={handleClaim}
+                      disabled={ticketActionLoading}
+                      className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+                    >
+                      {ar ? "استلام" : "Claim"}
+                    </button>
+                  )}
+                  {active.support_status === "in_progress" && (
+                    <button
+                      onClick={handleResolve}
+                      disabled={ticketActionLoading}
+                      className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40"
+                    >
+                      {ar ? "إغلاق" : "Resolve"}
+                    </button>
+                  )}
+                  {active.support_status === "resolved" && (
+                    <button
+                      onClick={handleReopen}
+                      disabled={ticketActionLoading}
+                      className="px-3 py-1.5 text-xs font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40"
+                    >
+                      {ar ? "إعادة فتح" : "Reopen"}
+                    </button>
+                  )}
                 </div>
               </div>
 

@@ -31,6 +31,7 @@ export default function PaymentsPage() {
 
   const [showSetup, setShowSetup] = useState(false);
   const [qiCardPhone, setQiCardPhone] = useState("");
+  const [qiCardHolderName, setQiCardHolderName] = useState("");
 
   const [showPayout, setShowPayout] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
@@ -64,13 +65,15 @@ export default function PaymentsPage() {
       await paymentsApi.setupAccount({
         provider: "qi_card",
         ...(qiCardPhone ? { qi_card_phone: qiCardPhone } : {}),
+        ...(qiCardHolderName.trim() ? { qi_card_holder_name: qiCardHolderName.trim() } : {}),
       });
-      toast.success(ar ? "تم إنشاء حساب Qi Card" : "Qi Card account created");
+      toast.success(ar ? "تم حفظ تفاصيل حساب Qi Card" : "Qi Card account saved");
       setShowSetup(false);
       setQiCardPhone("");
+      setQiCardHolderName("");
       fetchData();
     } catch (err: unknown) {
-      toast.error(getApiError(err, ar ? "تعذّر إنشاء الحساب" : "Failed to create account"));
+      toast.error(getApiError(err, ar ? "تعذّر حفظ الحساب" : "Failed to save account"));
     }
   };
 
@@ -161,17 +164,17 @@ export default function PaymentsPage() {
       {showSetup && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
           <h3 className="font-semibold text-gray-900">
-            {ar ? "إضافة حساب Qi Card" : "Add Qi Card Account"}
+            {ar ? "حساب Qi Card لاستلام الأرباح" : "Qi Card Payout Account"}
           </h3>
           <p className="text-sm text-gray-500">
             {ar
-              ? "الدفع يتم عبر بوابة Qi Card — لا تحتاج إلى إدخال أي بيانات هنا لإتمام الدفع. رقم الهاتف أدناه اختياري ويُستخدم فقط كتسمية لحسابك."
-              : "Payments go through the Qi Card portal — no details required here to make a payment. The phone number below is optional and used only as an account label for your reference."}
+              ? "الدفع من العملاء يتم عبر بوابة Qi Card تلقائياً. للاستلام منكم، يحوّل الأدمن المبلغ يدوياً عبر تطبيق Qi Card إلى نفس الرقم والاسم الموجود على البطاقة — تأكد من تطابق الاسم والرقم مع ما هو مسجّل لدى Qi Card."
+              : "Client payments go through Qi Card automatically. For payouts, the admin transfers the amount manually via the Qi Card app to the phone + cardholder name below — both must match what's registered with Qi Card exactly."}
           </p>
-          <div className="flex gap-3 items-end">
-            <div className="flex-1">
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
               <label className="block text-sm text-gray-600 mb-1">
-                {ar ? "رقم هاتف Qi Card (للتعريف فقط)" : "Qi Card phone number (label only)"}
+                {ar ? "رقم هاتف Qi Card" : "Qi Card phone number"}
               </label>
               <input
                 type="tel"
@@ -182,11 +185,26 @@ export default function PaymentsPage() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
             </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                {ar ? "اسم صاحب البطاقة (كما هو مسجّل)" : "Cardholder name (as registered)"}
+              </label>
+              <input
+                type="text"
+                value={qiCardHolderName}
+                onChange={(e) => setQiCardHolderName(e.target.value)}
+                placeholder={ar ? "مصطفى غسّان عبد" : "Mustafa Ghassan Abd"}
+                maxLength={128}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
             <button
               onClick={handleSetupAccount}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
-              {ar ? "إنشاء الحساب" : "Create Account"}
+              {ar ? "حفظ" : "Save"}
             </button>
           </div>
         </div>
@@ -249,26 +267,41 @@ export default function PaymentsPage() {
             {ar ? "حسابات الدفع" : "Payment Accounts"}
           </h3>
           <div className="space-y-2">
-            {summary.payment_accounts.map((acc) => (
-              <div key={acc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">💳</span>
-                  <div>
-                    <span className="font-medium text-gray-900">
-                      {PROVIDER_LABELS[acc.provider] || acc.provider}
+            {summary.payment_accounts.map((acc) => {
+              const payoutReady = Boolean(acc.qi_card_phone && acc.qi_card_holder_name);
+              return (
+                <div key={acc.id} className="p-3 bg-gray-50 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">💳</span>
+                      <div>
+                        <div className="font-medium text-gray-900">
+                          {PROVIDER_LABELS[acc.provider] || acc.provider}
+                        </div>
+                        {acc.qi_card_phone && (
+                          <div className="text-xs text-gray-500" dir="ltr">{acc.qi_card_phone}</div>
+                        )}
+                        {acc.qi_card_holder_name && (
+                          <div className="text-xs text-gray-500">{acc.qi_card_holder_name}</div>
+                        )}
+                      </div>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      acc.status === "verified" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"
+                    }`}>
+                      {ACCOUNT_STATUS_LABELS[acc.status] || acc.status}
                     </span>
-                    {acc.qi_card_phone && (
-                      <span className="text-sm text-gray-500 ms-2">{acc.qi_card_phone}</span>
-                    )}
                   </div>
+                  {!payoutReady && (
+                    <div className="text-xs bg-amber-50 text-amber-800 rounded-md px-2 py-1.5">
+                      {ar
+                        ? "لن يتمكّن الأدمن من تحويل أرباحك حتى تُدخل رقم هاتف Qi Card واسم صاحب البطاقة."
+                        : "Admin can't release payouts until both the Qi Card phone and cardholder name are set."}
+                    </div>
+                  )}
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  acc.status === "verified" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"
-                }`}>
-                  {ACCOUNT_STATUS_LABELS[acc.status] || acc.status}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

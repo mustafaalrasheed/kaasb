@@ -3,14 +3,14 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { gigsApi } from "@/lib/api";
+import { servicesApi } from "@/lib/api";
 import { useLocale } from "@/providers/locale-provider";
 import { backendUrl } from "@/lib/utils";
 import { toast } from "sonner";
 
 // ---- Types ----
 
-interface GigPackage {
+interface ServicePackage {
   id: string;
   tier: "basic" | "standard" | "premium";
   name: string;
@@ -21,7 +21,7 @@ interface GigPackage {
   features?: string[];
 }
 
-interface GigFreelancer {
+interface ServiceFreelancer {
   id: string;
   username: string;
   first_name: string;
@@ -33,7 +33,7 @@ interface GigFreelancer {
   bio?: string;
 }
 
-interface GigDetail {
+interface ServiceDetail {
   id: string;
   slug: string;
   title: string;
@@ -41,8 +41,8 @@ interface GigDetail {
   tags?: string[];
   images?: string[];
   thumbnail_url?: string;
-  packages: GigPackage[];
-  freelancer: GigFreelancer;
+  packages: ServicePackage[];
+  freelancer: ServiceFreelancer;
   avg_rating?: number;
   total_orders?: number;
   review_count?: number;
@@ -58,7 +58,7 @@ const t = {
     timeout: "انتهت مهلة التحميل. تحقّق من اتصالك بالإنترنت ثم أعد المحاولة.",
     retry: "إعادة المحاولة",
     notFound: "الخدمة غير موجودة",
-    backToGigs: "العودة إلى الخدمات",
+    backToServices: "العودة إلى الخدمات",
     description: "وصف الخدمة",
     tags: "الكلمات المفتاحية",
     orderNow: "اطلب الآن",
@@ -86,12 +86,12 @@ const t = {
   },
   en: {
     loading: "Loading...",
-    error: "Failed to load this gig. Please try again.",
+    error: "Failed to load this service. Please try again.",
     timeout: "Loading timed out. Check your connection and try again.",
     retry: "Try again",
-    notFound: "Gig not found",
-    backToGigs: "Back to Services",
-    description: "About This Gig",
+    notFound: "Service not found",
+    backToServices: "Back to Services",
+    description: "About This Service",
     tags: "Tags",
     orderNow: "Order Now",
     contactFreelancer: "Contact Freelancer",
@@ -122,7 +122,7 @@ const TIER_KEYS = ["basic", "standard", "premium"] as const;
 
 // ---- Skeleton (shown during initial load + retries) ----
 
-function GigDetailSkeleton() {
+function ServiceDetailSkeleton() {
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-pulse">
       <div className="h-4 w-32 bg-gray-200 rounded mb-6" />
@@ -225,12 +225,12 @@ function ImageCarousel({ images, title, locale }: { images: string[]; title: str
 // ---- Order Modal ----
 
 function OrderModal({
-  gig,
+  service,
   packageId,
   onClose,
   locale,
 }: {
-  gig: GigDetail;
+  service: ServiceDetail;
   packageId: string;
   onClose: () => void;
   locale: "ar" | "en";
@@ -243,8 +243,8 @@ function OrderModal({
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const res = await gigsApi.placeOrder({
-        gig_id: gig.id,
+      const res = await servicesApi.placeOrder({
+        service_id: service.id,
         package_id: packageId,
         requirements: requirements.trim() || undefined,
       });
@@ -301,13 +301,13 @@ function OrderModal({
 
 // ---- Main Page ----
 
-export default function GigDetailPage() {
+export default function ServiceDetailPage() {
   const params = useParams();
   const slug = params.slug as string;
   const { locale } = useLocale();
   const str = t[locale];
 
-  const [gig, setGig] = useState<GigDetail | null>(null);
+  const [service, setService] = useState<ServiceDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
@@ -333,11 +333,11 @@ export default function GigDetailPage() {
           if (cancelled || controller.signal.aborted) break;
         }
         try {
-          const res = await gigsApi.getBySlug(slug);
+          const res = await servicesApi.getBySlug(slug);
           clearTimeout(hardTimeout);
           if (cancelled) return;
           const data = res.data?.data || res.data;
-          setGig(data);
+          setService(data);
           if (data?.packages?.length > 0) {
             setActivePackageTier(data.packages[0].tier);
           }
@@ -347,7 +347,7 @@ export default function GigDetailPage() {
         } catch (err: unknown) {
           lastErr = err;
           const status = (err as { response?: { status?: number } })?.response?.status;
-          // Don't retry on definitive 4xx — the gig genuinely isn't available.
+          // Don't retry on definitive 4xx — the service genuinely isn't available.
           if (status === 404 || status === 403 || status === 401) break;
           if (controller.signal.aborted) break;
         }
@@ -373,10 +373,10 @@ export default function GigDetailPage() {
   }, [slug, locale, reloadTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) {
-    return <GigDetailSkeleton />;
+    return <ServiceDetailSkeleton />;
   }
 
-  if (error || !gig) {
+  if (error || !service) {
     const isNotFound = error === str.notFound;
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-center px-4">
@@ -399,8 +399,8 @@ export default function GigDetailPage() {
                 {str.retry}
               </button>
             )}
-            <Link href="/gigs" className="text-brand-500 hover:text-brand-600 text-sm">
-              {str.backToGigs}
+            <Link href="/services" className="text-brand-500 hover:text-brand-600 text-sm">
+              {str.backToServices}
             </Link>
           </div>
         </div>
@@ -408,16 +408,16 @@ export default function GigDetailPage() {
     );
   }
 
-  const freelancerName = gig.freelancer.display_name ||
-    `${gig.freelancer.first_name} ${gig.freelancer.last_name}`;
+  const freelancerName = service.freelancer.display_name ||
+    `${service.freelancer.first_name} ${service.freelancer.last_name}`;
 
   // Packages indexed by tier
   const packagesByTier = Object.fromEntries(
-    gig.packages.map((p) => [p.tier, p])
-  ) as Record<string, GigPackage>;
+    service.packages.map((p) => [p.tier, p])
+  ) as Record<string, ServicePackage>;
 
   const availableTiers = TIER_KEYS.filter((tier) => packagesByTier[tier]);
-  const activePackage = packagesByTier[activePackageTier] || gig.packages[0];
+  const activePackage = packagesByTier[activePackageTier] || service.packages[0];
 
   const tierLabel = (tier: string) => {
     if (tier === "basic") return str.basic;
@@ -425,51 +425,51 @@ export default function GigDetailPage() {
     return str.premium;
   };
 
-  const images = gig.images?.length
-    ? gig.images
-    : gig.thumbnail_url
-    ? [gig.thumbnail_url]
+  const images = service.images?.length
+    ? service.images
+    : service.thumbnail_url
+    ? [service.thumbnail_url]
     : [];
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Back link */}
-      <Link href="/gigs" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-600 mb-6 transition-colors">
+      <Link href="/services" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-600 mb-6 transition-colors">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
-        {str.backToGigs}
+        {str.backToServices}
       </Link>
 
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Left — Main content */}
         <div className="flex-1 min-w-0 space-y-6">
-          <h1 className="text-2xl font-bold text-gray-900">{gig.title}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{service.title}</h1>
 
           {/* Freelancer summary */}
           <div className="flex items-center gap-3">
-            <Link href={`/profile/${gig.freelancer.username}`}>
+            <Link href={`/profile/${service.freelancer.username}`}>
               <div className="w-10 h-10 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
-                {gig.freelancer.avatar_url ? (
+                {service.freelancer.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={backendUrl(gig.freelancer.avatar_url)} alt={freelancerName} className="w-full h-full object-cover" />
+                  <img src={backendUrl(service.freelancer.avatar_url)} alt={freelancerName} className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-sm font-bold text-brand-500">
-                    {gig.freelancer.first_name[0]}{gig.freelancer.last_name[0]}
+                    {service.freelancer.first_name[0]}{service.freelancer.last_name[0]}
                   </span>
                 )}
               </div>
             </Link>
             <div>
-              <Link href={`/profile/${gig.freelancer.username}`} className="font-medium text-gray-900 hover:text-brand-600 transition-colors">
+              <Link href={`/profile/${service.freelancer.username}`} className="font-medium text-gray-900 hover:text-brand-600 transition-colors">
                 {freelancerName}
               </Link>
-              {gig.avg_rating && gig.avg_rating > 0 ? (
+              {service.avg_rating && service.avg_rating > 0 ? (
                 <p className="text-sm text-gray-500 flex items-center gap-1">
                   <span className="text-yellow-400">★</span>
-                  <span>{gig.avg_rating.toFixed(1)}</span>
-                  {gig.review_count ? <span>({gig.review_count})</span> : null}
-                  {gig.total_orders ? <span>· {gig.total_orders} {str.orders}</span> : null}
+                  <span>{service.avg_rating.toFixed(1)}</span>
+                  {service.review_count ? <span>({service.review_count})</span> : null}
+                  {service.total_orders ? <span>· {service.total_orders} {str.orders}</span> : null}
                 </p>
               ) : (
                 <p className="text-sm text-gray-400">{str.noRating}</p>
@@ -478,22 +478,22 @@ export default function GigDetailPage() {
           </div>
 
           {/* Carousel */}
-          <ImageCarousel images={images} title={gig.title} locale={locale} />
+          <ImageCarousel images={images} title={service.title} locale={locale} />
 
           {/* Description */}
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">{str.description}</h2>
             <div className="text-gray-700 whitespace-pre-line leading-relaxed">
-              {gig.description}
+              {service.description}
             </div>
           </div>
 
           {/* Tags */}
-          {gig.tags && gig.tags.length > 0 && (
+          {service.tags && service.tags.length > 0 && (
             <div className="card p-5">
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{str.tags}</h2>
               <div className="flex flex-wrap gap-2">
-                {gig.tags.map((tag) => (
+                {service.tags.map((tag) => (
                   <span key={tag} className="px-3 py-1 rounded-full text-sm bg-gray-100 text-gray-700 border border-gray-200">
                     {tag}
                   </span>
@@ -586,33 +586,33 @@ export default function GigDetailPage() {
             {/* Freelancer card */}
             <div className="card p-5">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">{str.about}</h3>
-              <Link href={`/profile/${gig.freelancer.username}`} className="flex items-center gap-3 group mb-4">
+              <Link href={`/profile/${service.freelancer.username}`} className="flex items-center gap-3 group mb-4">
                 <div className="w-12 h-12 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
-                  {gig.freelancer.avatar_url ? (
+                  {service.freelancer.avatar_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={backendUrl(gig.freelancer.avatar_url)} alt={freelancerName} className="w-full h-full object-cover" />
+                    <img src={backendUrl(service.freelancer.avatar_url)} alt={freelancerName} className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-lg font-bold text-brand-500">
-                      {gig.freelancer.first_name[0]}{gig.freelancer.last_name[0]}
+                      {service.freelancer.first_name[0]}{service.freelancer.last_name[0]}
                     </span>
                   )}
                 </div>
                 <div>
                   <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors">{freelancerName}</p>
-                  {gig.freelancer.avg_rating && gig.freelancer.avg_rating > 0 ? (
+                  {service.freelancer.avg_rating && service.freelancer.avg_rating > 0 ? (
                     <p className="text-sm text-gray-500">
-                      ★ {gig.freelancer.avg_rating.toFixed(1)}
-                      {gig.freelancer.total_reviews ? ` (${gig.freelancer.total_reviews})` : ""}
+                      ★ {service.freelancer.avg_rating.toFixed(1)}
+                      {service.freelancer.total_reviews ? ` (${service.freelancer.total_reviews})` : ""}
                     </p>
                   ) : null}
                 </div>
               </Link>
 
-              {gig.freelancer.bio && (
-                <p className="text-sm text-gray-600 line-clamp-3 mb-4">{gig.freelancer.bio}</p>
+              {service.freelancer.bio && (
+                <p className="text-sm text-gray-600 line-clamp-3 mb-4">{service.freelancer.bio}</p>
               )}
 
-              <Link href={`/dashboard/messages?with=${gig.freelancer.id}`} className="btn-secondary w-full py-2.5 text-sm text-center block">
+              <Link href={`/dashboard/messages?with=${service.freelancer.id}`} className="btn-secondary w-full py-2.5 text-sm text-center block">
                 {str.contactFreelancer}
               </Link>
             </div>
@@ -623,7 +623,7 @@ export default function GigDetailPage() {
       {/* Order Modal */}
       {showOrderModal && activePackage && (
         <OrderModal
-          gig={gig}
+          service={service}
           packageId={activePackage.id}
           onClose={() => setShowOrderModal(false)}
           locale={locale}

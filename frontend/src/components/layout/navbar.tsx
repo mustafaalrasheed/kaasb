@@ -76,7 +76,7 @@ export function Navbar() {
                     {t.findFreelancers}
                   </Link>
                 )}
-                <Link href="/gigs" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                <Link href="/services" className="text-gray-600 hover:text-gray-900 font-medium transition-colors">
                   {t.services}
                 </Link>
                 {showRequests && (
@@ -191,7 +191,7 @@ export function Navbar() {
                   {t.findFreelancers}
                 </Link>
               )}
-              <Link href="/gigs" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+              <Link href="/services" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
                 {t.services}
               </Link>
               {showRequests && (

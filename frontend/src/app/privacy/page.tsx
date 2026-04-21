@@ -259,7 +259,7 @@ export default function PrivacyPolicyPage() {
                       consent choice. See our <Link href="/cookies" className="text-brand-500 hover:underline">Cookie Policy</Link>.
                     </Sub>
                     <Sub num="4.7" title="Uploaded files">
-                      Gig images, order delivery files, and profile avatars you upload. File type and size are
+                      Service images, order delivery files, and profile avatars you upload. File type and size are
                       validated server-side; we scan for magic-byte consistency. We do not extract or index
                       content from uploaded files beyond what is necessary to display them on the Platform.
                     </Sub>

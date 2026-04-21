@@ -8,7 +8,7 @@ Covers:
   - F1: Expire buyer requests past their expires_at
   - F2: Recalculate seller levels for all freelancers
   - F4: Auto-complete delivered orders after 3 days without client action
-  - F7: Refresh gig rank_score for all active gigs
+  - F7: Refresh service rank_score for all active services
 
 Run from the project root:
     python -m app.tasks.marketplace_tasks
@@ -84,7 +84,7 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
 
     Returns summary dict of level transitions.
     """
-    from app.models.gig import GigOrder, GigOrderStatus
+    from app.models.service import ServiceOrder, ServiceOrderStatus
     from app.models.user import SellerLevel, User, UserRole
 
     summary = {"upgraded": 0, "downgraded": 0, "unchanged": 0}
@@ -96,20 +96,18 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
     freelancers = list(freelancers_result.scalars().all())
 
     for user in freelancers:
-        # Count completed gig orders
         completed_result = await db.execute(
-            select(func.count(GigOrder.id)).where(
-                GigOrder.freelancer_id == user.id,
-                GigOrder.status == GigOrderStatus.COMPLETED,
+            select(func.count(ServiceOrder.id)).where(
+                ServiceOrder.freelancer_id == user.id,
+                ServiceOrder.status == ServiceOrderStatus.COMPLETED,
             )
         )
         completed_orders = completed_result.scalar_one() or 0
 
-        # Count total non-cancelled orders for completion rate
         total_result = await db.execute(
-            select(func.count(GigOrder.id)).where(
-                GigOrder.freelancer_id == user.id,
-                GigOrder.status.notin_([GigOrderStatus.PENDING]),
+            select(func.count(ServiceOrder.id)).where(
+                ServiceOrder.freelancer_id == user.id,
+                ServiceOrder.status.notin_([ServiceOrderStatus.PENDING]),
             )
         )
         total_orders = total_result.scalar_one() or 0
@@ -175,15 +173,15 @@ async def auto_complete_delivered_orders(db: AsyncSession) -> int:
     Auto-complete orders that have been in DELIVERED status for > 3 days
     without client action. Releases escrow to the freelancer.
     """
-    from app.models.gig import GigOrder, GigOrderStatus
     from app.models.notification import NotificationType
+    from app.models.service import ServiceOrder, ServiceOrderStatus
     from app.services.notification_service import notify_background
 
     cutoff = datetime.now(UTC) - timedelta(days=3)
     result = await db.execute(
-        select(GigOrder).where(
-            GigOrder.status == GigOrderStatus.DELIVERED,
-            GigOrder.delivered_at <= cutoff,
+        select(ServiceOrder).where(
+            ServiceOrder.status == ServiceOrderStatus.DELIVERED,
+            ServiceOrder.delivered_at <= cutoff,
         )
     )
     orders = list(result.scalars().all())
@@ -191,17 +189,16 @@ async def auto_complete_delivered_orders(db: AsyncSession) -> int:
 
     for order in orders:
         try:
-            order.status = GigOrderStatus.COMPLETED
+            order.status = ServiceOrderStatus.COMPLETED
             order.completed_at = datetime.now(UTC)
             await db.flush()
 
-            # Release escrow
             from sqlalchemy import select as _select
 
             from app.models.payment import Escrow, EscrowStatus
             escrow_result = await db.execute(
                 _select(Escrow).where(
-                    Escrow.gig_order_id == order.id,
+                    Escrow.service_order_id == order.id,
                     Escrow.status == EscrowStatus.FUNDED,
                 )
             )
@@ -218,7 +215,7 @@ async def auto_complete_delivered_orders(db: AsyncSession) -> int:
                 type=NotificationType.ORDER_AUTO_COMPLETED,
                 title="تم إغلاق الطلب تلقائياً",
                 message="تم إغلاق الطلب تلقائياً بعد 3 أيام من التسليم دون رد.",
-                link_type="gig_order",
+                link_type="service_order",
                 link_id=str(order.id),
             ))
         except Exception as exc:
@@ -229,9 +226,9 @@ async def auto_complete_delivered_orders(db: AsyncSession) -> int:
     return completed
 
 
-async def refresh_gig_rank_scores(db: AsyncSession) -> int:
+async def refresh_service_rank_scores(db: AsyncSession) -> int:
     """
-    Recalculate rank_score for all active gigs.
+    Recalculate rank_score for all active services.
     Score is a weighted sum (0–100) of:
       conversion_score  : orders / impressions
       review_score      : avg_rating * log(reviews + 1)
@@ -239,13 +236,13 @@ async def refresh_gig_rank_scores(db: AsyncSession) -> int:
       completion_score  : freelancer completion rate
       seller_level_bonus: 0 / 0.5 / 1.0 / 1.5 per level
     """
-    from app.models.gig import Gig, GigStatus
+    from app.models.service import Service, ServiceStatus
     from app.models.user import SellerLevel, User
 
     result = await db.execute(
-        select(Gig, User)
-        .join(User, Gig.freelancer_id == User.id)
-        .where(Gig.status == GigStatus.ACTIVE)
+        select(Service, User)
+        .join(User, Service.freelancer_id == User.id)
+        .where(Service.status == ServiceStatus.ACTIVE)
     )
     rows = result.all()
     updated = 0
@@ -258,42 +255,40 @@ async def refresh_gig_rank_scores(db: AsyncSession) -> int:
         SellerLevel.TOP_RATED: 1.5,
     }
 
-    for gig, freelancer in rows:
-        impressions = max(gig.impressions or 0, 1)
-        orders = gig.orders_count or 0
-        avg_rating = float(gig.avg_rating or 0.0)
-        reviews = gig.reviews_count or 0
+    for service, freelancer in rows:
+        impressions = max(service.impressions or 0, 1)
+        orders = service.orders_count or 0
+        avg_rating = float(service.avg_rating or 0.0)
+        reviews = service.reviews_count or 0
 
-        # Conversion score (0–1, scaled to 0–25)
         conversion = min(orders / impressions, 1.0) * 25.0
 
-        # Review score (rating * log(reviews+1), normalised to 0–30)
         review_raw = avg_rating * math.log(reviews + 1)
         review_score = min(review_raw / (5.0 * math.log(101)), 1.0) * 30.0
 
-        # Freshness score: half-life 90 days, scaled 0–20
-        days_old = (now - gig.created_at.replace(tzinfo=UTC)).days
+        days_old = (now - service.created_at.replace(tzinfo=UTC)).days
         freshness = math.exp(-days_old / 90.0) * 20.0
 
-        # Completion score (freelancer), scaled 0–20
         completion = float(freelancer.completion_rate or 0.0) * 20.0
 
-        # Seller level bonus (0–1.5, scaled 0–5)
         bonus = level_bonus.get(freelancer.seller_level, 0.0) * (5.0 / 1.5)
 
         rank = round(conversion + review_score + freshness + completion + bonus, 2)
 
         await db.execute(
-            update(Gig)
-            .where(Gig.id == gig.id)
+            update(Service)
+            .where(Service.id == service.id)
             .values(rank_score=rank, rank_updated_at=now)
             .execution_options(synchronize_session=False)
         )
         updated += 1
 
     await db.commit()
-    logger.info("Gig rank scores refreshed: %d gigs", updated)
+    logger.info("Service rank scores refreshed: %d services", updated)
     return updated
+
+
+refresh_gig_rank_scores = refresh_service_rank_scores
 
 
 async def run_all(db: AsyncSession) -> dict:
@@ -301,7 +296,7 @@ async def run_all(db: AsyncSession) -> dict:
     summary["buyer_requests_expired"] = await expire_buyer_requests(db)
     summary["seller_levels"] = await recalculate_seller_levels(db)
     summary["orders_auto_completed"] = await auto_complete_delivered_orders(db)
-    summary["gig_rank_scores_updated"] = await refresh_gig_rank_scores(db)
+    summary["service_rank_scores_updated"] = await refresh_service_rank_scores(db)
     return summary
 
 

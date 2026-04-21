@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { gigsApi } from "@/lib/api";
+import { servicesApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
@@ -18,9 +18,16 @@ interface RequirementAnswer {
   answer: string;
 }
 
-interface GigOrderItem {
+interface ServiceRef {
+  title: string;
+  slug: string;
+  requirement_questions?: RequirementQuestion[] | null;
+}
+
+interface ServiceOrderItem {
   id: string;
-  gig_id: string;
+  service_id?: string;
+  gig_id?: string;
   package_id: string;
   client_id: string;
   freelancer_id: string;
@@ -35,11 +42,8 @@ interface GigOrderItem {
   delivered_at?: string;
   completed_at?: string;
   created_at: string;
-  gig?: {
-    title: string;
-    slug: string;
-    requirement_questions?: RequirementQuestion[] | null;
-  };
+  service?: ServiceRef;
+  gig?: ServiceRef;
 }
 
 const STATUS_LABELS_AR: Record<string, string> = {
@@ -80,18 +84,22 @@ const TABS = [
   { value: "buying", labelAr: "طلباتي المشتراة", labelEn: "Buying" },
 ];
 
-export default function GigOrdersPage() {
+function getServiceRef(order: ServiceOrderItem): ServiceRef | undefined {
+  return order.service ?? order.gig;
+}
+
+export default function ServiceOrdersPage() {
   const { user } = useAuthStore();
   const { locale } = useLocale();
   const ar = locale === "ar";
 
   const [tab, setTab] = useState<"selling" | "buying">("selling");
-  const [orders, setOrders] = useState<GigOrderItem[]>([]);
+  const [orders, setOrders] = useState<ServiceOrderItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [requirementsOrder, setRequirementsOrder] = useState<GigOrderItem | null>(null);
-  const [deliverOrder, setDeliverOrder] = useState<GigOrderItem | null>(null);
-  const [viewOrder, setViewOrder] = useState<GigOrderItem | null>(null);
+  const [requirementsOrder, setRequirementsOrder] = useState<ServiceOrderItem | null>(null);
+  const [deliverOrder, setDeliverOrder] = useState<ServiceOrderItem | null>(null);
+  const [viewOrder, setViewOrder] = useState<ServiceOrderItem | null>(null);
 
   const isFreelancer = user?.primary_role === "freelancer";
   const statusLabels = ar ? STATUS_LABELS_AR : STATUS_LABELS_EN;
@@ -101,8 +109,8 @@ export default function GigOrdersPage() {
     try {
       const res =
         tab === "selling"
-          ? await gigsApi.myOrdersAsSeller()
-          : await gigsApi.myOrdersAsBuyer();
+          ? await servicesApi.myOrdersAsSeller()
+          : await servicesApi.myOrdersAsBuyer();
       setOrders(res.data);
     } catch {
       setOrders([]);
@@ -125,7 +133,7 @@ export default function GigOrdersPage() {
   ) => {
     setActionLoading(orderId);
     try {
-      await gigsApi.markDelivered(orderId, data);
+      await servicesApi.markDelivered(orderId, data);
       toast.success(ar ? "تم تسليم الطلب" : "Order delivered");
       setDeliverOrder(null);
       fetchOrders();
@@ -140,7 +148,7 @@ export default function GigOrdersPage() {
     if (!confirm(ar ? "هل تريد قبول التسليم وإتمام الطلب؟" : "Accept delivery and complete this order?")) return;
     setActionLoading(orderId);
     try {
-      await gigsApi.completeOrder(orderId);
+      await servicesApi.completeOrder(orderId);
       toast.success(ar ? "تم إتمام الطلب" : "Order completed");
       fetchOrders();
     } catch {
@@ -153,7 +161,7 @@ export default function GigOrdersPage() {
   const handleRevision = async (orderId: string) => {
     setActionLoading(orderId);
     try {
-      await gigsApi.requestRevision(orderId);
+      await servicesApi.requestRevision(orderId);
       toast.success(ar ? "تم طلب المراجعة" : "Revision requested");
       fetchOrders();
     } catch {
@@ -169,7 +177,7 @@ export default function GigOrdersPage() {
   ) => {
     setActionLoading(orderId);
     try {
-      await gigsApi.submitRequirements(orderId, answers);
+      await servicesApi.submitRequirements(orderId, answers);
       toast.success(ar ? "تم إرسال المتطلبات" : "Requirements submitted");
       setRequirementsOrder(null);
       fetchOrders();
@@ -184,10 +192,10 @@ export default function GigOrdersPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
-          {ar ? "طلبات الخدمات" : "Gig Orders"}
+          {ar ? "طلبات الخدمات" : "Service Orders"}
         </h1>
         <p className="mt-1 text-gray-600">
-          {ar ? "إدارة طلبات الخدمات المرسلة والمستلمة" : "Manage your sent and received gig orders"}
+          {ar ? "إدارة طلبات الخدمات المرسلة والمستلمة" : "Manage your sent and received service orders"}
         </p>
       </div>
 
@@ -220,8 +228,8 @@ export default function GigOrdersPage() {
           </p>
           <p className="mt-2 text-gray-500">
             {tab === "selling"
-              ? (ar ? "ستظهر هنا الطلبات التي يرسلها العملاء لخدماتك." : "Orders from clients for your gigs will appear here.")
-              : (ar ? "ستظهر هنا الطلبات التي اشتريتها من المستقلين." : "Gigs you've ordered from freelancers will appear here.")}
+              ? (ar ? "ستظهر هنا الطلبات التي يرسلها العملاء لخدماتك." : "Orders from clients for your services will appear here.")
+              : (ar ? "ستظهر هنا الطلبات التي اشتريتها من المستقلين." : "Services you've ordered from freelancers will appear here.")}
           </p>
         </div>
       ) : (
@@ -287,7 +295,7 @@ function OrderCard({
   onOpenDeliver,
   onViewDelivery,
 }: {
-  order: GigOrderItem;
+  order: ServiceOrderItem;
   view: "selling" | "buying";
   ar: boolean;
   statusLabels: Record<string, string>;
@@ -303,6 +311,7 @@ function OrderCard({
     order.status === "delivered" ||
     order.status === "revision_requested" ||
     order.status === "completed";
+  const svc = getServiceRef(order);
 
   return (
     <div className="card p-5">
@@ -310,7 +319,7 @@ function OrderCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-semibold text-gray-900 truncate">
-              {order.gig?.title ?? (ar ? "خدمة" : "Gig")}
+              {svc?.title ?? (ar ? "خدمة" : "Service")}
             </span>
             <span className={`shrink-0 px-2.5 py-0.5 text-xs font-medium rounded-full border ${STATUS_COLORS[order.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}>
               {statusLabels[order.status] ?? order.status}
@@ -413,13 +422,14 @@ function RequirementsModal({
   onClose,
   onSubmit,
 }: {
-  order: GigOrderItem;
+  order: ServiceOrderItem;
   ar: boolean;
   isBusy: boolean;
   onClose: () => void;
   onSubmit: (answers: RequirementAnswer[]) => void;
 }) {
-  const questions: RequirementQuestion[] = order.gig?.requirement_questions ?? [];
+  const svc = getServiceRef(order);
+  const questions: RequirementQuestion[] = svc?.requirement_questions ?? [];
   const [answers, setAnswers] = useState<string[]>(() =>
     questions.map(() => ""),
   );
@@ -559,7 +569,7 @@ function DeliverModal({
   onClose,
   onSubmit,
 }: {
-  order: GigOrderItem;
+  order: ServiceOrderItem;
   ar: boolean;
   isBusy: boolean;
   onClose: () => void;
@@ -730,7 +740,7 @@ function DeliveryView({
   ar,
   onClose,
 }: {
-  order: GigOrderItem;
+  order: ServiceOrderItem;
   ar: boolean;
   onClose: () => void;
 }) {
@@ -741,7 +751,7 @@ function DeliveryView({
     let cancelled = false;
     (async () => {
       try {
-        const res = await gigsApi.listDeliveries(order.id);
+        const res = await servicesApi.listDeliveries(order.id);
         if (!cancelled) setDeliveries(res.data);
       } catch {
         if (!cancelled) setError(ar ? "تعذّر تحميل التسليم" : "Failed to load delivery");

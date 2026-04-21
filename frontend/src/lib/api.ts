@@ -11,7 +11,7 @@ export { jobsApi } from "./api/jobs";
 export { proposalsApi } from "./api/proposals";
 export { contractsApi } from "./api/contracts";
 export { paymentsApi } from "./api/payments";
-export { gigsApi } from "./api/gigs";
+export { servicesApi, gigsApi } from "./api/services";
 export { adminApi } from "./api/admin";
 export { messagesApi } from "./api/messages";
 export { notificationsApi } from "./api/notifications";

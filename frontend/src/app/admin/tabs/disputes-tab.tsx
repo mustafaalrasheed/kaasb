@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { adminApi, gigsApi } from "@/lib/api";
+import { adminApi, servicesApi } from "@/lib/api";
 import { toast } from "sonner";
 import { getApiError } from "@/lib/utils";
 import type { MessageDetail } from "@/types/message";
@@ -13,7 +13,9 @@ interface DisputedOrder {
   dispute_opened_at: string | null;
   dispute_resolution: string | null;
   dispute_resolved_at: string | null;
-  gig: { title: string; slug: string } | null;
+  service: { title: string; slug: string } | null;
+  /** @deprecated — backend emits `gig` during rename deprecation window */
+  gig?: { title: string; slug: string } | null;
   client: { id: string; username: string; first_name: string; last_name: string } | null;
   freelancer: { id: string; username: string; first_name: string; last_name: string } | null;
   package: { name: string; price: number } | null;
@@ -44,7 +46,7 @@ export function DisputesTab({ ar, dateLocale }: DisputesTabProps) {
   const fetchDisputes = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await gigsApi.listDisputedOrders();
+      const res = await servicesApi.listDisputedOrders();
       setOrders(res.data);
     } catch (err) {
       toast.error(getApiError(err, ar ? "تعذّر تحميل النزاعات" : "Failed to load disputes"));
@@ -76,7 +78,7 @@ export function DisputesTab({ ar, dateLocale }: DisputesTabProps) {
     if (!selected || resolving) return;
     setResolving(true);
     try {
-      await gigsApi.resolveDispute(selected.id, resolution, adminNote);
+      await servicesApi.resolveDispute(selected.id, resolution, adminNote);
       toast.success(ar ? "تم حل النزاع" : "Dispute resolved");
       setResolveModal(false);
       setAdminNote("");
@@ -159,7 +161,7 @@ export function DisputesTab({ ar, dateLocale }: DisputesTabProps) {
                   <div className="w-2.5 h-2.5 rounded-full bg-orange-400 mt-1.5 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
-                      {o.gig?.title ?? (ar ? "خدمة محذوفة" : "Deleted gig")}
+                      {(o.service ?? o.gig)?.title ?? (ar ? "خدمة محذوفة" : "Deleted service")}
                     </p>
                     <p className="text-xs text-gray-500 mt-0.5 truncate">
                       {o.client?.username} → {o.freelancer?.username}
@@ -201,7 +203,7 @@ export function DisputesTab({ ar, dateLocale }: DisputesTabProps) {
               {/* Order summary */}
               <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
                 <h3 className="font-semibold text-gray-900">
-                  {selected.gig?.title ?? (ar ? "خدمة محذوفة" : "Deleted gig")}
+                  {(selected.service ?? selected.gig)?.title ?? (ar ? "خدمة محذوفة" : "Deleted service")}
                 </h3>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
@@ -358,7 +360,7 @@ export function DisputesTab({ ar, dateLocale }: DisputesTabProps) {
               {ar ? "حل النزاع" : "Resolve Dispute"}
             </h3>
             <p className="text-sm text-gray-500 mb-4">
-              {selected.gig?.title}
+              {(selected.service ?? selected.gig)?.title}
             </p>
 
             <div className="space-y-3 mb-4">

@@ -2,22 +2,22 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { gigsApi } from "@/lib/api";
+import { servicesApi } from "@/lib/api";
 import { useLocale } from "@/providers/locale-provider";
 import { backendUrl, useDebouncedCallback } from "@/lib/utils";
 
 // ---- Types ----
 
-interface GigCategory {
+interface ServiceCategory {
   id: string;
   name_ar: string;
   name_en: string;
   slug: string;
   icon?: string;
-  subcategories?: GigSubcategory[];
+  subcategories?: ServiceSubcategory[];
 }
 
-interface GigSubcategory {
+interface ServiceSubcategory {
   id: string;
   name_ar: string;
   name_en: string;
@@ -32,7 +32,7 @@ const LEVEL_BADGE: Record<SellerLevel, { label: string; labelAr: string; cls: st
   top_rated:  { label: "Top Rated", labelAr: "الأفضل تقييماً", cls: "bg-amber-100 text-amber-700" },
 };
 
-interface GigFreelancer {
+interface ServiceFreelancer {
   id: string;
   username: string;
   first_name: string;
@@ -42,23 +42,23 @@ interface GigFreelancer {
   seller_level?: SellerLevel;
 }
 
-interface GigPackageSummary {
+interface ServicePackageSummary {
   price: number;
   delivery_days: number;
 }
 
-interface GigSummary {
+interface ServiceSummary {
   id: string;
   slug: string;
   title: string;
   thumbnail_url?: string;
-  freelancer: GigFreelancer;
+  freelancer: ServiceFreelancer;
   avg_rating?: number;
   total_orders?: number;
   review_count?: number;
   starting_price?: number;
   min_delivery_days?: number;
-  packages?: GigPackageSummary[];
+  packages?: ServicePackageSummary[];
 }
 
 // ---- Strings ----
@@ -81,8 +81,8 @@ const t = {
     days: "أيام",
     day: "يوم",
     orders: "طلب",
-    noGigs: "لم يتم العثور على خدمات",
-    noGigsHint: "جرب تعديل معايير البحث أو الفلاتر.",
+    noServices: "لم يتم العثور على خدمات",
+    noServicesHint: "جرب تعديل معايير البحث أو الفلاتر.",
     previous: "السابق",
     next: "التالي",
     page: "صفحة",
@@ -106,8 +106,8 @@ const t = {
     days: "days",
     day: "day",
     orders: "orders",
-    noGigs: "No services found",
-    noGigsHint: "Try adjusting your search or filters.",
+    noServices: "No services found",
+    noServicesHint: "Try adjusting your search or filters.",
     previous: "Previous",
     next: "Next",
     page: "Page",
@@ -124,7 +124,7 @@ const SORT_OPTIONS = (locale: "ar" | "en") => [
 
 // ---- Skeleton ----
 
-function GigCardSkeleton() {
+function ServiceCardSkeleton() {
   return (
     <div className="card overflow-hidden animate-pulse">
       <div className="aspect-video bg-gray-200" />
@@ -147,34 +147,34 @@ function GigCardSkeleton() {
   );
 }
 
-// ---- Gig Card ----
+// ---- Service Card ----
 
-function GigCard({ gig, locale }: { gig: GigSummary; locale: "ar" | "en" }) {
+function ServiceCard({ service, locale }: { service: ServiceSummary; locale: "ar" | "en" }) {
   const str = t[locale];
-  const freelancerName = gig.freelancer.display_name ||
-    `${gig.freelancer.first_name} ${gig.freelancer.last_name}`;
-  const price = gig.starting_price ??
-    (gig.packages && gig.packages.length > 0
-      ? Math.min(...gig.packages.map((p) => p.price))
+  const freelancerName = service.freelancer.display_name ||
+    `${service.freelancer.first_name} ${service.freelancer.last_name}`;
+  const price = service.starting_price ??
+    (service.packages && service.packages.length > 0
+      ? Math.min(...service.packages.map((p) => p.price))
       : 0);
-  const deliveryDays = gig.min_delivery_days ??
-    (gig.packages && gig.packages.length > 0
-      ? Math.min(...gig.packages.map((p) => p.delivery_days))
+  const deliveryDays = service.min_delivery_days ??
+    (service.packages && service.packages.length > 0
+      ? Math.min(...service.packages.map((p) => p.delivery_days))
       : null);
 
   return (
     <Link
-      href={`/gigs/${gig.slug}`}
+      href={`/services/${service.slug}`}
       className="card overflow-hidden hover:shadow-md transition-shadow block group"
     >
       <article>
         {/* Thumbnail */}
         <div className="aspect-video bg-gray-100 overflow-hidden">
-          {gig.thumbnail_url ? (
+          {service.thumbnail_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={backendUrl(gig.thumbnail_url)}
-              alt={gig.title}
+              src={backendUrl(service.thumbnail_url)}
+              alt={service.title}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
           ) : (
@@ -192,41 +192,41 @@ function GigCard({ gig, locale }: { gig: GigSummary; locale: "ar" | "en" }) {
           {/* Freelancer */}
           <div className="flex items-center gap-2 mb-2">
             <div className="w-7 h-7 rounded-full overflow-hidden bg-brand-100 flex items-center justify-center shrink-0">
-              {gig.freelancer.avatar_url ? (
+              {service.freelancer.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={backendUrl(gig.freelancer.avatar_url)}
+                  src={backendUrl(service.freelancer.avatar_url)}
                   alt={freelancerName}
                   className="w-full h-full object-cover"
                 />
               ) : (
                 <span className="text-[10px] font-bold text-brand-500">
-                  {gig.freelancer.first_name[0]}{gig.freelancer.last_name[0]}
+                  {service.freelancer.first_name[0]}{service.freelancer.last_name[0]}
                 </span>
               )}
             </div>
             <span className="text-sm text-gray-500 truncate">{freelancerName}</span>
-            {gig.freelancer.seller_level && gig.freelancer.seller_level !== "new_seller" && (
-              <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${LEVEL_BADGE[gig.freelancer.seller_level].cls}`}>
+            {service.freelancer.seller_level && service.freelancer.seller_level !== "new_seller" && (
+              <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${LEVEL_BADGE[service.freelancer.seller_level].cls}`}>
                 {locale === "ar"
-                  ? LEVEL_BADGE[gig.freelancer.seller_level].labelAr
-                  : LEVEL_BADGE[gig.freelancer.seller_level].label}
+                  ? LEVEL_BADGE[service.freelancer.seller_level].labelAr
+                  : LEVEL_BADGE[service.freelancer.seller_level].label}
               </span>
             )}
           </div>
 
           {/* Title */}
           <h2 className="font-medium text-gray-900 line-clamp-2 text-sm leading-snug mb-2 group-hover:text-brand-600 transition-colors">
-            {gig.title}
+            {service.title}
           </h2>
 
           {/* Rating */}
-          {gig.avg_rating && gig.avg_rating > 0 ? (
+          {service.avg_rating && service.avg_rating > 0 ? (
             <div className="flex items-center gap-1 text-sm mb-2">
               <span className="text-yellow-400">★</span>
-              <span className="font-medium text-gray-800">{gig.avg_rating.toFixed(1)}</span>
-              {gig.review_count ? (
-                <span className="text-gray-400">({gig.review_count.toLocaleString(locale === "ar" ? "ar" : "en")})</span>
+              <span className="font-medium text-gray-800">{service.avg_rating.toFixed(1)}</span>
+              {service.review_count ? (
+                <span className="text-gray-400">({service.review_count.toLocaleString(locale === "ar" ? "ar" : "en")})</span>
               ) : null}
             </div>
           ) : null}
@@ -255,17 +255,17 @@ function GigCard({ gig, locale }: { gig: GigSummary; locale: "ar" | "en" }) {
 
 // ---- Main Component ----
 
-interface GigsCatalogProps {
+interface ServicesCatalogProps {
   initialCategories: unknown[];
 }
 
-export function GigsCatalog({ initialCategories }: GigsCatalogProps) {
+export function ServicesCatalog({ initialCategories }: ServicesCatalogProps) {
   const { locale } = useLocale();
   const str = t[locale];
 
-  const categories = initialCategories as GigCategory[];
+  const categories = initialCategories as ServiceCategory[];
 
-  const [gigs, setGigs] = useState<GigSummary[]>([]);
+  const [services, setServices] = useState<ServiceSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -277,7 +277,7 @@ export function GigsCatalog({ initialCategories }: GigsCatalogProps) {
   const [maxPrice, setMaxPrice] = useState("");
   const [page, setPage] = useState(1);
 
-  const fetchGigs = useCallback(async () => {
+  const fetchServices = useCallback(async () => {
     setIsLoading(true);
     try {
       const params: Record<string, unknown> = {
@@ -290,21 +290,21 @@ export function GigsCatalog({ initialCategories }: GigsCatalogProps) {
       if (minPrice) params.min_price = parseFloat(minPrice);
       if (maxPrice) params.max_price = parseFloat(maxPrice);
 
-      const res = await gigsApi.search(params as Parameters<typeof gigsApi.search>[0]);
+      const res = await servicesApi.search(params as Parameters<typeof servicesApi.search>[0]);
       const data = res.data;
-      setGigs(data?.gigs || data?.data || []);
+      setServices(data?.services || data?.gigs || data?.data || []);
       setTotal(data?.total || 0);
       setTotalPages(data?.pages || data?.total_pages || 1);
     } catch {
-      setGigs([]);
+      setServices([]);
     } finally {
       setIsLoading(false);
     }
   }, [searchQuery, selectedCategory, sortBy, minPrice, maxPrice, page]);
 
   useEffect(() => {
-    fetchGigs();
-  }, [fetchGigs]);
+    fetchServices();
+  }, [fetchServices]);
 
   const debouncedSearch = useDebouncedCallback((value: unknown) => {
     setSearchQuery(value as string);
@@ -400,26 +400,26 @@ export function GigsCatalog({ initialCategories }: GigsCatalogProps) {
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {Array.from({ length: 9 }).map((_, i) => (
-            <GigCardSkeleton key={i} />
+            <ServiceCardSkeleton key={i} />
           ))}
         </div>
-      ) : gigs.length === 0 ? (
+      ) : services.length === 0 ? (
         <div className="text-center py-16">
-          <p className="text-lg font-medium text-gray-900">{str.noGigs}</p>
-          <p className="mt-2 text-gray-500">{str.noGigsHint}</p>
+          <p className="text-lg font-medium text-gray-900">{str.noServices}</p>
+          <p className="mt-2 text-gray-500">{str.noServicesHint}</p>
         </div>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {gigs.map((gig) => (
-              <GigCard key={gig.id} gig={gig} locale={locale} />
+            {services.map((service) => (
+              <ServiceCard key={service.id} service={service} locale={locale} />
             ))}
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
             <nav
-              aria-label={locale === "ar" ? "تنقل بين صفحات الخدمات" : "Gig results pagination"}
+              aria-label={locale === "ar" ? "تنقل بين صفحات الخدمات" : "Services results pagination"}
               className="mt-8 flex items-center justify-center gap-2"
             >
               <button

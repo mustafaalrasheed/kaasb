@@ -1,5 +1,5 @@
 """
-Kaasb Platform - Seed Gig Categories
+Kaasb Platform - Seed Service Categories
 Run: python -m scripts.seed_categories
 """
 
@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import select
 from app.core.database import async_session as async_session_factory
-from app.models.gig import Category, Subcategory
+from app.models.service import ServiceCategory as Category, ServiceSubcategory as Subcategory
 
 
 CATEGORIES = [

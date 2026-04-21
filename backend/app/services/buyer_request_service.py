@@ -19,8 +19,8 @@ from app.models.buyer_request import (
     BuyerRequestOfferStatus,
     BuyerRequestStatus,
 )
-from app.models.gig import Category, Gig
 from app.models.notification import NotificationType
+from app.models.service import Service, ServiceCategory
 from app.models.user import User, UserRole
 from app.schemas.buyer_request import BuyerRequestCreate, BuyerRequestOfferCreate
 from app.services.base import BaseService
@@ -62,7 +62,7 @@ class BuyerRequestService(BaseService):
 
         # Validate category if provided
         if data.category_id:
-            cat = await self.db.get(Category, data.category_id)
+            cat = await self.db.get(ServiceCategory, data.category_id)
             if not cat:
                 raise NotFoundError("Category")
 
@@ -128,7 +128,7 @@ class BuyerRequestService(BaseService):
             .options(
                 selectinload(BuyerRequest.category),
                 selectinload(BuyerRequest.offers).selectinload(BuyerRequestOffer.freelancer),
-                selectinload(BuyerRequest.offers).selectinload(BuyerRequestOffer.gig),
+                selectinload(BuyerRequest.offers).selectinload(BuyerRequestOffer.service),
             )
             .order_by(BuyerRequest.created_at.desc())
         )
@@ -188,16 +188,16 @@ class BuyerRequestService(BaseService):
         if existing.scalar_one_or_none():
             raise ConflictError("You have already sent an offer for this request")
 
-        # Validate gig belongs to this freelancer if provided
-        if data.gig_id:
-            gig = await self.db.get(Gig, data.gig_id)
-            if not gig or str(gig.freelancer_id) != str(freelancer.id):
-                raise BadRequestError("Gig not found or does not belong to you")
+        service_ref_id = getattr(data, "service_id", None) or getattr(data, "gig_id", None)
+        if service_ref_id:
+            svc = await self.db.get(Service, service_ref_id)
+            if not svc or str(svc.freelancer_id) != str(freelancer.id):
+                raise BadRequestError("Service not found or does not belong to you")
 
         offer = BuyerRequestOffer(
             request_id=request_id,
             freelancer_id=freelancer.id,
-            gig_id=data.gig_id,
+            service_id=service_ref_id,
             price=data.price,
             delivery_days=data.delivery_days,
             message=data.message,
@@ -330,7 +330,7 @@ class BuyerRequestService(BaseService):
             .where(BuyerRequestOffer.request_id == request_id)
             .options(
                 selectinload(BuyerRequestOffer.freelancer),
-                selectinload(BuyerRequestOffer.gig),
+                selectinload(BuyerRequestOffer.service),
             )
             .order_by(BuyerRequestOffer.created_at.asc())
         )
@@ -366,7 +366,7 @@ class BuyerRequestService(BaseService):
                 selectinload(BuyerRequest.client),
                 selectinload(BuyerRequest.category),
                 selectinload(BuyerRequest.offers).selectinload(BuyerRequestOffer.freelancer),
-                selectinload(BuyerRequest.offers).selectinload(BuyerRequestOffer.gig),
+                selectinload(BuyerRequest.offers).selectinload(BuyerRequestOffer.service),
             )
         )
         return result.scalar_one_or_none()
@@ -377,7 +377,7 @@ class BuyerRequestService(BaseService):
             .where(BuyerRequestOffer.id == offer_id)
             .options(
                 selectinload(BuyerRequestOffer.freelancer),
-                selectinload(BuyerRequestOffer.gig),
+                selectinload(BuyerRequestOffer.service),
             )
         )
         return result.scalar_one_or_none()

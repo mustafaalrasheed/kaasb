@@ -32,8 +32,8 @@ const ACTION_COLORS: Record<string, string> = {
   user_status_changed: "bg-gray-100 text-gray-800",
   user_promoted_admin: "bg-purple-100 text-purple-800",
   user_demoted_admin: "bg-orange-100 text-orange-800",
-  gig_approved: "bg-green-100 text-green-800",
-  gig_rejected: "bg-red-100 text-red-800",
+  service_approved: "bg-green-100 text-green-800",
+  service_rejected: "bg-red-100 text-red-800",
   dispute_resolved: "bg-blue-100 text-blue-800",
 };
 

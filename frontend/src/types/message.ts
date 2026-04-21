@@ -2,6 +2,7 @@
 
 export type ConversationType = "user" | "order" | "support";
 export type SenderRole = "client" | "freelancer" | "admin" | "system";
+export type SupportTicketStatus = "open" | "in_progress" | "resolved";
 
 export interface MessageUserInfo {
   id: string;
@@ -39,6 +40,8 @@ export interface ConversationSummary {
   message_count: number;
   unread_count: number;
   created_at: string;
+  support_status?: SupportTicketStatus | null;
+  support_assignee?: MessageUserInfo | null;
 }
 
 export interface MessageDetail {

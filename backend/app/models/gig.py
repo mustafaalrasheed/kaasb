@@ -1,267 +1,40 @@
 """
-Kaasb Platform - Gig Models
-Fiverr-style gig marketplace: freelancers post services, clients buy them.
+Kaasb Platform - Deprecated shim for app.models.gig
+Renamed to app.models.service (matches the Arabic UI's "خدمة" / khidma).
+This module re-exports the new names under their old aliases so existing
+imports continue to work until all call sites are updated.
+
+TODO: Delete this file once all imports have been migrated to app.models.service.
 """
 
-import enum
-import uuid
-from datetime import datetime
-
-from sqlalchemy import (
-    Boolean,
-    DateTime,
-    Enum,
-    ForeignKey,
-    Integer,
-    Numeric,
-    String,
-    Text,
-    UniqueConstraint,
+from app.models.service import (
+    Service,
+    ServiceCategory,
+    ServiceOrder,
+    ServiceOrderDelivery,
+    ServiceOrderStatus,
+    ServicePackage,
+    ServicePackageTier,
+    ServiceStatus,
+    ServiceSubcategory,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import BaseModel
+# Legacy aliases — same classes, old names.
+Gig = Service
+GigOrder = ServiceOrder
+GigPackage = ServicePackage
+OrderDelivery = ServiceOrderDelivery
+Category = ServiceCategory
+Subcategory = ServiceSubcategory
+GigStatus = ServiceStatus
+GigOrderStatus = ServiceOrderStatus
+GigPackageTier = ServicePackageTier
 
-
-class GigStatus(str, enum.Enum):
-    DRAFT = "draft"
-    PENDING_REVIEW = "pending_review"
-    NEEDS_REVISION = "needs_revision"
-    ACTIVE = "active"
-    PAUSED = "paused"
-    REJECTED = "rejected"
-    ARCHIVED = "archived"
-
-
-class GigOrderStatus(str, enum.Enum):
-    PENDING = "pending"
-    PENDING_REQUIREMENTS = "pending_requirements"  # F3: awaiting client brief
-    IN_PROGRESS = "in_progress"
-    DELIVERED = "delivered"
-    REVISION_REQUESTED = "revision_requested"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-    DISPUTED = "disputed"
-
-
-class Category(BaseModel):
-    """Top-level gig categories (e.g., Design, Programming, Writing)."""
-
-    __tablename__ = "gig_categories"
-
-    name_en: Mapped[str] = mapped_column(String(100), nullable=False)
-    name_ar: Mapped[str] = mapped_column(String(100), nullable=False)
-    slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
-    icon: Mapped[str | None] = mapped_column(String(50))  # lucide icon name
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-    # Relationships
-    subcategories: Mapped[list["Subcategory"]] = relationship(
-        "Subcategory", back_populates="category", lazy="raise"
-    )
-    gigs: Mapped[list["Gig"]] = relationship("Gig", back_populates="category", lazy="raise")
-
-
-class Subcategory(BaseModel):
-    """Subcategory under a Category."""
-
-    __tablename__ = "gig_subcategories"
-
-    category_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("gig_categories.id", ondelete="CASCADE"), nullable=False
-    )
-    name_en: Mapped[str] = mapped_column(String(100), nullable=False)
-    name_ar: Mapped[str] = mapped_column(String(100), nullable=False)
-    slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-    # Relationships
-    category: Mapped["Category"] = relationship("Category", back_populates="subcategories")
-    gigs: Mapped[list["Gig"]] = relationship("Gig", back_populates="subcategory", lazy="raise")
-
-
-class Gig(BaseModel):
-    """
-    A service offered by a freelancer.
-    Has up to 3 pricing packages (Basic, Standard, Premium).
-    """
-
-    __tablename__ = "gigs"
-
-    # === Owner ===
-    freelancer_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-
-    # === Content ===
-    title: Mapped[str] = mapped_column(String(100), nullable=False)
-    slug: Mapped[str] = mapped_column(String(150), unique=True, nullable=False, index=True)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-    tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=list)
-
-    # === Category ===
-    category_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("gig_categories.id", ondelete="SET NULL"), nullable=True
-    )
-    subcategory_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("gig_subcategories.id", ondelete="SET NULL"), nullable=True
-    )
-
-    # === Media ===
-    # Stored as list of relative paths / CDN keys
-    images: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=list)
-    thumbnail_url: Mapped[str | None] = mapped_column(String(500))
-
-    # === Status ===
-    status: Mapped[GigStatus] = mapped_column(
-        Enum(GigStatus, values_callable=lambda x: [e.value for e in x]),
-        default=GigStatus.PENDING_REVIEW, nullable=False, index=True
-    )
-    rejection_reason: Mapped[str | None] = mapped_column(Text)
-    revision_note: Mapped[str | None] = mapped_column(Text)  # feedback for needs_revision
-
-    # === Review Audit Trail ===
-    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    # === Requirement questions (F3) ===
-    # JSON array: [{question, type, required, options}]
-    requirement_questions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
-
-    # === Stats (denormalized for fast reads) ===
-    orders_count: Mapped[int] = mapped_column(Integer, default=0)
-    avg_rating: Mapped[float] = mapped_column(Numeric(3, 2), default=0.0)
-    reviews_count: Mapped[int] = mapped_column(Integer, default=0)
-    impressions: Mapped[int] = mapped_column(Integer, default=0)
-    clicks: Mapped[int] = mapped_column(Integer, default=0)
-
-    # === Rank score (F7) ===
-    rank_score: Mapped[float] = mapped_column(Numeric(6, 2), default=0.0, nullable=False)
-    rank_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    # === Relationships ===
-    freelancer: Mapped["User"] = relationship("User", foreign_keys=[freelancer_id])  # type: ignore[name-defined]
-    category: Mapped["Category | None"] = relationship("Category", back_populates="gigs")
-    subcategory: Mapped["Subcategory | None"] = relationship("Subcategory", back_populates="gigs")
-    packages: Mapped[list["GigPackage"]] = relationship(
-        "GigPackage", back_populates="gig", cascade="all, delete-orphan", order_by="GigPackage.tier"
-    )
-    orders: Mapped[list["GigOrder"]] = relationship(
-        "GigOrder", back_populates="gig", lazy="raise"
-    )
-
-
-class GigPackageTier(str, enum.Enum):
-    BASIC = "basic"
-    STANDARD = "standard"
-    PREMIUM = "premium"
-
-
-class GigPackage(BaseModel):
-    """
-    One of three pricing tiers on a gig (Basic / Standard / Premium).
-    """
-
-    __tablename__ = "gig_packages"
-    __table_args__ = (UniqueConstraint("gig_id", "tier", name="uq_gig_package_tier"),)
-
-    gig_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("gigs.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    tier: Mapped[GigPackageTier] = mapped_column(
-        Enum(GigPackageTier, values_callable=lambda x: [e.value for e in x]), nullable=False
-    )
-
-    name: Mapped[str] = mapped_column(String(80), nullable=False)           # e.g. "Basic Package"
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-    price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)    # IQD
-    delivery_days: Mapped[int] = mapped_column(Integer, nullable=False)
-    revisions: Mapped[int] = mapped_column(Integer, default=1)              # -1 = unlimited
-    features: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=list)
-
-    # Relationships
-    gig: Mapped["Gig"] = relationship("Gig", back_populates="packages")
-
-
-class GigOrder(BaseModel):
-    """
-    An order placed by a client for a specific gig package.
-    """
-
-    __tablename__ = "gig_orders"
-
-    gig_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("gigs.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    package_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("gig_packages.id", ondelete="RESTRICT"), nullable=False
-    )
-    client_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    freelancer_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-
-    # === Order details ===
-    status: Mapped[GigOrderStatus] = mapped_column(
-        Enum(GigOrderStatus, values_callable=lambda x: [e.value for e in x]),
-        default=GigOrderStatus.PENDING, nullable=False, index=True
-    )
-    requirements: Mapped[str | None] = mapped_column(Text)   # legacy text brief
-    # F3: structured requirement answers (JSONB)
-    requirement_answers: Mapped[list | None] = mapped_column(JSONB, nullable=True)
-    requirements_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    price_paid: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-    delivery_days: Mapped[int] = mapped_column(Integer, nullable=False)
-    revisions_remaining: Mapped[int] = mapped_column(Integer, default=1)
-
-    # === Dates ===
-    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    # === Cancellation ===
-    cancellation_reason: Mapped[str | None] = mapped_column(Text)
-    cancelled_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-
-    # === Dispute ===
-    dispute_reason: Mapped[str | None] = mapped_column(Text)
-    dispute_opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    dispute_opened_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    dispute_resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    dispute_resolution: Mapped[str | None] = mapped_column(String(50))
-
-    # === Relationships ===
-    gig: Mapped["Gig"] = relationship("Gig", back_populates="orders")
-    package: Mapped["GigPackage"] = relationship("GigPackage")
-    client: Mapped["User"] = relationship("User", foreign_keys=[client_id])  # type: ignore[name-defined]
-    freelancer: Mapped["User"] = relationship("User", foreign_keys=[freelancer_id])  # type: ignore[name-defined]
-    deliveries: Mapped[list["OrderDelivery"]] = relationship(
-        "OrderDelivery", back_populates="order", lazy="raise", cascade="all, delete-orphan",
-        order_by="OrderDelivery.revision_number",
-    )
-
-
-class OrderDelivery(BaseModel):
-    """A delivery submission by a freelancer on a gig order (F4)."""
-
-    __tablename__ = "gig_order_deliveries"
-
-    order_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("gig_orders.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    message: Mapped[str] = mapped_column(Text, nullable=False)
-    files: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=list)
-    revision_number: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-
-    order: Mapped["GigOrder"] = relationship("GigOrder", back_populates="deliveries")
+__all__ = [
+    "Gig", "GigOrder", "GigPackage", "OrderDelivery",
+    "Category", "Subcategory",
+    "GigStatus", "GigOrderStatus", "GigPackageTier",
+    "Service", "ServiceOrder", "ServicePackage", "ServiceOrderDelivery",
+    "ServiceCategory", "ServiceSubcategory",
+    "ServiceStatus", "ServiceOrderStatus", "ServicePackageTier",
+]

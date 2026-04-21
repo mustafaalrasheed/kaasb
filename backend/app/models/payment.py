@@ -21,7 +21,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from app.models.base import BaseModel
 
@@ -75,6 +75,10 @@ class PaymentAccount(BaseModel):
 
     # Qi Card-specific fields
     qi_card_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Cardholder name on the QiCard — required to reconcile manual payouts
+    # against the merchant-portal payee list. QiCard has no payout API, so the
+    # admin pays each freelancer by hand and matches on phone + holder name.
+    qi_card_holder_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     qi_card_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Pending payment reference
 
     # Metadata (provider-specific data)
@@ -241,7 +245,7 @@ class Escrow(BaseModel):
 
     # === Relations ===
     # contract_id / milestone_id used for contract-based escrow (proposals/contracts flow)
-    # gig_order_id used for gig order escrow — exactly one of the two must be set
+    # service_order_id used for service order escrow — exactly one of the two must be set
     contract_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("contracts.id", ondelete="CASCADE"),
@@ -253,12 +257,18 @@ class Escrow(BaseModel):
         ForeignKey("milestones.id", ondelete="CASCADE"),
         nullable=True,
     )
-    gig_order_id: Mapped[uuid.UUID | None] = mapped_column(
+    service_order_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("gig_orders.id", ondelete="CASCADE"),
+        ForeignKey("service_orders.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
+    # Legacy alias — old call sites still use ``escrow.gig_order_id`` and
+    # ``Escrow.gig_order_id == ...``. Synonym lets both paths resolve to the
+    # renamed ``service_order_id`` column in instance access AND in ORM queries.
+    # TODO: remove once gig_service.py / payment_service.py / dispute_service.py
+    # sweep completes.
+    gig_order_id = synonym("service_order_id")
     client_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),

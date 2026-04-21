@@ -43,7 +43,7 @@
   "nav": {
     "findWork": "Find Work",
     "findFreelancers": "Find Freelancers",
-    "gigs": "Services",
+    "services": "Services",
     "jobs": "Jobs",
     "howItWorks": "How It Works",
     "login": "Login",
@@ -188,7 +188,7 @@
     },
     "empty": "No jobs available right now. Be the first to post!"
   },
-  "gigs": {
+  "services": {
     "title": "Available Services",
     "subtitle": "Hire a freelancer for a specific service",
     "create": "Add Your Service",
@@ -237,8 +237,8 @@
         "gallery": "Gallery",
         "publish": "Publish"
       },
-      "gigTitle": "Service Title",
-      "gigTitlePlaceholder": "e.g., I will design a professional logo",
+      "serviceTitle": "Service Title",
+      "serviceTitlePlaceholder": "e.g., I will design a professional logo",
       "category": "Category",
       "subcategory": "Subcategory",
       "tags": "Tags",
@@ -264,17 +264,17 @@
     "detail": {
       "aboutSeller": "About the Seller",
       "reviews": "Reviews",
-      "relatedGigs": "Related Services",
+      "relatedServices": "Related Services",
       "contactSeller": "Contact Seller",
       "share": "Share",
       "save": "Save",
       "comparePackages": "Compare Packages"
     },
     "empty": "No services in this category yet",
-    "myGigs": {
+    "myServices": {
       "title": "My Services",
       "manage": "Manage Services",
-      "noGigs": "You haven't posted any services yet",
+      "noServices": "You haven't posted any services yet",
       "createFirst": "Create your first service now"
     }
   },
@@ -359,7 +359,7 @@
       "language": "Language",
       "changePassword": "Change Password"
     },
-    "gigs": {
+    "services": {
       "title": "My Services",
       "active": "Active",
       "pending": "Under Review",

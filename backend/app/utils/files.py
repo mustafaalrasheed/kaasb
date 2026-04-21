@@ -102,11 +102,18 @@ async def save_avatar(file: UploadFile, user_id: str) -> str:
     return f"/uploads/avatars/{filename}"
 
 
-MAX_GIG_IMAGES = 5
+MAX_SERVICE_IMAGES = 5
+# Legacy alias — will be removed after all callers migrate to MAX_SERVICE_IMAGES.
+MAX_GIG_IMAGES = MAX_SERVICE_IMAGES
 
 
-async def save_gig_image(file: UploadFile, gig_id: str) -> str:
-    """Save a gig image and return the relative URL path."""
+async def save_service_image(file: UploadFile, service_id: str) -> str:
+    """Save a service image and return the relative URL path.
+
+    Files are still stored under /uploads/gigs/ to avoid rewriting paths for
+    existing production images — the on-disk layout is decoupled from the
+    domain rename.
+    """
     filename_check = file.filename or ""
     if ".." in filename_check or "/" in filename_check or "\\" in filename_check:
         raise HTTPException(status_code=400, detail="Invalid filename")
@@ -143,18 +150,22 @@ async def save_gig_image(file: UploadFile, gig_id: str) -> str:
     ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename else "jpg"
     if ext not in ("jpg", "jpeg", "png", "webp"):
         ext = "jpg"
-    filename = f"{gig_id}_{uuid.uuid4().hex[:8]}.{ext}"
+    filename = f"{service_id}_{uuid.uuid4().hex[:8]}.{ext}"
 
-    gig_dir = get_upload_dir("gigs")
-    file_path = gig_dir / filename
+    service_dir = get_upload_dir("gigs")
+    file_path = service_dir / filename
     with file_path.open("wb") as f:
         f.write(contents)
 
     return f"/uploads/gigs/{filename}"
 
 
-def delete_gig_image(image_url: str | None) -> None:
-    """Delete a gig image file from disk (safe against path traversal)."""
+# Legacy alias.
+save_gig_image = save_service_image
+
+
+def delete_service_image(image_url: str | None) -> None:
+    """Delete a service image file from disk (safe against path traversal)."""
     if not image_url:
         return
     upload_dir = Path(settings.UPLOAD_DIR).resolve()
@@ -164,6 +175,10 @@ def delete_gig_image(image_url: str | None) -> None:
         return
     if file_path.exists():
         file_path.unlink(missing_ok=True)
+
+
+# Legacy alias.
+delete_gig_image = delete_service_image
 
 
 def delete_avatar(avatar_url: str | None) -> None:

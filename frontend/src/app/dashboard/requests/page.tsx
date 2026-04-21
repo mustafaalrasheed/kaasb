@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useLocale } from "@/providers/locale-provider";
-import { buyerRequestsApi, gigsApi } from "@/lib/api";
+import { buyerRequestsApi, servicesApi } from "@/lib/api";
 import type {
   BuyerRequest,
   BuyerRequestOffer,
@@ -69,7 +69,7 @@ export default function DashboardRequestsPage() {
 
   useEffect(() => {
     fetchRequests();
-    gigsApi.getCategories().then((r) => setCategories(r.data)).catch(() => {});
+    servicesApi.getCategories().then((r) => setCategories(r.data)).catch(() => {});
   }, [fetchRequests]);
 
   const handleCreate = async () => {
@@ -471,14 +471,14 @@ export default function DashboardRequestsPage() {
                       <span>📅 {offer.delivery_days} {ar ? "يوم" : "days"}</span>
                     </div>
 
-                    {offer.gig && (
+                    {(offer.service ?? offer.gig) && (
                       <a
-                        href={`/gigs/${offer.gig.slug}`}
+                        href={`/services/${(offer.service ?? offer.gig)!.slug}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs text-blue-600 hover:underline"
                       >
-                        🔗 {offer.gig.title}
+                        🔗 {(offer.service ?? offer.gig)!.title}
                       </a>
                     )}
 

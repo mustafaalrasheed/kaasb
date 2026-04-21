@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { GigsCatalog } from "@/components/gigs/gigs-catalog";
-import { gigsApi } from "@/lib/api";
+import { ServicesCatalog } from "@/components/services/services-catalog";
+import { servicesApi } from "@/lib/api";
 import { SITE_NAME, SITE_URL, ogImageUrl } from "@/lib/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -17,11 +17,11 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
-    alternates: { canonical: "/gigs" },
+    alternates: { canonical: "/services" },
     openGraph: {
       title: `${title} | ${SITE_NAME}`,
       description,
-      url: `${SITE_URL}/gigs`,
+      url: `${SITE_URL}/services`,
       type: "website",
       images: [
         {
@@ -34,12 +34,12 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function GigsPage() {
+export default async function ServicesPage() {
   let categories: unknown[] = [];
   try {
-    const res = await gigsApi.getCategories();
+    const res = await servicesApi.getCategories();
     categories = res.data?.data || res.data || [];
   } catch {}
 
-  return <GigsCatalog initialCategories={categories} />;
+  return <ServicesCatalog initialCategories={categories} />;
 }

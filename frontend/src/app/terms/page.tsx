@@ -33,7 +33,7 @@ const TOC: Toc[] = [
   { id: "4",  en: "Role of the Platform",              ar: "دور المنصة" },
   { id: "5",  en: "Buyer Obligations",                 ar: "التزامات المشتري" },
   { id: "6",  en: "Seller Obligations",                ar: "التزامات البائع" },
-  { id: "7",  en: "Gigs & Orders",                     ar: "الخدمات والطلبات" },
+  { id: "7",  en: "Services & Orders",                 ar: "الخدمات والطلبات" },
   { id: "8",  en: "Jobs & Proposals",                  ar: "الوظائف والعروض" },
   { id: "9",  en: "Payments & Fees",                   ar: "المدفوعات والرسوم" },
   { id: "10", en: "Refunds",                           ar: "المبالغ المستردة" },
@@ -176,11 +176,11 @@ export default function TermsOfServicePage() {
               <Bilingual
                 en={
                   <ul className="list-disc ms-6 space-y-2">
-                    <li><strong>Buyer (Client)</strong> — a registered User who posts a Job, places an Order on a Gig, or otherwise engages a Seller.</li>
-                    <li><strong>Seller (Freelancer)</strong> — a registered User who offers services, publishes Gigs, or submits Proposals.</li>
-                    <li><strong>Gig</strong> — a packaged service offered by a Seller at a stated price, in one or more Packages.</li>
+                    <li><strong>Buyer (Client)</strong> — a registered User who posts a Job, places an Order on a Service, or otherwise engages a Seller.</li>
+                    <li><strong>Seller (Freelancer)</strong> — a registered User who offers services, publishes Services, or submits Proposals.</li>
+                    <li><strong>Service</strong> — a packaged service offered by a Seller at a stated price, in one or more Packages.</li>
                     <li><strong>Job</strong> — a project posted by a Buyer inviting Proposals from Sellers.</li>
-                    <li><strong>Order</strong> — a purchase of a Gig by a Buyer.</li>
+                    <li><strong>Order</strong> — a purchase of a Service by a Buyer.</li>
                     <li><strong>Proposal</strong> — a Seller&apos;s offer to perform a Job.</li>
                     <li><strong>Contract</strong> — the engagement formed after a Proposal is accepted, which may include Milestones.</li>
                     <li><strong>Escrow</strong> — funds paid by a Buyer and held on the Platform until released according to these Terms.</li>
@@ -190,10 +190,10 @@ export default function TermsOfServicePage() {
                 ar={
                   <ul className="list-disc me-6 space-y-2">
                     <li><strong>المشتري (العميل)</strong> — مستخدم مسجَّل يُنشئ وظيفة، أو يُقدم طلباً على خدمة، أو يتعاقد مع بائع.</li>
-                    <li><strong>البائع (المستقل)</strong> — مستخدم مسجَّل يعرض خدمات أو ينشر خدماته («الـ Gigs») أو يُقدم عروضاً.</li>
-                    <li><strong>الخدمة (Gig)</strong> — خدمة معروضة من بائع بسعر محدد، عبر باقة أو أكثر.</li>
+                    <li><strong>البائع (المستقل)</strong> — مستخدم مسجَّل يعرض خدمات أو ينشر خدماته أو يُقدم عروضاً.</li>
+                    <li><strong>الخدمة</strong> — خدمة معروضة من بائع بسعر محدد، عبر باقة أو أكثر.</li>
                     <li><strong>الوظيفة</strong> — مشروع ينشره المشتري لاستقطاب عروض من البائعين.</li>
-                    <li><strong>الطلب</strong> — شراء المشتري لخدمة (Gig).</li>
+                    <li><strong>الطلب</strong> — شراء المشتري لخدمة.</li>
                     <li><strong>العرض</strong> — اقتراح بائع لتنفيذ وظيفة.</li>
                     <li><strong>العقد</strong> — الارتباط القائم بعد قبول العرض، وقد يتضمن معالم (Milestones).</li>
                     <li><strong>الضمان (الإسكرو)</strong> — مبلغ يدفعه المشتري ويُحتَفَظ به على المنصة حتى إفراجه وفق هذه الشروط.</li>
@@ -337,7 +337,7 @@ export default function TermsOfServicePage() {
                 en={
                   <ul className="list-disc ms-6 space-y-1.5">
                     <li>Offer only services you are qualified and legally permitted to perform.</li>
-                    <li>Describe Gigs, pricing, timelines, and revision policies accurately.</li>
+                    <li>Describe Services, pricing, timelines, and revision policies accurately.</li>
                     <li>Deliver work that conforms to the agreed scope and within the agreed time.</li>
                     <li>Respond to Buyers within the response-time expectations associated with your Seller Level.</li>
                     <li>Not engage in plagiarism, infringement, or substitution of low-quality work.</li>
@@ -357,14 +357,14 @@ export default function TermsOfServicePage() {
               />
             </section>
 
-            {/* 7. Gigs & Orders */}
+            {/* 7. Services & Orders */}
             <section id="7" className="scroll-mt-24">
-              <SectionHeader num="7" en="Gigs & Orders" ar="الخدمات والطلبات" />
+              <SectionHeader num="7" en="Services & Orders" ar="الخدمات والطلبات" />
               <Bilingual
                 en={
                   <>
                     <Sub num="7.1" title="Listing and review">
-                      New Gigs are submitted for administrative review. Kaasb may approve, reject, or request
+                      New Services are submitted for administrative review. Kaasb may approve, reject, or request
                       revisions. Listings that breach these Terms, infringe third-party rights, or misrepresent
                       the service will be rejected.
                     </Sub>
@@ -379,7 +379,7 @@ export default function TermsOfServicePage() {
                       structured delivery form, attaching the deliverable files and a message.
                     </Sub>
                     <Sub num="7.4" title="Revisions">
-                      The Seller defines the number of revisions included in each Gig Package. Revision
+                      The Seller defines the number of revisions included in each Service Package. Revision
                       requests must be specific and related to the original agreed scope. Out-of-scope
                       requests require a new Order or Package upgrade.
                     </Sub>
@@ -439,7 +439,7 @@ export default function TermsOfServicePage() {
                 en={
                   <>
                     <p>
-                      In addition to Gigs, Buyers may post Jobs inviting Proposals. A Contract is formed when
+                      In addition to Services, Buyers may post Jobs inviting Proposals. A Contract is formed when
                       the Buyer accepts a Proposal. Contracts may include Milestones; each Milestone must be
                       funded to Escrow and is released upon Buyer approval. The Seller may request payment
                       only for Milestones that are fully funded.
@@ -453,7 +453,7 @@ export default function TermsOfServicePage() {
                 ar={
                   <>
                     <p>
-                      إضافةً إلى الخدمات (Gigs)، يجوز للمشترين نشر «وظائف» لاستقطاب عروض. ويُبرَم العقد
+                      إضافةً إلى الخدمات، يجوز للمشترين نشر «وظائف» لاستقطاب عروض. ويُبرَم العقد
                       بقبول المشتري للعرض. وقد يتضمن العقد معالم (Milestones) يتعيَّن تمويل كلٍّ منها في
                       الإسكرو، ويُفرَج عنها بموافقة المشتري. ولا يحق للبائع المطالبة بالدفع إلا عن
                       المعالم المُمَوَّلة بالكامل.
@@ -637,7 +637,7 @@ export default function TermsOfServicePage() {
                     <ul className="list-disc ms-6 mt-3 space-y-1.5">
                       <li><strong>Off-Platform solicitation.</strong> Solicit, request, offer, or share contact information (phone numbers, email addresses, social-media handles, external messaging-app identifiers, payment details) in order to move the transaction off the Platform.</li>
                       <li><strong>Fee circumvention.</strong> Agree to, suggest, or facilitate any arrangement designed to avoid the Platform Fee.</li>
-                      <li><strong>Fraud & misrepresentation.</strong> Post false, misleading, plagiarised, or AI-generated content passed off as original human work in breach of Gig description.</li>
+                      <li><strong>Fraud & misrepresentation.</strong> Post false, misleading, plagiarised, or AI-generated content passed off as original human work in breach of Service description.</li>
                       <li><strong>Harassment.</strong> Harass, threaten, defame, or sexually solicit any User or Kaasb employee.</li>
                       <li><strong>Unlawful content.</strong> Offer or request services or content that are unlawful in Iraq, infringe intellectual property, or violate third-party rights.</li>
                       <li><strong>Account abuse.</strong> Create multiple accounts, buy or sell accounts, manipulate reviews or rankings, or share an account with others.</li>
@@ -797,7 +797,7 @@ export default function TermsOfServicePage() {
                 en={
                   <p>
                     You retain ownership of the content you upload or publish on the Platform (profile copy,
-                    Gig descriptions, portfolio samples, messages, reviews, and delivery files, together
+                    Service descriptions, portfolio samples, messages, reviews, and delivery files, together
                     &quot;User Content&quot;). You grant Kaasb a non-exclusive, royalty-free, worldwide licence to
                     host, reproduce, display, and adapt your User Content solely to the extent necessary to
                     operate, promote, and improve the Platform. This licence terminates when you delete the
@@ -873,7 +873,7 @@ export default function TermsOfServicePage() {
                   <p>
                     Kaasb may review, refuse, edit, or remove any content that it reasonably believes
                     violates these Terms or applicable law, or that is harmful to Users or to Kaasb. Users
-                    may report content via the &quot;Report&quot; action on Gigs, Jobs, profiles, and messages.
+                    may report content via the &quot;Report&quot; action on Services, Jobs, profiles, and messages.
                     Reports are reviewed within a reasonable period. A decision may be appealed by writing to{" "}
                     <a href={`mailto:${EMAIL_SUPPORT}`} className="text-brand-500 hover:underline">{EMAIL_SUPPORT}</a>.
                   </p>
@@ -963,7 +963,7 @@ export default function TermsOfServicePage() {
                     To the maximum extent permitted by applicable law, the Platform is provided on an{" "}
                     &quot;as is&quot; and &quot;as available&quot; basis. Kaasb makes no warranty, express or implied, as to
                     the fitness of the Platform for a particular purpose, uninterrupted availability, the
-                    accuracy or completeness of Gig listings or Proposals, or the outcome of any Contract
+                    accuracy or completeness of Service listings or Proposals, or the outcome of any Contract
                     between Users. Kaasb does not verify the skills, qualifications, or credentials asserted
                     by Users beyond the identity and payment checks described on the Platform.
                   </p>

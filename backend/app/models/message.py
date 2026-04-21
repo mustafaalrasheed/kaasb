@@ -38,6 +38,20 @@ class ConversationType(str, enum.Enum):
     SUPPORT = "support"
 
 
+class SupportTicketStatus(str, enum.Enum):
+    """
+    Lifecycle of a SUPPORT conversation, ignored for USER/ORDER threads.
+
+    * OPEN          — unclaimed; shows up in the shared queue for any staff.
+    * IN_PROGRESS   — a specific admin/support has claimed it and is replying.
+    * RESOLVED      — staff marked it closed. User can still reply, which
+                      bounces it back to OPEN automatically.
+    """
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+
+
 class SenderRole(str, enum.Enum):
     """
     Role of the message sender at send time. Frozen on the message so that
@@ -142,6 +156,29 @@ class Conversation(BaseModel):
     # === Unread counts ===
     unread_one: Mapped[int] = mapped_column(Integer, default=0)
     unread_two: Mapped[int] = mapped_column(Integer, default=0)
+
+    # === Support ticket lifecycle (only meaningful when type=SUPPORT) ===
+    support_status: Mapped[SupportTicketStatus | None] = mapped_column(
+        Enum(
+            SupportTicketStatus,
+            name="supportticketstatus",
+            values_callable=lambda e: [x.value for x in e],
+        ),
+        nullable=True,
+        index=True,
+    )
+    support_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    support_assignee: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[support_assignee_id], lazy="raise"
+    )
+    support_resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     def __repr__(self) -> str:
         return f"<Conversation {self.id} {self.conversation_type.value} ({self.message_count} msgs)>"

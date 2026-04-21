@@ -16,6 +16,7 @@ interface AdminEscrow {
     email: string;
     phone: string | null;
     qi_card_phone: string | null;
+    qi_card_holder_name: string | null;
   };
 }
 
@@ -54,7 +55,7 @@ export function PayoutsTab({ escrows, loading, actionLoading, ar, dateLocale, on
             <thead className="bg-gray-50">
               <tr>
                 <th className="text-start p-3 font-medium text-gray-600">{ar ? "المستقل" : "Freelancer"}</th>
-                <th className="text-start p-3 font-medium text-gray-600">{ar ? "رقم Qi Card" : "Qi Card Phone"}</th>
+                <th className="text-start p-3 font-medium text-gray-600">{ar ? "بيانات Qi Card" : "Qi Card Payout"}</th>
                 <th className="text-start p-3 font-medium text-gray-600">{ar ? "المرحلة" : "Milestone"}</th>
                 <th className="text-start p-3 font-medium text-gray-600">{ar ? "المبلغ الكلي" : "Total"}</th>
                 <th className="text-start p-3 font-medium text-gray-600">{ar ? "عمولة المنصة" : "Platform Fee"}</th>
@@ -67,6 +68,8 @@ export function PayoutsTab({ escrows, loading, actionLoading, ar, dateLocale, on
               {escrows.map((escrow) => {
                 const isBusy = actionLoading === escrow.escrow_id;
                 const qiPhone = escrow.freelancer.qi_card_phone || escrow.freelancer.phone;
+                const holderName = escrow.freelancer.qi_card_holder_name;
+                const payoutReady = Boolean(escrow.freelancer.qi_card_phone && holderName);
                 return (
                   <tr key={escrow.escrow_id} className="hover:bg-gray-50">
                     <td className="p-3">
@@ -75,9 +78,18 @@ export function PayoutsTab({ escrows, loading, actionLoading, ar, dateLocale, on
                     </td>
                     <td className="p-3">
                       {qiPhone ? (
-                        <span className="font-mono text-gray-900 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded text-xs" dir="ltr">
-                          {qiPhone}
-                        </span>
+                        <div className="space-y-1">
+                          <span className="font-mono text-gray-900 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded text-xs inline-block" dir="ltr">
+                            {qiPhone}
+                          </span>
+                          {holderName ? (
+                            <div className="text-xs text-gray-700">{holderName}</div>
+                          ) : (
+                            <div className="text-xs text-amber-700">
+                              {ar ? "اسم صاحب البطاقة غير محدد" : "Cardholder name missing"}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-red-500 text-xs">{ar ? "غير مسجل" : "Not registered"}</span>
                       )}
@@ -101,8 +113,9 @@ export function PayoutsTab({ escrows, loading, actionLoading, ar, dateLocale, on
                       <div className="flex justify-end">
                         <button
                           onClick={() => onRelease(escrow)}
-                          disabled={isBusy}
-                          className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
+                          disabled={isBusy || !payoutReady}
+                          title={!payoutReady ? (ar ? "يحتاج المستقل إلى إكمال بيانات Qi Card" : "Freelancer must complete Qi Card details") : undefined}
+                          className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
                           {isBusy ? "..." : (ar ? "تأكيد الدفع" : "Confirm Payout")}
                         </button>

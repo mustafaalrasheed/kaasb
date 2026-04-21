@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useLocale } from "@/providers/locale-provider";
-import { buyerRequestsApi, gigsApi } from "@/lib/api";
+import { buyerRequestsApi, servicesApi } from "@/lib/api";
 import type { BuyerRequest, BuyerRequestOffer, BuyerRequestListResponse } from "@/types/buyer_request";
 
 interface Category {
@@ -15,7 +15,7 @@ interface OfferFormState {
   price: string;
   delivery_days: string;
   message: string;
-  gig_id: string;
+  service_id: string;
 }
 
 export default function RequestsPage() {
@@ -36,9 +36,9 @@ export default function RequestsPage() {
     price: "",
     delivery_days: "",
     message: "",
-    gig_id: "",
+    service_id: "",
   });
-  const [myGigs, setMyGigs] = useState<{ id: string; title: string }[]>([]);
+  const [myServices, setMyServices] = useState<{ id: string; title: string }[]>([]);
   const [submittingOffer, setSubmittingOffer] = useState(false);
   const [offerSuccess, setOfferSuccess] = useState("");
   const [offerError, setOfferError] = useState("");
@@ -69,10 +69,10 @@ export default function RequestsPage() {
   }, [fetchRequests]);
 
   useEffect(() => {
-    gigsApi.getCategories().then((r) => setCategories(r.data)).catch(() => {});
-    gigsApi.myGigs().then((r) => {
-      const gigs = r.data || [];
-      setMyGigs(gigs.map((g: { id: string; title: string }) => ({ id: g.id, title: g.title })));
+    servicesApi.getCategories().then((r) => setCategories(r.data)).catch(() => {});
+    servicesApi.myServices().then((r) => {
+      const list = r.data || [];
+      setMyServices(list.map((s: { id: string; title: string }) => ({ id: s.id, title: s.title })));
     }).catch(() => {});
   }, []);
 
@@ -80,7 +80,7 @@ export default function RequestsPage() {
 
   const openOfferModal = (req: BuyerRequest) => {
     setOfferModalRequest(req);
-    setOfferForm({ price: "", delivery_days: "", message: "", gig_id: "" });
+    setOfferForm({ price: "", delivery_days: "", message: "", service_id: "" });
     setOfferError("");
     setOfferSuccess("");
   };
@@ -114,7 +114,7 @@ export default function RequestsPage() {
         price,
         delivery_days: deliveryDays,
         message: offerForm.message.trim(),
-        ...(offerForm.gig_id ? { gig_id: offerForm.gig_id } : {}),
+        ...(offerForm.service_id ? { service_id: offerForm.service_id } : {}),
       });
       setOfferSuccess(ar ? "تم إرسال عرضك بنجاح!" : "Offer sent successfully!");
       setTimeout(() => {
@@ -336,19 +336,19 @@ export default function RequestsPage() {
                   </div>
                 </div>
 
-                {myGigs.length > 0 && (
+                {myServices.length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {ar ? "ربط بخدمة (اختياري)" : "Link to a Gig (optional)"}
+                      {ar ? "ربط بخدمة (اختياري)" : "Link to a Service (optional)"}
                     </label>
                     <select
-                      value={offerForm.gig_id}
-                      onChange={(e) => setOfferForm((f) => ({ ...f, gig_id: e.target.value }))}
+                      value={offerForm.service_id}
+                      onChange={(e) => setOfferForm((f) => ({ ...f, service_id: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     >
-                      <option value="">{ar ? "بدون ربط" : "No gig link"}</option>
-                      {myGigs.map((g) => (
-                        <option key={g.id} value={g.id}>{g.title}</option>
+                      <option value="">{ar ? "بدون ربط" : "No service link"}</option>
+                      {myServices.map((s) => (
+                        <option key={s.id} value={s.id}>{s.title}</option>
                       ))}
                     </select>
                   </div>

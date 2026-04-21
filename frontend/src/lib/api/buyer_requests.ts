@@ -29,7 +29,7 @@ export const buyerRequestsApi = {
     price: number;
     delivery_days: number;
     message: string;
-    gig_id?: string;
+    service_id?: string;
   }) => api.post(`/buyer-requests/${requestId}/offers`, data),
 
   // Client: list offers on a request

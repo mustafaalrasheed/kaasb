@@ -48,8 +48,8 @@ class AdminAuditAction(str, enum.Enum):
     USER_DEMOTED_ADMIN = "user_demoted_admin"
     USER_PROMOTED_SUPPORT = "user_promoted_support"
     USER_DEMOTED_SUPPORT = "user_demoted_support"
-    GIG_APPROVED = "gig_approved"
-    GIG_REJECTED = "gig_rejected"
+    SERVICE_APPROVED = "service_approved"
+    SERVICE_REJECTED = "service_rejected"
     DISPUTE_RESOLVED = "dispute_resolved"
 
 

@@ -11,7 +11,6 @@ from app.api.v1.endpoints.buyer_requests import router as buyer_requests_router
 from app.api.v1.endpoints.contracts import router as contracts_router
 from app.api.v1.endpoints.disputes import router as disputes_router
 from app.api.v1.endpoints.gdpr import router as gdpr_router
-from app.api.v1.endpoints.gigs import router as gigs_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.jobs import router as jobs_router
 from app.api.v1.endpoints.messages import router as messages_router
@@ -20,6 +19,7 @@ from app.api.v1.endpoints.payments import router as payments_router
 from app.api.v1.endpoints.proposals import router as proposals_router
 from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.reviews import router as reviews_router
+from app.api.v1.endpoints.services import router as services_router
 from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.ws import router as ws_router
 
@@ -28,7 +28,15 @@ api_router = APIRouter()
 api_router.include_router(health_router)
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
-api_router.include_router(gigs_router)
+api_router.include_router(services_router, prefix="/services")
+# Deprecated alias: keep /gigs working for one release so existing clients
+# migrate gracefully. Remove once frontends + external callers move to /services.
+api_router.include_router(
+    services_router,
+    prefix="/gigs",
+    tags=["Gigs (deprecated)"],
+    deprecated=True,
+)
 api_router.include_router(jobs_router)
 api_router.include_router(proposals_router)
 api_router.include_router(contracts_router)

@@ -79,13 +79,16 @@ class BuyerRequestListOut(BaseModel):
 # ──────────────────────────────────────────────
 
 
-class GigBrief(BaseModel):
+class ServiceBrief(BaseModel):
     id: uuid.UUID
     title: str
     slug: str
     thumbnail_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+GigBrief = ServiceBrief
 
 
 class FreelancerBrief(BaseModel):
@@ -103,14 +106,16 @@ class BuyerRequestOfferCreate(BaseModel):
     price: float = Field(..., gt=0)
     delivery_days: int = Field(..., ge=1, le=90)
     message: str = Field(..., min_length=20, max_length=1000)
-    gig_id: Optional[uuid.UUID] = None
+    service_id: Optional[uuid.UUID] = Field(None, alias="gig_id")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class BuyerRequestOfferOut(BaseModel):
     id: uuid.UUID
     request_id: uuid.UUID
     freelancer_id: uuid.UUID
-    gig_id: Optional[uuid.UUID] = None
+    service_id: Optional[uuid.UUID] = None
     price: float
     delivery_days: int
     message: str
@@ -118,6 +123,6 @@ class BuyerRequestOfferOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     freelancer: Optional[FreelancerBrief] = None
-    gig: Optional[GigBrief] = None
+    service: Optional[ServiceBrief] = None
 
     model_config = ConfigDict(from_attributes=True)

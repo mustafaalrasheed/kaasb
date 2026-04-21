@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.message import ConversationType, SenderRole
+from app.models.message import ConversationType, SenderRole, SupportTicketStatus
 
 # Attachment MIME allowlist — covers images (inline preview), PDFs, and common
 # office docs. Everything else (executables, archives, scripts) is rejected to
@@ -105,6 +105,9 @@ class ConversationSummary(BaseModel):
     message_count: int = 0
     unread_count: int = 0
     created_at: datetime
+    # SUPPORT ticket lifecycle. Null for USER/ORDER threads.
+    support_status: SupportTicketStatus | None = None
+    support_assignee: MessageUserInfo | None = None
 
     model_config = {"from_attributes": True}
 

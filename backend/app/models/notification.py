@@ -47,11 +47,19 @@ class NotificationType(str, enum.Enum):
     # Messages
     NEW_MESSAGE = "new_message"
 
-    # Gigs
-    GIG_APPROVED = "gig_approved"
-    GIG_REJECTED = "gig_rejected"
-    GIG_SUBMITTED = "gig_submitted"
-    GIG_NEEDS_REVISION = "gig_needs_revision"
+    # Services (renamed from gigs 2026-04-21 — see migration z2v3w4x5y6z7)
+    SERVICE_APPROVED = "service_approved"
+    SERVICE_REJECTED = "service_rejected"
+    SERVICE_SUBMITTED = "service_submitted"
+    SERVICE_NEEDS_REVISION = "service_needs_revision"
+    # Legacy aliases — same underlying enum members as the SERVICE_* above.
+    # Kept so existing callers (e.g. app.services.gig_service) compile until
+    # their rename lands in the follow-up PR. Python treats repeated values
+    # as aliases, so `NotificationType.GIG_APPROVED is NotificationType.SERVICE_APPROVED`.
+    GIG_APPROVED = "service_approved"
+    GIG_REJECTED = "service_rejected"
+    GIG_SUBMITTED = "service_submitted"
+    GIG_NEEDS_REVISION = "service_needs_revision"
 
     # Disputes
     DISPUTE_OPENED = "dispute_opened"

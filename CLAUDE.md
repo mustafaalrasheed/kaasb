@@ -78,8 +78,8 @@ Before reading any file, follow these rules:
 | `backend/app/models/job.py` | `jobs` | `title`, `category`, `job_type`, `status`, `client_id`, `freelancer_id`, `proposal_count` |
 | `backend/app/models/proposal.py` | `proposals` | `job_id`, `freelancer_id`, `bid_amount`, `status`, `cover_letter` |
 | `backend/app/models/contract.py` | `contracts`, `milestones` | `client_id`, `freelancer_id`, `status`, `total_amount` |
-| `backend/app/models/gig.py` | `gigs`, `gig_packages`, `gig_orders`, `gig_categories`, `gig_subcategories`, `gig_order_deliveries` | `slug`, `status` (pending_review/active/rejected/paused/draft), `freelancer_id`, `category_id`, `rejection_reason`, `reviewed_by_id`, `requirement_questions` JSONB (F3), `rank_score` (F7); orders: `status` (+pending_requirements F3), `requirement_answers` JSONB, `requirements_submitted_at`; deliveries: `message`, `files[]`, `revision_number` (F4) |
-| `backend/app/models/payment.py` | `transactions`, `escrows`, `payment_accounts` | `escrow.status` (pending/funded/released/refunded/disputed), `currency="IQD"` |
+| `backend/app/models/service.py` | `services`, `service_packages`, `service_orders`, `service_categories`, `service_subcategories`, `service_order_deliveries` | `slug`, `status` (pending_review/active/rejected/paused/draft), `freelancer_id`, `category_id`, `rejection_reason`, `reviewed_by_id`, `requirement_questions` JSONB (F3), `rank_score` (F7); orders: `status` (+pending_requirements F3), `requirement_answers` JSONB, `requirements_submitted_at`; deliveries: `message`, `files[]`, `revision_number` (F4). Renamed from `gig.py` in migration `z2v3w4x5y6z7` (2026-04-21) |
+| `backend/app/models/payment.py` | `transactions`, `escrows`, `payment_accounts` | `escrow.status` (pending/funded/released/refunded/disputed), `currency="IQD"`; `payment_accounts.qi_card_phone` + `qi_card_holder_name` (both required before admin can release a payout — manual QiCard app transfer, no API) |
 | `backend/app/models/message.py` | `conversations`, `messages` | `participant_one_id`, `participant_two_id`, `last_message_at`, `conversation_type` (USER/ORDER/SUPPORT), `order_id`; messages: `sender_role` (CLIENT/FREELANCER/ADMIN/SYSTEM), `is_system`, `attachments` JSONB, `read_at` |
 | `backend/app/models/notification.py` | `notifications` | `user_id`, `type` (enum), `is_read`, `link_type`, `link_id`, `actor_id`. Types include: proposal_*, contract_*, milestone_*, payment_*, review_received, new_message, gig_approved/rejected/submitted, dispute_opened/resolved, **buyer_request_offer_received/accepted/rejected, order_requirements_submitted, order_delivered, order_auto_completed, seller_level_upgraded, chat_violation_warning**, system_alert |
 | `backend/app/models/review.py` | `reviews` | `contract_id`, `reviewer_id`, `reviewee_id`, `rating` (1–5), UNIQUE per contract per party |
@@ -97,7 +97,7 @@ Before reading any file, follow these rules:
 | `backend/app/services/job_service.py` | Job CRUD, search | `create_job`, `update_job`, `search_jobs`, `get_job` |
 | `backend/app/services/proposal_service.py` | Proposal lifecycle | `submit_proposal`, `accept_proposal`, `reject_proposal`, `withdraw_proposal` |
 | `backend/app/services/contract_service.py` | Contract + milestone lifecycle | `create_contract`, `submit_milestone`, `approve_milestone`, `complete_contract` |
-| `backend/app/services/gig_service.py` | Gig CRUD + order lifecycle | `create_gig` (notifies admins), `update_gig`, `search_gigs`, `approve_gig(gig_id, admin)` (validates pending_review, sets audit trail, notifies freelancer), `reject_gig(gig_id, reason, admin)` (same), `place_order`, `deliver_order`, `complete_order` |
+| `backend/app/services/catalog_service.py` | Service (was "gig") CRUD + order lifecycle | `create_service` (notifies admins), `update_service`, `search_services`, `approve_service(service_id, admin)`, `reject_service(service_id, reason, admin)`, `place_order`, `deliver_order`, `complete_order`. Class renamed to `CatalogService` to avoid `ServiceService` collision with `services/` layer |
 | `backend/app/services/payment_service.py` | Escrow, transactions, payouts | `fund_escrow`, `release_escrow`, `get_summary`, `list_transactions`, `list_pending_payouts` |
 | `backend/app/services/admin_service.py` | Admin stats, user/job management | `get_stats`, `list_users`, `update_user_status`, `toggle_superuser(user_id, acting_admin)` (promote/demote; resets primary_role to CLIENT on demote; prevents last-admin removal), `list_pending_escrows`, `release_escrow` |
 | `backend/app/services/message_service.py` | Conversations, messages | `get_or_create_conversation`, `send_message`, `list_conversations`, `mark_read` |
@@ -116,7 +116,7 @@ Before reading any file, follow these rules:
 | `backend/app/api/v1/endpoints/jobs.py` | `/jobs` | CRUD + search + status transitions |
 | `backend/app/api/v1/endpoints/proposals.py` | `/proposals` | submit, accept, reject, shortlist, withdraw |
 | `backend/app/api/v1/endpoints/contracts.py` | `/contracts` | create, milestones, complete |
-| `backend/app/api/v1/endpoints/gigs.py` | `/gigs` | search, CRUD, orders, admin approve/reject |
+| `backend/app/api/v1/endpoints/services.py` | `/services` (+ deprecated `/gigs` alias router, drops in Phase 2) | search, CRUD, orders, admin approve/reject |
 | `backend/app/api/v1/endpoints/payments.py` | `/payments` | summary, accounts, transactions, escrow, payout |
 | `backend/app/api/v1/endpoints/admin.py` | `/admin` | stats, users, jobs, transactions, escrows/release |
 | `backend/app/api/v1/endpoints/messages.py` | `/messages` | conversations, send, mark-read |
@@ -136,7 +136,7 @@ Before reading any file, follow these rules:
 | `backend/app/schemas/job.py` | `JobCreate`, `JobOut`, `JobSearch` |
 | `backend/app/schemas/proposal.py` | `ProposalCreate`, `ProposalOut` |
 | `backend/app/schemas/contract.py` | `ContractOut`, `MilestoneCreate`, `MilestoneOut` |
-| `backend/app/schemas/gig.py` | `GigCreate`, `GigOut`, `GigPackageCreate`, `GigOrderCreate`, `GigOrderOut` |
+| `backend/app/schemas/service.py` | `ServiceCreate`, `ServiceOut`, `ServicePackageCreate`, `ServiceOrderCreate`, `ServiceOrderOut` |
 | `backend/app/schemas/payment.py` | `TransactionOut`, `EscrowOut`, `PaymentSummary`, `PayoutRequest` |
 | `backend/app/schemas/message.py` | `MessageCreate`, `MessageOut`, `ConversationOut` |
 | `backend/app/schemas/notification.py` | `NotificationOut` |
@@ -160,8 +160,8 @@ Before reading any file, follow these rules:
 | Route | File | Rendering |
 |-------|------|-----------|
 | `/` | `src/app/page.tsx` | SSR |
-| `/gigs` | `src/app/gigs/page.tsx` | SSR+ISR |
-| `/gigs/[slug]` | `src/app/gigs/[slug]/page.tsx` | SSR+ISR |
+| `/services` | `src/app/services/page.tsx` | SSR+ISR (`/gigs` → 308 redirect via middleware) |
+| `/services/[slug]` | `src/app/services/[slug]/page.tsx` | SSR+ISR |
 | `/jobs` | `src/app/jobs/page.tsx` | SSR |
 | `/jobs/[id]` | `src/app/jobs/[id]/page.tsx` + `job-detail-client.tsx` | SSR+CSR |
 | `/jobs/new` | `src/app/jobs/new/page.tsx` | CSR |
@@ -173,9 +173,9 @@ Before reading any file, follow these rules:
 | `/auth/reset-password` | `src/app/auth/reset-password/page.tsx` | CSR |
 | `/auth/verify-email` | `src/app/auth/verify-email/page.tsx` | CSR |
 | `/dashboard` | `src/app/dashboard/page.tsx` | CSR |
-| `/dashboard/gigs` | `src/app/dashboard/gigs/page.tsx` | CSR |
-| `/dashboard/gigs/new` | `src/app/dashboard/gigs/new/page.tsx` | CSR |
-| `/dashboard/gigs/orders` | `src/app/dashboard/gigs/orders/page.tsx` | CSR |
+| `/dashboard/services` | `src/app/dashboard/services/page.tsx` | CSR (`/dashboard/gigs/*` → 308 redirect) |
+| `/dashboard/services/new` | `src/app/dashboard/services/new/page.tsx` | CSR |
+| `/dashboard/services/orders` | `src/app/dashboard/services/orders/page.tsx` | CSR |
 | `/dashboard/my-jobs` | `src/app/dashboard/my-jobs/page.tsx` | CSR |
 | `/dashboard/my-proposals` | `src/app/dashboard/my-proposals/page.tsx` | CSR |
 | `/dashboard/contracts` | `src/app/dashboard/contracts/page.tsx` | CSR |
@@ -213,7 +213,7 @@ Before reading any file, follow these rules:
 | `src/components/layout/navbar.tsx` | Main navigation with auth state |
 | `src/components/auth/social-login-buttons.tsx` | Google + Facebook OAuth buttons |
 | `src/components/auth/phone-login-tab.tsx` | Phone OTP login tab |
-| `src/components/gigs/gigs-catalog.tsx` | Gig search/filter grid |
+| `src/components/services/services-catalog.tsx` | Service search/filter grid |
 | `src/components/ui/notification-bell.tsx` | Header bell with unread count (polls every 30s) |
 | `src/components/ui/language-switcher.tsx` | AR/EN toggle |
 | `src/components/ui/pagination.tsx` | Generic paginator |
@@ -253,7 +253,7 @@ Before reading any file, follow these rules:
 | `deploy.sh` | `./deploy.sh full|--pull|--migrate|--rollback|--backup|--ssl|--status|--logs` |
 | `backend/alembic/` | Database migrations (16 migrations, linear chain) |
 | `backend/scripts/create_admin.py` | Create/promote admin user |
-| `backend/scripts/seed_categories.py` | Seed 8 Iraqi-market gig categories (idempotent) |
+| `backend/scripts/seed_categories.py` | Seed 8 Iraqi-market service categories (idempotent) |
 | `backend/mypy.ini` | mypy config with per-module error suppressions |
 | `backend/pyproject.toml` | ruff + pytest config |
 
@@ -291,8 +291,8 @@ alembic upgrade head
 alembic check   # must show "No new upgrade operations detected"
 ```
 
-**Migration chain** (26 migrations, linear):
-`25c8a4c` → `1f80b6c` → `40dda09` → `8708878` → `ae6a5c3` → `b3f9e2a` → `c7d4e8f` → `d1a2b3c` → `e2b3c4d` → `f3a4b5c6d7e8` (legal_compliance) → `a1b2c3d4e5f6` (gig_marketplace) → `b2c3d4e5f6a7` (qi_card_only) → `c3d4e5f6a7b8` (phone_otp) → `d4e5f6a7b8c9` (schema_drift_fix) → `e5f6a7b8c9d0` (social_ids_nullable_password_iqd) → `f1a2b3c4d5e6` (gig_review_audit + notification_types) → `f2a3b4c5d6e7` (gig_needs_revision + revision_note) → `g3b4c5d6e7f8` (gig_order_payment_wiring) → `h4c5d6e7f8g9` (refresh_tokens session_metadata) → `i5d6e7f8g9h0` (chat_system_phase1: conversation_type, order_id, sender_role, is_system, attachments) → `j6e7f8g9h0i1` (chat_system_phase3: messages.read_at, users.last_seen_at) → `k7f8g9h0i1j2` (prev) → `l8g9h0i1j2k3` (escrow_partial_unique_index) → `m9h0i1j2k3l4` (dispute_system) → `n0i1j2k3l4m5` (normalize_enum_cases) → `o1j2k3l4m5n6` (buyer_requests + new notification types) → `p2k3l4m5n6o1` (seller_levels + F6 user cols) → `q3l4m5n6o1p2` (order_requirements + delivery + ranking) → `r4m5n6o1p2q3` (dispute_model) → `s5n6o1p2q3r4` (violation_logs) → `t6o7p8q9r0s1` (fix missing id indexes)
+**Migration chain** (27 migrations, linear):
+`25c8a4c` → `1f80b6c` → `40dda09` → `8708878` → `ae6a5c3` → `b3f9e2a` → `c7d4e8f` → `d1a2b3c` → `e2b3c4d` → `f3a4b5c6d7e8` (legal_compliance) → `a1b2c3d4e5f6` (gig_marketplace) → `b2c3d4e5f6a7` (qi_card_only) → `c3d4e5f6a7b8` (phone_otp) → `d4e5f6a7b8c9` (schema_drift_fix) → `e5f6a7b8c9d0` (social_ids_nullable_password_iqd) → `f1a2b3c4d5e6` (gig_review_audit + notification_types) → `f2a3b4c5d6e7` (gig_needs_revision + revision_note) → `g3b4c5d6e7f8` (gig_order_payment_wiring) → `h4c5d6e7f8g9` (refresh_tokens session_metadata) → `i5d6e7f8g9h0` (chat_system_phase1: conversation_type, order_id, sender_role, is_system, attachments) → `j6e7f8g9h0i1` (chat_system_phase3: messages.read_at, users.last_seen_at) → `k7f8g9h0i1j2` (prev) → `l8g9h0i1j2k3` (escrow_partial_unique_index) → `m9h0i1j2k3l4` (dispute_system) → `n0i1j2k3l4m5` (normalize_enum_cases) → `o1j2k3l4m5n6` (buyer_requests + new notification types) → `p2k3l4m5n6o1` (seller_levels + F6 user cols) → `q3l4m5n6o1p2` (order_requirements + delivery + ranking) → `r4m5n6o1p2q3` (dispute_model) → `s5n6o1p2q3r4` (violation_logs) → `t6o7p8q9r0s1` (fix missing id indexes) → `u7p8q9r0s1t2` (admin_audit + payout_approvals) → `v8q9r0s1t2u3` (drop_hourly_job_type) → `w9r0s1t2u3v4` (user_is_support_flag) → `x0s1t2u3v4w5` (normalize_phone_format) → `y1u2v3w4x5y6` (add_qi_card_holder_name) → `z2v3w4x5y6z7` (rename_gig_to_service)
 
 **Enum creation** (idempotent pattern):
 ```python
@@ -401,7 +401,7 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 |---|-------|----------|-------|
 | 1 | ~~**WebSocket per-worker**~~ — **RESOLVED** 2026-04-14: Redis pub/sub (psubscribe) bridges all workers. | ~~High~~ Closed | 2026-04-04 |
 | 2 | **QiCard refunds** — v0 API (current integration) has no refund endpoint. QiCard's **v1 3DS API** (`uat-sandbox-3ds-api.qi.iq`, Basic auth + `X-Terminal-Id`) does expose `POST /api/v1/payment/{paymentId}/refund` (full + partial). Migration requires: confirming merchant provisioning against v1, new env vars (`QI_CARD_V1_HOST`, `QI_CARD_TERMINAL_ID`, Basic-auth creds), persisting the v1 paymentId at create time. Until then `refund_payment()` raises to force manual merchant-portal flow. | Medium | 2026-04-04 (updated 2026-04-20) |
-| 3 | **QiCard payouts** — no payout API. Admin pays via QiCard dashboard then clicks "Mark Paid" in Kaasb admin. | Medium | 2026-04-04 |
+| 3 | **QiCard payouts** — no payout API exists in v0 or v1 3DS (full OpenAPI spec confirms only `POST /payment`, `GET /payment/{id}/status`, `POST /payment/{id}/cancel`, `POST /payment/{id}/refund`). Admin transfers each payout manually via QiCard merchant app to the freelancer's `qi_card_phone` + `qi_card_holder_name` (both now required before the Release button is enabled — migration `y1u2v3w4x5y6`). No automation path. | Medium | 2026-04-04 (updated 2026-04-21) |
 | 4 | **Phone OTP (beta)** — OTP delivered via email. To go live: set `TWILIO_*` env vars and switch `email_service.send_phone_otp` → Twilio in `auth_service.send_phone_otp`. | High | 2026-04-04 |
 | 5 | ~~**USD_TO_IQD rate**~~ — **RESOLVED** 2026-04-20: Platform is IQD-only. Removed `USD_TO_IQD` constant, `usd_to_iqd()` helper, and all USD conversion paths. `QiCardClient.create_payment` now takes `amount_iqd: int` directly. | ~~Medium~~ Closed | 2026-04-04 |
 | 6 | ~~**Gig orders → QiCard**~~ — **RESOLVED** 2026-04-14: `place_order` creates Escrow + Transaction; `complete_order` releases escrow (migration g3b4c5d6e7f8). | ~~Medium~~ Closed | 2026-04-04 |
@@ -413,6 +413,8 @@ ssh -L 3001:localhost:3001 deploy@116.203.140.27 -p 2222 -N
 
 | Date | Change |
 |------|--------|
+| 2026-04-21 | Phase 1 rename **gig → service / خدمة** (migration `z2v3w4x5y6z7`, atomic PR). Tables: `gigs`→`services`, `gig_packages`→`service_packages`, `gig_orders`→`service_orders`, `gig_categories`→`service_categories`, `gig_subcategories`→`service_subcategories`, `gig_order_deliveries`→`service_order_deliveries`. Enum types renamed: `gigstatus`→`servicestatus`, `gigorderstatus`→`serviceorderstatus`, `gigpackagetier`→`servicepackagetier`. Enum values renamed in `notificationtype` (gig_approved/rejected/submitted/needs_revision → service_*) and `adminauditaction` (gig_approved/rejected → service_*). FK columns renamed (`gig_id`→`service_id` on packages/orders/buyer_request_offers; `gig_order_id`→`service_order_id` on escrows). `notifications.link_type` values updated. Python renames: `Gig→Service` + variants, `GigService→CatalogService` (`backend/app/services/catalog_service.py`) to avoid `ServiceService` collision. Frontend: `/gigs`+`/dashboard/gigs/*` → 308 redirect to `/services`+`/dashboard/services/*` via `middleware.ts`; deprecated `/gigs` alias router on backend kept for one release (removed in Phase 2). Dual-field TS types (`service?: X; gig?: X`) with `(offer.service ?? offer.gig)` coalescing kept during deploy window. Legal pages + i18n reference files swept. EN now reads "Service"; AR was already "خدمة" so no UI-facing AR change. |
+| 2026-04-21 | Payout account field (migration `y1u2v3w4x5y6`): added `qi_card_holder_name VARCHAR(128) NULL` on `payment_accounts`. `setup_payment_account` is now an upsert (creates if missing; updates only `qi_card_holder_name` on existing — phone stays immutable post-creation). `release_escrow_by_id` raises `BadRequestError` when freelancer lacks both `qi_card_phone` + `qi_card_holder_name` (gig-order auto-complete bypasses by calling `_release_locked_escrow` directly). Frontend `/dashboard/payments` setup form adds cardholder name input + warns on incomplete accounts; admin payouts tab shows holder name column and disables Release button when fields are missing. Confirmed QiCard v1 3DS OpenAPI surface is 4 endpoints only (payment/status/cancel/refund) — no payout API in v0 or v1. |
 | 2026-04-20 | Known Issue #5 resolved: USD→IQD conversion removed. Platform is IQD-only. `USD_TO_IQD` constant + `usd_to_iqd()` helper deleted from `qi_card_client.py`; `QiCardClient.create_payment` signature is now `amount_iqd: int` (was `amount_usd: float`). Updated callers: `gig_service.place_order` (passes `int(price_d)`), `payment_service.fund_escrow` (passes `int(fees["amount"])`), `payment_service.refund_escrow` + `request_payout` (use `int(amount)` directly). Error message for insufficient balance now reads "{N:,.0f} IQD" instead of "${N:.2f}". |
 | 2026-04-20 | Ops runbook — monitoring + alerts: Alertmanager swapped from Telegram to Discord (`discord_configs` — Telegram blocked in Iraq); `deploy.sh:57` now includes `docker-compose.monitoring.yml` by default (opt-out via `SKIP_MONITORING=1`); env vars added: `ALERTMANAGER_DISCORD_WEBHOOK_URL`, `ALERTMANAGER_SMTP_{FROM,TO,AUTH_USERNAME,AUTH_PASSWORD}`; user provides nightly backup cron install + env-var population steps manually on server |
 | 2026-04-20 | F3 order-requirements UI + F4 delivery UI: `/dashboard/gigs/orders` now shows `pending_requirements` status (amber badge), opens RequirementsModal that reads `order.gig.requirement_questions` and posts `{ answers: [{question, answer}] }` via `gigsApi.submitRequirements`; replaced `window.prompt` delivery flow with structured DeliverModal (message textarea + list of file URLs with URL validation); added `GET /gigs/orders/{id}/deliveries` endpoint + `GigService.list_deliveries` + `gigsApi.listDeliveries` for client-side DeliveryView (paginated-style list of prior deliveries with revision numbers, messages, and external file links) |

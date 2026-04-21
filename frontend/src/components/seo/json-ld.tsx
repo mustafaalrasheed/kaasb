@@ -160,7 +160,7 @@ export function JobPostingJsonLd(props: JobJsonLdProps) {
   );
 }
 
-// === Service Schema (for gig/service listings) ===
+// === Service Schema (for service listings) ===
 
 interface ServiceJsonLdProps {
   name: string;

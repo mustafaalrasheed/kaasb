@@ -23,7 +23,13 @@ from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from app.models.contract import Contract
 from app.models.gig import GigOrder
 from app.models.job import Job, JobStatus
-from app.models.message import Conversation, ConversationType, Message, SenderRole
+from app.models.message import (
+    Conversation,
+    ConversationType,
+    Message,
+    SenderRole,
+    SupportTicketStatus,
+)
 from app.models.proposal import Proposal, ProposalStatus
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.message import ConversationCreate, MessageCreate
@@ -219,6 +225,12 @@ class MessageService(BaseService):
             conversation_type=conv_type,
             job_id=data.job_id,
             order_id=data.order_id,
+            # New SUPPORT threads land in the unassigned queue as 'open'.
+            support_status=(
+                SupportTicketStatus.OPEN
+                if conv_type == ConversationType.SUPPORT
+                else None
+            ),
         )
         self.db.add(conversation)
         await self.db.flush()
@@ -437,6 +449,17 @@ class MessageService(BaseService):
         else:
             update_values["unread_one"] = Conversation.unread_one + 1
 
+        # SUPPORT ticket lifecycle: a non-staff reply to a 'resolved' ticket
+        # reopens it so staff see it again in the queue. Staff replies don't
+        # change the status here — they use explicit claim/resolve actions.
+        if (
+            conversation.conversation_type == ConversationType.SUPPORT
+            and not _is_staff(sender)
+            and conversation.support_status == SupportTicketStatus.RESOLVED
+        ):
+            update_values["support_status"] = SupportTicketStatus.OPEN
+            update_values["support_resolved_at"] = None
+
         await self.db.execute(
             update(Conversation)
             .where(Conversation.id == conversation.id)
@@ -539,6 +562,7 @@ class MessageService(BaseService):
                 selectinload(Conversation.participant_two),
                 selectinload(Conversation.job),
                 selectinload(Conversation.order),
+                selectinload(Conversation.support_assignee),
             )
             .where(
                 or_(
@@ -569,11 +593,70 @@ class MessageService(BaseService):
 
         return self.paginated_response(items=enriched, total=total, page=page, page_size=page_size, key="conversations")
 
+    async def claim_support_ticket(
+        self, conversation_id: uuid.UUID, staff: User,
+    ) -> Conversation:
+        """
+        Staff claims a SUPPORT ticket → status=IN_PROGRESS, assignee=staff.
+        If already claimed by a different staff member, the claim is
+        transferred (useful for handoffs); claiming your own ticket is a no-op.
+        """
+        conversation = await self._get_conversation(conversation_id)
+        if conversation.conversation_type != ConversationType.SUPPORT:
+            raise BadRequestError("Not a support ticket")
+        if not _is_staff(staff):
+            raise ForbiddenError("Only staff can claim tickets")
+        conversation.support_status = SupportTicketStatus.IN_PROGRESS
+        conversation.support_assignee_id = staff.id
+        conversation.support_resolved_at = None
+        await self.db.flush()
+        return conversation
+
+    async def resolve_support_ticket(
+        self, conversation_id: uuid.UUID, staff: User,
+    ) -> Conversation:
+        """
+        Staff marks a SUPPORT ticket resolved. User can still reply, which
+        reopens the ticket (see _send_message). Assignee stays so history
+        shows who handled it.
+        """
+        conversation = await self._get_conversation(conversation_id)
+        if conversation.conversation_type != ConversationType.SUPPORT:
+            raise BadRequestError("Not a support ticket")
+        if not _is_staff(staff):
+            raise ForbiddenError("Only staff can resolve tickets")
+        conversation.support_status = SupportTicketStatus.RESOLVED
+        conversation.support_resolved_at = datetime.now(UTC)
+        # Take ownership if previously unclaimed so the log is complete.
+        if conversation.support_assignee_id is None:
+            conversation.support_assignee_id = staff.id
+        await self.db.flush()
+        return conversation
+
+    async def reopen_support_ticket(
+        self, conversation_id: uuid.UUID, staff: User,
+    ) -> Conversation:
+        """
+        Staff reopens a previously resolved ticket — e.g. user follow-up came
+        in via another channel and needs to be tracked again.
+        """
+        conversation = await self._get_conversation(conversation_id)
+        if conversation.conversation_type != ConversationType.SUPPORT:
+            raise BadRequestError("Not a support ticket")
+        if not _is_staff(staff):
+            raise ForbiddenError("Only staff can reopen tickets")
+        conversation.support_status = SupportTicketStatus.OPEN
+        conversation.support_resolved_at = None
+        await self.db.flush()
+        return conversation
+
     async def list_support_conversations(
         self,
         page: int = 1,
         page_size: int = 20,
         only_unread: bool = False,
+        status: SupportTicketStatus | None = None,
+        assignee_id: uuid.UUID | None = None,
     ) -> dict:
         """
         Admin-only: list every SUPPORT conversation on the platform regardless
@@ -588,9 +671,14 @@ class MessageService(BaseService):
                 selectinload(Conversation.participant_two),
                 selectinload(Conversation.job),
                 selectinload(Conversation.order),
+                selectinload(Conversation.support_assignee),
             )
             .where(Conversation.conversation_type == ConversationType.SUPPORT)
         )
+        if status is not None:
+            stmt = stmt.where(Conversation.support_status == status)
+        if assignee_id is not None:
+            stmt = stmt.where(Conversation.support_assignee_id == assignee_id)
         if only_unread:
             # "Unread" for the inbox = whichever side still has unread > 0.
             # We surface threads where the user side has pending messages the
@@ -703,6 +791,7 @@ class MessageService(BaseService):
                 selectinload(Conversation.participant_two),
                 selectinload(Conversation.job),
                 selectinload(Conversation.order),
+                selectinload(Conversation.support_assignee),
             )
             .where(Conversation.id == conversation_id)
         )

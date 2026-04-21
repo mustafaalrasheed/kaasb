@@ -3,7 +3,7 @@ import "@/styles/globals.css";
 
 // The layout reads cookies() to determine locale, which automatically opts into
 // dynamic rendering. No explicit `export const dynamic` is needed here.
-// Individual pages (e.g. /gigs catalog) can still use ISR/static where they
+// Individual pages (e.g. /services catalog) can still use ISR/static where they
 // don't read cookies themselves — Next.js only forces dynamic at the segment
 // that actually calls cookies()/headers().
 import Link from "next/link";
@@ -193,7 +193,7 @@ export default async function RootLayout({
                   <Link href="/freelancers" className="hover:text-gray-800 transition-colors">
                     {locale === "ar" ? "ابحث عن مستقلين" : "Find Freelancers"}
                   </Link>
-                  <Link href="/gigs" className="hover:text-gray-800 transition-colors">
+                  <Link href="/services" className="hover:text-gray-800 transition-colors">
                     {locale === "ar" ? "الخدمات" : "Services"}
                   </Link>
                   <Link href="/privacy" className="hover:text-gray-800 transition-colors">

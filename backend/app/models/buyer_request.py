@@ -11,7 +11,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from app.models.base import BaseModel
 
@@ -44,7 +44,7 @@ class BuyerRequest(BaseModel):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("gig_categories.id", ondelete="SET NULL"),
+        ForeignKey("service_categories.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -62,7 +62,7 @@ class BuyerRequest(BaseModel):
 
     # Relationships
     client: Mapped[User] = relationship("User", foreign_keys=[client_id])  # type: ignore[name-defined]
-    category: Mapped[Category | None] = relationship("Category")  # type: ignore[name-defined]
+    category: Mapped[ServiceCategory | None] = relationship("ServiceCategory")  # type: ignore[name-defined]
     offers: Mapped[list[BuyerRequestOffer]] = relationship(
         "BuyerRequestOffer",
         back_populates="request",
@@ -91,10 +91,10 @@ class BuyerRequestOffer(BaseModel):
         nullable=False,
         index=True,
     )
-    # Optional: freelancer can link an existing gig to this offer
-    gig_id: Mapped[uuid.UUID | None] = mapped_column(
+    # Optional: freelancer can link an existing service to this offer
+    service_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("gigs.id", ondelete="SET NULL"),
+        ForeignKey("services.id", ondelete="SET NULL"),
         nullable=True,
     )
     price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
@@ -110,7 +110,12 @@ class BuyerRequestOffer(BaseModel):
     # Relationships
     request: Mapped[BuyerRequest] = relationship("BuyerRequest", back_populates="offers")
     freelancer: Mapped[User] = relationship("User", foreign_keys=[freelancer_id])  # type: ignore[name-defined]
-    gig: Mapped[Gig | None] = relationship("Gig")  # type: ignore[name-defined]
+    service: Mapped[Service | None] = relationship("Service")  # type: ignore[name-defined]
+
+    # Legacy alias — old call sites use ``BuyerRequestOffer(gig_id=...)`` and ``offer.gig_id``.
+    # TODO: remove once buyer_request_service.py sweep completes.
+    gig_id = synonym("service_id")
+    gig = synonym("service")
 
     def __repr__(self) -> str:
         return f"<BuyerRequestOffer freelancer={self.freelancer_id} status={self.status.value}>"

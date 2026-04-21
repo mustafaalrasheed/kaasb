@@ -249,6 +249,29 @@ class AdminService(BaseService):
         await self.db.refresh(user)
         return user
 
+    async def unsuspend_chat(self, user_id: uuid.UUID) -> User:
+        """
+        Lift an off-platform-violation chat suspension early. Clears the 24h
+        ``chat_suspended_until`` timestamp but leaves the running
+        ``chat_violations`` counter alone — the user's history isn't erased,
+        only the current cooldown. A follow-up violation still escalates
+        from whatever count they were at, so repeat offenders can't game
+        the admin by asking for a lift every time.
+        """
+        result = await self.db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise NotFoundError("User")
+
+        if user.chat_suspended_until is None:
+            raise BadRequestError("User is not currently suspended from chat")
+
+        user.chat_suspended_until = None
+        logger.info("Chat suspension lifted for user=%s", user_id)
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
     async def toggle_support(self, user_id: uuid.UUID, acting_admin: User) -> User:
         """
         Grant or revoke limited-privilege support role. Support can triage

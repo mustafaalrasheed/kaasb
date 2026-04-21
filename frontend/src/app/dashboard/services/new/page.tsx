@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { gigsApi } from "@/lib/api";
+import { servicesApi } from "@/lib/api";
 import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
 
@@ -88,7 +88,7 @@ const t = {
     // Step 3
     reviewTitle: "مراجعة الخدمة",
     reviewHint: "تأكد من المعلومات قبل الإرسال.",
-    reviewGigTitle: "العنوان",
+    reviewServiceTitle: "العنوان",
     reviewCategory: "الفئة",
     reviewDescription: "الوصف",
     reviewTags: "الكلمات المفتاحية",
@@ -101,7 +101,7 @@ const t = {
     noTags: "—",
   },
   en: {
-    title: "Create a New Gig",
+    title: "Create a New Service",
     stepOverview: "Overview",
     stepPricing: "Pricing",
     stepReview: "Review",
@@ -111,11 +111,11 @@ const t = {
     back: "Back",
     submit: "Submit for Review",
     submitting: "Submitting...",
-    submitSuccess: "Your gig has been submitted for review!",
-    submitError: "Failed to submit gig",
+    submitSuccess: "Your service has been submitted for review!",
+    submitError: "Failed to submit service",
 
     // Step 1
-    titleLabel: "Gig Title",
+    titleLabel: "Service Title",
     titlePlaceholder: "e.g., I will design a professional logo for your brand",
     categoryLabel: "Category",
     selectCategory: "Select a category",
@@ -125,8 +125,8 @@ const t = {
     descriptionPlaceholder: "Describe what you'll deliver in detail...",
     tagsLabel: "Tags",
     tagsPlaceholder: "e.g., design, logo, branding (comma separated)",
-    tagsHint: "Tags help buyers find your gig in search",
-    imagesLabel: "Gig Images (optional)",
+    tagsHint: "Tags help buyers find your service in search",
+    imagesLabel: "Service Images (optional)",
     imagesHint: "Add up to 5 images to showcase your work. The first image will be the thumbnail.",
     addImages: "Choose Images",
     imageCount: (n: number) => `${n}/5 images`,
@@ -150,9 +150,9 @@ const t = {
     packageDescPlaceholder: "What will the buyer receive?",
 
     // Step 3
-    reviewTitle: "Review Your Gig",
+    reviewTitle: "Review Your Service",
     reviewHint: "Check everything before submitting.",
-    reviewGigTitle: "Title",
+    reviewServiceTitle: "Title",
     reviewCategory: "Category",
     reviewDescription: "Description",
     reviewTags: "Tags",
@@ -367,7 +367,7 @@ function PackageCard({
 
 // ---- Main Page ----
 
-export default function NewGigPage() {
+export default function NewServicePage() {
   const { locale } = useLocale();
   const router = useRouter();
   const str = t[locale];
@@ -393,7 +393,7 @@ export default function NewGigPage() {
   });
 
   useEffect(() => {
-    gigsApi.getCategories().then((res) => {
+    servicesApi.getCategories().then((res) => {
       setCategories(res.data?.data || res.data || []);
     }).catch(() => {});
   }, []);
@@ -513,7 +513,7 @@ export default function NewGigPage() {
 
       const tagList = tags.split(",").map((t) => t.trim()).filter(Boolean);
 
-      const createRes = await gigsApi.create({
+      const createRes = await servicesApi.create({
         title: title.trim(),
         description: description.trim(),
         category_id: categoryId,
@@ -522,17 +522,17 @@ export default function NewGigPage() {
         packages: enabledPackages,
       });
 
-      const gigId: string = createRes.data.id;
+      const serviceId: string = createRes.data.id;
       for (const img of images) {
         try {
-          await gigsApi.uploadImage(gigId, img);
+          await servicesApi.uploadImage(serviceId, img);
         } catch {
-          // Non-fatal: gig created, image upload failed silently
+          // Non-fatal: service created, image upload failed silently
         }
       }
 
       toast.success(str.submitSuccess);
-      router.push("/dashboard/gigs");
+      router.push("/dashboard/services");
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: unknown } } };
       const detail = axiosErr?.response?.data?.detail;
@@ -742,7 +742,7 @@ export default function NewGigPage() {
 
             <dl className="divide-y divide-gray-100">
               <div className="py-3 grid grid-cols-3 gap-4 text-sm">
-                <dt className="font-medium text-gray-500">{str.reviewGigTitle}</dt>
+                <dt className="font-medium text-gray-500">{str.reviewServiceTitle}</dt>
                 <dd className="col-span-2 text-gray-900">{title}</dd>
               </div>
               <div className="py-3 grid grid-cols-3 gap-4 text-sm">
@@ -804,7 +804,7 @@ export default function NewGigPage() {
       <div className="flex gap-3 justify-between">
         <button
           type="button"
-          onClick={() => step === 1 ? router.push("/dashboard/gigs") : setStep((s) => s - 1)}
+          onClick={() => step === 1 ? router.push("/dashboard/services") : setStep((s) => s - 1)}
           className="btn-secondary py-2.5 px-6"
         >
           {str.back}

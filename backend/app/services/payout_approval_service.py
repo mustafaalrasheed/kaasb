@@ -300,7 +300,7 @@ class PayoutApprovalService:
                 "freelancer_id": es.freelancer_id if es else None,
                 "freelancer_email": fl.email if fl else None,
                 "freelancer_username": fl.username if fl else None,
-                "gig_order_id": es.gig_order_id if es else None,
+                "service_order_id": es.service_order_id if es else None,
                 "milestone_id": es.milestone_id if es else None,
             })
         return rows

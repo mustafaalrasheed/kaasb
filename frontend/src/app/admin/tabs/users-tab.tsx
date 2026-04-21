@@ -15,6 +15,8 @@ interface AdminUser {
   total_earnings: number;
   jobs_completed: number;
   created_at: string;
+  chat_violations?: number;
+  chat_suspended_until?: string | null;
 }
 
 interface UsersTabProps {
@@ -32,14 +34,18 @@ interface UsersTabProps {
   onStatusUpdate: (userId: string, status: string) => void;
   onToggleAdmin: (userId: string, isCurrentlyAdmin: boolean) => void;
   onToggleSupport: (userId: string, isCurrentlySupport: boolean) => void;
+  onUnsuspendChat: (userId: string) => void;
 }
 
 export function UsersTab({
   users, total, loading, search, roleFilter, currentUserId,
   ar, dateLocale,
   onSearchChange, onRoleFilterChange, onSearch,
-  onStatusUpdate, onToggleAdmin, onToggleSupport,
+  onStatusUpdate, onToggleAdmin, onToggleSupport, onUnsuspendChat,
 }: UsersTabProps) {
+  const now = Date.now();
+  const isChatSuspended = (u: AdminUser) =>
+    !!u.chat_suspended_until && new Date(u.chat_suspended_until).getTime() > now;
   const roleLabels: Record<string, string> = ar
     ? { client: "عميل", freelancer: "مستقل", admin: "مدير" }
     : { client: "Client", freelancer: "Freelancer", admin: "Admin" };
@@ -98,6 +104,14 @@ export function UsersTab({
                     {!u.is_superuser && u.is_support && (
                       <span className="ms-1 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
                         {ar ? "دعم" : "Support"}
+                      </span>
+                    )}
+                    {isChatSuspended(u) && (
+                      <span
+                        className="ms-1 text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded"
+                        title={ar ? "الدردشة موقوفة مؤقتاً" : "Chat temporarily suspended"}
+                      >
+                        {ar ? "دردشة موقوفة" : "Chat Suspended"}
                       </span>
                     )}
                   </div>
@@ -167,6 +181,15 @@ export function UsersTab({
                         className="px-2 py-1 text-xs bg-orange-50 text-orange-600 rounded hover:bg-orange-100"
                       >
                         {ar ? "إلغاء صلاحية الدعم" : "Revoke Support"}
+                      </button>
+                    )}
+                    {isChatSuspended(u) && (
+                      <button
+                        onClick={() => onUnsuspendChat(u.id)}
+                        className="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-100"
+                        title={ar ? "رفع إيقاف الدردشة" : "Lift chat suspension"}
+                      >
+                        {ar ? "رفع إيقاف الدردشة" : "Unsuspend Chat"}
                       </button>
                     )}
                   </div>

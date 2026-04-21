@@ -198,9 +198,9 @@ export default async function HomePage() {
 
             {/* Dual discovery paths */}
             <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
-              {/* Path 1: Browse gigs (Fiverr model) */}
+              {/* Path 1: Browse services (Fiverr model) */}
               <Link
-                href="/gigs"
+                href="/services"
                 className="flex flex-col gap-1 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 px-5 py-4 transition-colors text-start"
               >
                 <span className="text-2xl">🛍️</span>

@@ -41,7 +41,19 @@ function isTokenExpired(token: string): boolean {
 }
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
+
+  // 308 redirect /gigs → /services (rename to "Service / خدمة"). Permanent +
+  // method-preserving so SEO + bookmarks resolve cleanly. Keeps query string.
+  if (pathname === "/gigs" || pathname.startsWith("/gigs/")) {
+    const target = pathname.replace(/^\/gigs/, "/services") + search;
+    return NextResponse.redirect(new URL(target, request.url), 308);
+  }
+  if (pathname === "/dashboard/gigs" || pathname.startsWith("/dashboard/gigs/")) {
+    const target = pathname.replace(/^\/dashboard\/gigs/, "/dashboard/services") + search;
+    return NextResponse.redirect(new URL(target, request.url), 308);
+  }
+
   const tokenCookie = request.cookies.get("access_token")?.value;
 
   // "Has a session" means the cookie exists — even if expired.
@@ -77,5 +89,11 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*", "/auth/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/admin/:path*",
+    "/auth/:path*",
+    "/gigs",
+    "/gigs/:path*",
+  ],
 };

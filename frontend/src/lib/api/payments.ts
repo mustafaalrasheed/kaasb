@@ -8,6 +8,7 @@ export const paymentsApi = {
   setupAccount: (data: {
     provider: string;
     qi_card_phone?: string;
+    qi_card_holder_name?: string;
   }) => api.post("/payments/accounts", data),
 
   getTransactions: (params?: {

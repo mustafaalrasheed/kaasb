@@ -12,15 +12,27 @@ from app.utils.phone import normalize_iraqi_phone
 # === Payment Account ===
 
 class PaymentAccountSetup(BaseModel):
-    """Setup a Qi Card payment account."""
+    """Setup or update a Qi Card payment account."""
     provider: str = Field(pattern=r"^qi_card$")
-    # Qi Card-specific (optional — used for account label)
+    # Qi Card-specific (optional on create — required before payout is released)
     qi_card_phone: str | None = Field(None, max_length=20, description="Iraqi phone number linked to Qi Card")
+    qi_card_holder_name: str | None = Field(
+        None, min_length=2, max_length=128,
+        description="Cardholder name exactly as printed on the Qi Card — used to match payouts",
+    )
 
     @field_validator("qi_card_phone")
     @classmethod
     def _normalize_phone(cls, v: str | None) -> str | None:
         return normalize_iraqi_phone(v)
+
+    @field_validator("qi_card_holder_name")
+    @classmethod
+    def _strip_holder(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = " ".join(v.split())
+        return v or None
 
 
 class PaymentAccountResponse(BaseModel):
@@ -29,6 +41,7 @@ class PaymentAccountResponse(BaseModel):
     status: str
     external_account_id: str | None = None
     qi_card_phone: str | None = None
+    qi_card_holder_name: str | None = None
     is_default: bool = True
     verified_at: datetime | None = None
     created_at: datetime

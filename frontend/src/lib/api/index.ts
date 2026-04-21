@@ -8,7 +8,7 @@ export { jobsApi } from "./jobs";
 export { proposalsApi } from "./proposals";
 export { contractsApi } from "./contracts";
 export { paymentsApi } from "./payments";
-export { gigsApi } from "./gigs";
+export { servicesApi, gigsApi } from "./services";
 export { adminApi } from "./admin";
 export { messagesApi } from "./messages";
 export { notificationsApi } from "./notifications";

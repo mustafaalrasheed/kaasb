@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { gigsApi } from "@/lib/api";
+import { servicesApi } from "@/lib/api";
 import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
 
@@ -83,10 +83,10 @@ const t = {
     revisionNote: "ملاحظة المراجعة:",
   },
   en: {
-    title: "Edit Gig",
+    title: "Edit Service",
     loading: "Loading...",
-    notFound: "Gig not found",
-    titleLabel: "Gig Title",
+    notFound: "Service not found",
+    titleLabel: "Service Title",
     titlePlaceholder: "e.g., I will design a professional logo",
     categoryLabel: "Category",
     selectCategory: "Select a category",
@@ -117,7 +117,7 @@ const t = {
     saving: "Saving...",
     saved: "Changes saved",
     saveError: "Failed to save changes",
-    resubmitNotice: "Your gig will be re-submitted for review after saving.",
+    resubmitNotice: "Your service will be re-submitted for review after saving.",
     revisionNote: "Reviewer note:",
   },
 };
@@ -248,11 +248,11 @@ function PackageCard({
   );
 }
 
-export default function EditGigPage() {
+export default function EditServicePage() {
   const { locale } = useLocale();
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const gigId = params?.id;
+  const serviceId = params?.id;
   const str = t[locale];
 
   const [loading, setLoading] = useState(true);
@@ -274,14 +274,14 @@ export default function EditGigPage() {
   });
 
   const load = useCallback(async () => {
-    if (!gigId) return;
+    if (!serviceId) return;
     try {
-      const [catsRes, gigRes] = await Promise.all([
-        gigsApi.getCategories(),
-        gigsApi.getMine(gigId),
+      const [catsRes, svcRes] = await Promise.all([
+        servicesApi.getCategories(),
+        servicesApi.getMine(serviceId),
       ]);
       setCategories(catsRes.data?.data || catsRes.data || []);
-      const g = gigRes.data;
+      const g = svcRes.data;
       setTitle(g.title || "");
       setDescription(g.description || "");
       setCategoryId(g.category_id || "");
@@ -318,7 +318,7 @@ export default function EditGigPage() {
     } finally {
       setLoading(false);
     }
-  }, [gigId, str.saveError]);
+  }, [serviceId, str.saveError]);
 
   useEffect(() => {
     load();
@@ -365,7 +365,7 @@ export default function EditGigPage() {
   };
 
   const handleSave = async () => {
-    if (!gigId || !validate()) return;
+    if (!serviceId || !validate()) return;
     setSaving(true);
     try {
       const enabledPackages = TIERS.filter((tier) => tier === "basic" || packages[tier].enabled).map((tier) => {
@@ -384,7 +384,7 @@ export default function EditGigPage() {
 
       const tagList = tags.split(",").map((x) => x.trim()).filter(Boolean);
 
-      await gigsApi.update(gigId, {
+      await servicesApi.update(serviceId, {
         title: title.trim(),
         description: description.trim(),
         category_id: categoryId,
@@ -394,7 +394,7 @@ export default function EditGigPage() {
       });
 
       toast.success(str.saved);
-      router.push("/dashboard/gigs");
+      router.push("/dashboard/services");
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: unknown } } };
       const detail = axiosErr?.response?.data?.detail;
@@ -412,7 +412,7 @@ export default function EditGigPage() {
     return (
       <div className="max-w-2xl mx-auto py-10 text-center">
         <p className="text-gray-700">{str.notFound}</p>
-        <button onClick={() => router.push("/dashboard/gigs")} className="mt-4 btn-secondary py-2 px-4">
+        <button onClick={() => router.push("/dashboard/services")} className="mt-4 btn-secondary py-2 px-4">
           {str.cancel}
         </button>
       </div>
@@ -530,7 +530,7 @@ export default function EditGigPage() {
       <div className="flex gap-3 justify-between">
         <button
           type="button"
-          onClick={() => router.push("/dashboard/gigs")}
+          onClick={() => router.push("/dashboard/services")}
           className="btn-secondary py-2.5 px-6"
         >
           {str.cancel}

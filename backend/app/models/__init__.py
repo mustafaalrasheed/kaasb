@@ -9,7 +9,7 @@ from app.models.admin_audit import (
     PayoutApproval,
     PayoutApprovalStatus,
 )
-from app.models.base import BaseModel  # noqa: I001
+from app.models.base import BaseModel
 from app.models.buyer_request import (
     BuyerRequest,
     BuyerRequestOffer,
@@ -18,17 +18,6 @@ from app.models.buyer_request import (
 )
 from app.models.contract import Contract, ContractStatus, Milestone, MilestoneStatus
 from app.models.dispute import Dispute, DisputeReason, DisputeStatus
-from app.models.gig import (
-    Category,
-    Gig,
-    GigOrder,
-    GigOrderStatus,
-    GigPackage,
-    GigPackageTier,
-    GigStatus,
-    OrderDelivery,
-    Subcategory,
-)
 from app.models.job import ExperienceLevel, Job, JobDuration, JobStatus, JobType
 from app.models.message import Conversation, Message
 from app.models.notification import Notification, NotificationType
@@ -47,8 +36,30 @@ from app.models.proposal import Proposal, ProposalStatus
 from app.models.refresh_token import RefreshToken
 from app.models.report import Report, ReportReason, ReportStatus, ReportType
 from app.models.review import Review
+from app.models.service import (
+    Service,
+    ServiceCategory,
+    ServiceOrder,
+    ServiceOrderDelivery,
+    ServiceOrderStatus,
+    ServicePackage,
+    ServicePackageTier,
+    ServiceStatus,
+    ServiceSubcategory,
+)
 from app.models.user import SellerLevel, User, UserRole, UserStatus
 from app.models.violation_log import ViolationAction, ViolationLog, ViolationType
+
+# Legacy aliases — same classes, old names. Removed once all call sites migrate.
+Gig = Service
+GigOrder = ServiceOrder
+GigPackage = ServicePackage
+OrderDelivery = ServiceOrderDelivery
+Category = ServiceCategory
+Subcategory = ServiceSubcategory
+GigStatus = ServiceStatus
+GigOrderStatus = ServiceOrderStatus
+GigPackageTier = ServicePackageTier
 
 __all__ = [
     "BaseModel",
@@ -69,6 +80,10 @@ __all__ = [
     "Notification", "NotificationType",
     "Conversation", "Message",
     "Report", "ReportType", "ReportReason", "ReportStatus",
+    "Service", "ServiceStatus", "ServicePackage", "ServicePackageTier",
+    "ServiceOrder", "ServiceOrderStatus", "ServiceOrderDelivery",
+    "ServiceCategory", "ServiceSubcategory",
+    # Legacy aliases — kept until all call sites migrate.
     "Category", "Subcategory",
     "Gig", "GigStatus", "GigPackage", "GigPackageTier",
     "GigOrder", "GigOrderStatus", "OrderDelivery",

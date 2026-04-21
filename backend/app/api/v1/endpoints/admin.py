@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.middleware.security import _get_client_ip
 from app.models.admin_audit import AdminAuditAction, AdminAuditLog
-from app.models.message import Conversation
+from app.models.message import Conversation, SupportTicketStatus
 from app.models.user import User
 from app.schemas.admin import (
     AdminAuditLogInfo,

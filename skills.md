@@ -182,7 +182,7 @@ from app.core.exceptions import (
 
 # Standard usage:
 if not resource:
-    raise NotFoundError("Gig not found")
+    raise NotFoundError("Service not found")
 if resource.owner_id != user.id:
     raise ForbiddenError("You do not own this resource")
 if await self._already_exists(user.id, job_id):
@@ -487,7 +487,7 @@ asyncio.create_task(notify(
     type=NotificationType.YOUR_NEW_TYPE,
     title="العنوان",                     # Arabic first
     message="رسالة تفصيلية للمستخدم",
-    link_type="gig",                     # "contract"|"job"|"proposal"|"gig"|"message"|None
+    link_type="service",                 # "contract"|"job"|"proposal"|"service"|"message"|None
     link_id=str(related_entity.id),      # str(UUID) or None
     actor_id=str(triggering_user.id),    # str(UUID) or None
 ))
@@ -499,40 +499,42 @@ asyncio.create_task(notify(
 `milestone_funded`, `milestone_submitted`, `milestone_approved`, `milestone_revision`,
 `payment_received`, `payout_completed`,
 `review_received`, `new_message`,
-`gig_approved`, `gig_rejected`, `gig_submitted`,
+`service_approved`, `service_rejected`, `service_submitted`,
 `system_alert`
 
 Frontend bell auto-updates (polls `GET /notifications/unread-count` every 30s). No frontend changes needed.
 
 ---
 
-### Gig Lifecycle Recipe
+### Service Lifecycle Recipe
+
+> Renamed from "Gig" in migration `z2v3w4x5y6z7` (2026-04-21). Old `/gigs` URLs 308-redirect to `/services`; a deprecated `/gigs` alias router on the backend stays for one release.
 
 Full flow: `pending_review` → (approve) → `active` | (reject) → `rejected` → (edit+resubmit) → `pending_review`
 
 ```python
-# ── Service method signatures (gig_service.py) ──────────────────────────
-async def approve_gig(self, gig_id: uuid.UUID, admin: User) -> Gig:
+# ── Service method signatures (catalog_service.py — class is CatalogService) ─
+async def approve_service(self, service_id: uuid.UUID, admin: User) -> Service:
     # Validates: status must be pending_review
     # Sets: status=active, reviewed_by_id=admin.id, reviewed_at=now()
-    # Fires: GIG_APPROVED notification → freelancer
+    # Fires: SERVICE_APPROVED notification → freelancer
 
-async def reject_gig(self, gig_id: uuid.UUID, reason: str, admin: User) -> Gig:
+async def reject_service(self, service_id: uuid.UUID, reason: str, admin: User) -> Service:
     # Validates: status must be pending_review or active (active = takedown)
     # Sets: status=rejected, rejection_reason=reason, reviewed_by_id, reviewed_at
-    # Fires: GIG_REJECTED notification → freelancer
+    # Fires: SERVICE_REJECTED notification → freelancer
 
-async def create_gig(self, freelancer: User, data: GigCreate) -> Gig:
+async def create_service(self, freelancer: User, data: ServiceCreate) -> Service:
     # Sets status=pending_review
-    # Fires: GIG_SUBMITTED notification → all active admins
+    # Fires: SERVICE_SUBMITTED notification → all active admins
 
-# ── Endpoint signatures (gigs.py) ───────────────────────────────────────
-# POST /gigs/admin/{gig_id}/approve  — pass admin from Depends(get_current_admin)
-# POST /gigs/admin/{gig_id}/reject?reason=...  — requires min_length=10
-# GET  /gigs/admin/pending           — returns list of pending_review gigs
+# ── Endpoint signatures (services.py) ──────────────────────────────────
+# POST /services/admin/{service_id}/approve  — pass admin from Depends(get_current_admin)
+# POST /services/admin/{service_id}/reject?reason=...  — requires min_length=10
+# GET  /services/admin/pending               — returns list of pending_review services
 ```
 
-**Gig model audit columns** (added migration `a1b2c3d4e5f6`):
+**Service model audit columns** (added migration `a1b2c3d4e5f6`):
 - `reviewed_by_id` — UUID FK → users.id (SET NULL on delete)
 - `reviewed_at` — TIMESTAMPTZ
 - `rejection_reason` — Text (already existed)
@@ -569,6 +571,8 @@ except QiCardError as e:
 ```
 
 Frontend `payment/result` page reads `?status=success&CartID=<order_id>`, calls backend to confirm, backend updates order + creates Escrow.
+
+**QiCard API surface (confirmed from v1 3DS OpenAPI, 2026-04-21)** — the gateway exposes **only** 4 endpoints: `POST /payment` (create), `GET /payment/{id}/status`, `POST /payment/{id}/cancel`, `POST /payment/{id}/refund` (full + partial, v1 only). **There is no payout / transfer / disbursement endpoint in any version.** Payouts to freelancers are 100% manual via the QiCard merchant app — the admin matches on `payment_accounts.qi_card_phone` + `qi_card_holder_name` (both required before `release_escrow_by_id` succeeds). Any code that looks for a payout API is wrong; direct it to `admin → Payouts tab → Confirm Payout` instead.
 
 **Escrow after confirmed payment**:
 ```python

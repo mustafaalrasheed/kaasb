@@ -22,9 +22,9 @@ const sidebarLinks = [
   { href: "/jobs/new", labelAr: "نشر وظيفة", labelEn: "Post a Job", icon: "✏️", roles: ["client"] },
   { href: "/dashboard/requests", labelAr: "طلباتي", labelEn: "My Requests", icon: "📣", roles: ["client"] },
   // Freelancer-only
-  { href: "/dashboard/gigs", labelAr: "خدماتي", labelEn: "My Gigs", icon: "🛍️", roles: ["freelancer"] },
-  { href: "/dashboard/gigs/new", labelAr: "إنشاء خدمة", labelEn: "Create Gig", icon: "✨", roles: ["freelancer"] },
-  { href: "/dashboard/gigs/orders", labelAr: "طلبات الخدمات", labelEn: "Gig Orders", icon: "📦", roles: ["client", "freelancer"] },
+  { href: "/dashboard/services", labelAr: "خدماتي", labelEn: "My Services", icon: "🛍️", roles: ["freelancer"] },
+  { href: "/dashboard/services/new", labelAr: "إنشاء خدمة", labelEn: "Create Service", icon: "✨", roles: ["freelancer"] },
+  { href: "/dashboard/services/orders", labelAr: "طلبات الخدمات", labelEn: "Service Orders", icon: "📦", roles: ["client", "freelancer"] },
   { href: "/dashboard/my-proposals", labelAr: "عروضي", labelEn: "My Proposals", icon: "📨", roles: ["freelancer"] },
   { href: "/requests", labelAr: "طلبات العملاء", labelEn: "Client Requests", icon: "📣", roles: ["freelancer"] },
   { href: "/jobs", labelAr: "ابحث عن عمل", labelEn: "Find Work", icon: "🔍", roles: ["freelancer"] },

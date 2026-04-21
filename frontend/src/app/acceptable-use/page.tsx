@@ -105,7 +105,7 @@ export default function AcceptableUsePage() {
                   removes the safety net you rely on. Therefore we prohibit:
                 </p>
                 <ul className="list-disc ms-6 mt-3 space-y-1.5">
-                  <li>Sharing phone numbers, email addresses, social-media handles, external messaging-app identifiers, or bank/payment details in messages, Gig descriptions, profile copy, or delivery files with the purpose of moving a transaction off the Platform.</li>
+                  <li>Sharing phone numbers, email addresses, social-media handles, external messaging-app identifiers, or bank/payment details in messages, Service descriptions, profile copy, or delivery files with the purpose of moving a transaction off the Platform.</li>
                   <li>Proposing, agreeing to, or facilitating any arrangement designed to avoid the Platform Fee, including partial off-Platform payment.</li>
                   <li>Cancelling a Platform Order to re-execute it directly with the same counter-party.</li>
                   <li>Using the messaging system to advertise services that are listed only off the Platform.</li>
@@ -187,7 +187,7 @@ export default function AcceptableUsePage() {
             en={
               <ul className="list-disc ms-6 space-y-1.5">
                 <li>Treat every User with respect. Harassment, threats, sexual advances, and discrimination are not tolerated.</li>
-                <li>Use professional language in all messages, Gig titles, and descriptions.</li>
+                <li>Use professional language in all messages, Service titles, and descriptions.</li>
                 <li>Do not create multiple accounts, manipulate reviews, or attempt to game search rankings.</li>
                 <li>Do not impersonate another person, brand, or organisation.</li>
                 <li>Do not collect or redistribute personal data of other Users.</li>
@@ -210,7 +210,7 @@ export default function AcceptableUsePage() {
           <Bilingual
             en={
               <p>
-                Use the &quot;Report&quot; action on a profile, Gig, Job, message, or review to flag it for
+                Use the &quot;Report&quot; action on a profile, Service, Job, message, or review to flag it for
                 administrative review. Severe or time-sensitive cases (impersonation of a Kaasb employee,
                 threats, fraud in progress) should be sent to{" "}
                 <a href={`mailto:${EMAIL_SUPPORT}`} className="text-brand-500 hover:underline">{EMAIL_SUPPORT}</a>{" "}

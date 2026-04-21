@@ -36,6 +36,10 @@ class AdminUserInfo(BaseModel):
     is_online: bool
     last_login: datetime | None = None
     created_at: datetime
+    # F6 chat moderation — surfaced so the admin UI can offer "Unsuspend Chat"
+    # without a second round-trip and show running violation count for triage.
+    chat_violations: int = 0
+    chat_suspended_until: datetime | None = None
 
     model_config = {"from_attributes": True}
 

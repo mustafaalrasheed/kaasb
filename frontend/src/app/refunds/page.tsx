@@ -47,7 +47,7 @@ export default function RefundPolicyPage() {
           <Bilingual
             en={
               <p>
-                This Policy applies to payments made by Buyers on the Kaasb Platform for Gigs, Orders,
+                This Policy applies to payments made by Buyers on the Kaasb Platform for Services, Orders,
                 Milestones, or Job Contracts, all of which pass through Escrow before release to the Seller.
                 Refunds are processed exclusively through Qi Card, in Iraqi Dinars (IQD).
               </p>

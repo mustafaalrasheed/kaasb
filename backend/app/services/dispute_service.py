@@ -1,7 +1,7 @@
 """
 Kaasb Platform - Dispute Service (F5)
 Dedicated dispute lifecycle: create, assign, resolve.
-Works alongside existing GigOrder.dispute_* fields.
+Works alongside existing ServiceOrder.dispute_* fields.
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.dispute import Dispute, DisputeStatus
-from app.models.gig import GigOrder, GigOrderStatus
 from app.models.notification import NotificationType
 from app.models.payment import Escrow, EscrowStatus
+from app.models.service import ServiceOrder, ServiceOrderStatus
 from app.models.user import User, UserStatus
 from app.schemas.dispute import DisputeCreate
 from app.services.base import BaseService
@@ -35,10 +35,10 @@ class DisputeService(BaseService):
     ) -> Dispute:
         """
         Open a formal Dispute record for an order.
-        Also updates GigOrder status to DISPUTED and freezes escrow
+        Also updates ServiceOrder status to DISPUTED and freezes escrow
         (delegates to existing GigService logic where applicable).
         """
-        order = await self.db.get(GigOrder, order_id)
+        order = await self.db.get(ServiceOrder, order_id)
         if not order:
             raise NotFoundError("Order")
 
@@ -50,10 +50,10 @@ class DisputeService(BaseService):
 
         # Check order is in a disputable state
         allowed = {
-            GigOrderStatus.IN_PROGRESS,
-            GigOrderStatus.DELIVERED,
-            GigOrderStatus.REVISION_REQUESTED,
-            GigOrderStatus.PENDING_REQUIREMENTS,
+            ServiceOrderStatus.IN_PROGRESS,
+            ServiceOrderStatus.DELIVERED,
+            ServiceOrderStatus.REVISION_REQUESTED,
+            ServiceOrderStatus.PENDING_REQUIREMENTS,
         }
         if order.status not in allowed:
             raise BadRequestError(
@@ -80,14 +80,14 @@ class DisputeService(BaseService):
         self.db.add(dispute)
 
         # Update order status and freeze escrow
-        order.status = GigOrderStatus.DISPUTED
+        order.status = ServiceOrderStatus.DISPUTED
         order.dispute_opened_at = datetime.now(UTC)
         order.dispute_opened_by = initiator.id
         order.dispute_reason = data.description[:500]
 
         escrow_result = await self.db.execute(
             select(Escrow).where(
-                Escrow.gig_order_id == order_id,
+                Escrow.service_order_id == order_id,
                 Escrow.status == EscrowStatus.FUNDED,
             )
         )
@@ -105,7 +105,7 @@ class DisputeService(BaseService):
             type=NotificationType.DISPUTE_OPENED,
             title="تم فتح نزاع على طلبك",
             message=f"السبب: {data.description[:200]}",
-            link_type="gig_order",
+            link_type="service_order",
             link_id=str(order_id),
             actor_id=initiator.id,
         ))
@@ -123,7 +123,7 @@ class DisputeService(BaseService):
                 type=NotificationType.DISPUTE_OPENED,
                 title="نزاع جديد يحتاج مراجعة",
                 message=f"طلب #{str(order_id)[:8]} — {data.reason.value}: {data.description[:150]}",
-                link_type="gig_order",
+                link_type="service_order",
                 link_id=str(order_id),
                 actor_id=initiator.id,
             ))
@@ -131,7 +131,7 @@ class DisputeService(BaseService):
         return await self._load_dispute_by_id(dispute.id)  # type: ignore[return-value]
 
     async def get_dispute_by_order(self, order_id: uuid.UUID, user: User) -> Dispute:
-        order = await self.db.get(GigOrder, order_id)
+        order = await self.db.get(ServiceOrder, order_id)
         if not order:
             raise NotFoundError("Order")
         is_participant = str(user.id) in (str(order.client_id), str(order.freelancer_id))
@@ -182,10 +182,10 @@ class DisputeService(BaseService):
         if dispute.status in (DisputeStatus.RESOLVED_REFUND, DisputeStatus.RESOLVED_RELEASE):
             raise BadRequestError("Dispute already resolved")
 
-        # Delegate order/escrow changes to GigService
-        from app.services.gig_service import GigService  # noqa: PLC0415
-        gig_svc = GigService(self.db)
-        await gig_svc.resolve_dispute(
+        # Delegate order/escrow changes to CatalogService
+        from app.services.catalog_service import CatalogService  # noqa: PLC0415
+        catalog_svc = CatalogService(self.db)
+        await catalog_svc.resolve_dispute(
             order_id=dispute.order_id,
             admin=admin,
             resolution=resolution,
