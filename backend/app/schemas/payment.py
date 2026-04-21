@@ -103,6 +103,11 @@ class PaymentSummary(BaseModel):
     total_spent: float = 0.0
     pending_escrow: float = 0.0
     available_balance: float = 0.0
+    # Payouts already completed OR still processing. Lets the freelancer
+    # distinguish "money released into my Kaasb balance" from "money that
+    # has left Kaasb toward my Qi Card."
+    total_paid_out: float = 0.0
+    pending_payout: float = 0.0
     total_platform_fees: float = 0.0
     transaction_count: int = 0
     payment_accounts: list[PaymentAccountResponse] = []

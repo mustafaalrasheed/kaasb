@@ -21,10 +21,12 @@ from app.schemas.admin import (
     AdminEscrowInfo,
     AdminJobListResponse,
     AdminJobStatusUpdate,
+    AdminProcessingPayoutInfo,
     AdminTransactionListResponse,
     AdminUserInfo,
     AdminUserListResponse,
     AdminUserStatusUpdate,
+    MarkPayoutPaidBody,
     PayoutApprovalDecision,
     PayoutApprovalInfo,
     PayoutApprovalListResponse,
@@ -43,6 +45,7 @@ from app.schemas.message import (
 from app.services.admin_service import AdminService
 from app.services.audit_service import AuditService
 from app.services.message_service import MessageService
+from app.services.payment_service import PaymentService
 from app.services.payout_approval_service import PayoutApprovalService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -254,6 +257,57 @@ async def release_escrow(
         note=(body.note if body else None),
         ip_address=_get_client_ip(request),
     )
+
+
+# === Freelancer-initiated payouts awaiting admin "Mark Paid" ===
+
+@router.get(
+    "/payouts/processing",
+    response_model=list[AdminProcessingPayoutInfo],
+    summary="List PAYOUT transactions stuck in PROCESSING",
+)
+async def list_processing_payouts(
+    _staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List freelancer-initiated payouts that have been queued but not yet
+    settled. Admin manually transfers the money via the Qi Card merchant
+    dashboard, then hits POST /admin/payouts/{transaction_id}/mark-paid
+    to flip each row to COMPLETED.
+    """
+    service = AdminService(db)
+    return await service.list_processing_payouts()
+
+
+@router.post(
+    "/payouts/{transaction_id}/mark-paid",
+    summary="Mark a freelancer payout as paid (after manual Qi Card transfer)",
+)
+async def mark_payout_paid(
+    transaction_id: uuid.UUID,
+    request: Request,
+    body: MarkPayoutPaidBody | None = None,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin confirms that a PROCESSING payout has been sent to the freelancer
+    through the Qi Card merchant portal. Flips the transaction to COMPLETED,
+    writes an audit log row (PAYOUT_MARKED_PAID), and notifies the freelancer.
+    """
+    svc = PaymentService(db)
+    tx = await svc.mark_payout_paid(
+        transaction_id,
+        admin,
+        note=(body.note if body else None),
+        ip_address=_get_client_ip(request),
+    )
+    return {
+        "transaction_id": tx.id,
+        "status": tx.status.value,
+        "completed_at": tx.completed_at,
+    }
 
 
 # === Dual-Control Payout Approvals ===

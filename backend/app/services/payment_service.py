@@ -684,6 +684,13 @@ class PaymentService(BaseService):
         if data.amount > available:
             raise BadRequestError(f"Insufficient balance. Available: {available:,.0f} IQD")
 
+        # Enforce minimum payout to prevent tiny withdrawals whose manual
+        # admin-processing cost exceeds their value.
+        if data.amount < settings.MINIMUM_PAYOUT_IQD:
+            raise BadRequestError(
+                f"Minimum payout is {settings.MINIMUM_PAYOUT_IQD:,.0f} IQD"
+            )
+
         amount_iqd = int(
             Decimal(str(data.amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         )
@@ -748,6 +755,88 @@ class PaymentService(BaseService):
                 f"via {account.provider.value}"
             ),
         )
+
+    async def mark_payout_paid(
+        self,
+        transaction_id: uuid.UUID,
+        admin: User,
+        note: str | None = None,
+        ip_address: str | None = None,
+    ) -> Transaction:
+        """
+        Admin-triggered completion of a freelancer payout.
+
+        Qi Card has no payout API (Known Issue #3): admins send the money
+        manually through the Qi Card merchant dashboard, then call this
+        endpoint to flip the Transaction from PROCESSING to COMPLETED so
+        the freelancer sees the payout as received.
+
+        - FOR UPDATE locks the transaction row to block double-marking.
+        - Only admins / superusers should reach this via the endpoint layer.
+        - Writes an audit log entry and notifies the freelancer.
+        """
+        from app.models.admin_audit import AdminAuditAction
+        from app.services.audit_service import AuditService
+
+        result = await self.db.execute(
+            select(Transaction)
+            .where(Transaction.id == transaction_id)
+            .with_for_update()
+        )
+        tx = result.scalar_one_or_none()
+        if tx is None:
+            raise NotFoundError("Payout transaction")
+
+        if tx.transaction_type != TransactionType.PAYOUT:
+            raise BadRequestError("Transaction is not a payout")
+        if tx.status != TransactionStatus.PROCESSING:
+            raise BadRequestError(
+                f"Only PROCESSING payouts can be marked paid (current: {tx.status.value})"
+            )
+
+        tx.status = TransactionStatus.COMPLETED
+        tx.completed_at = datetime.now(UTC)
+        if note:
+            # Preserve the original description and append the admin note for context.
+            tx.description = f"{tx.description or ''} | marked paid: {note[:200]}".strip(" |")
+
+        try:
+            await self.db.flush()
+        except SQLAlchemyError:
+            raise
+
+        # Best-effort audit log. AuditService.log swallows its own failures so
+        # the money-state transition is never blocked by a logging hiccup.
+        await AuditService(self.db).log(
+            admin_id=admin.id,
+            action=AdminAuditAction.PAYOUT_MARKED_PAID,
+            target_type="transaction",
+            target_id=tx.id,
+            amount=float(tx.amount),
+            currency=tx.currency,
+            ip_address=ip_address,
+            details={"note": note} if note else None,
+        )
+
+        if tx.payee_id is not None:
+            amount_iqd = int(
+                Decimal(str(tx.amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
+            await notify(
+                self.db,
+                user_id=tx.payee_id,
+                type=NotificationType.PAYOUT_COMPLETED,
+                title="تم سحب الأموال بنجاح",
+                message=f"تم تحويل {amount_iqd:,} د.ع إلى حسابك",
+                link_type=None,
+                link_id=None,
+            )
+
+        logger.info(
+            "Payout marked paid: tx=%s admin=%s amount=%s %s",
+            tx.id, admin.id, tx.amount, tx.currency,
+        )
+        return tx
 
     # === Transaction History ===
 
@@ -819,16 +908,31 @@ class PaymentService(BaseService):
         )
         total_fees = fees_result.scalar() or 0.0
 
-        # Subtract paid-out (completed or processing) amounts from earned to get
-        # the balance actually available for withdrawal.
-        paid_out_result = await self.db.execute(
+        # Payouts already paid by admin (status=COMPLETED). Subtracting these
+        # from earnings gives the "money that has settled to Qi Card" view.
+        paid_out_completed_result = await self.db.execute(
             select(func.coalesce(func.sum(Transaction.amount), 0.0)).where(
                 Transaction.payee_id == user.id,
                 Transaction.transaction_type == TransactionType.PAYOUT,
-                Transaction.status.in_([TransactionStatus.COMPLETED, TransactionStatus.PROCESSING]),
+                Transaction.status == TransactionStatus.COMPLETED,
             )
         )
-        total_paid_out = paid_out_result.scalar() or 0.0
+        total_paid_out_completed = paid_out_completed_result.scalar() or 0.0
+
+        # Payouts the freelancer requested but the admin hasn't marked paid yet.
+        pending_payout_result = await self.db.execute(
+            select(func.coalesce(func.sum(Transaction.amount), 0.0)).where(
+                Transaction.payee_id == user.id,
+                Transaction.transaction_type == TransactionType.PAYOUT,
+                Transaction.status == TransactionStatus.PROCESSING,
+            )
+        )
+        pending_payout = pending_payout_result.scalar() or 0.0
+
+        # The available balance check and the request_payout validator both
+        # subtract pending+completed — a freelancer can't request a second
+        # payout that would overdraw their released balance.
+        total_paid_out = total_paid_out_completed + pending_payout
 
         count_result = await self.db.execute(
             select(func.count()).where(
@@ -844,6 +948,8 @@ class PaymentService(BaseService):
             "total_spent": total_spent,
             "pending_escrow": pending_escrow,
             "available_balance": max(0.0, round(total_earned - total_paid_out, 2)),
+            "total_paid_out": total_paid_out_completed,
+            "pending_payout": pending_payout,
             "total_platform_fees": total_fees,
             "transaction_count": tx_count,
             "payment_accounts": accounts,

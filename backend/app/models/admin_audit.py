@@ -43,6 +43,7 @@ class AdminAuditAction(str, enum.Enum):
     ESCROW_REFUNDED = "escrow_refunded"
     PAYOUT_APPROVED = "payout_approved"
     PAYOUT_REJECTED = "payout_rejected"
+    PAYOUT_MARKED_PAID = "payout_marked_paid"
     USER_STATUS_CHANGED = "user_status_changed"
     USER_PROMOTED_ADMIN = "user_promoted_admin"
     USER_DEMOTED_ADMIN = "user_demoted_admin"
@@ -139,7 +140,9 @@ class PayoutApproval(BaseModel):
         Enum(PayoutApprovalStatus, values_callable=lambda x: [e.value for e in x]),
         default=PayoutApprovalStatus.PENDING,
         nullable=False,
-        index=True,
+        # Explicit Index in __table_args__ above handles this column. Setting
+        # index=True here would cause Base.metadata.create_all() to emit a
+        # duplicate "ix_payout_approvals_status" and break test setup.
     )
 
     request_note: Mapped[str | None] = mapped_column(Text, nullable=True)
