@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # requires second approval). Set very high to effectively disable dual-control.
     PAYOUT_APPROVAL_THRESHOLD_IQD: float = 500_000.0
 
+    # Minimum freelancer-initiated payout withdrawal, in IQD. Prevents tiny
+    # withdrawals (e.g. 100 IQD) that cost more in admin processing time than
+    # the payout is worth.
+    MINIMUM_PAYOUT_IQD: float = 50_000.0
+
     # === Qi Card (Iraqi Payment Gateway) ===
     # QI_CARD_API_KEY → Authorization header value (raw key, no prefix)
     QI_CARD_API_KEY: str = ""

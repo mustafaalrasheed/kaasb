@@ -41,6 +41,12 @@ export const adminApi = {
   rejectPayoutApproval: (approvalId: string, note: string) =>
     api.post(`/admin/payout-approvals/${approvalId}/reject`, { note }),
 
+  getProcessingPayouts: () =>
+    api.get("/admin/payouts/processing"),
+
+  markPayoutPaid: (transactionId: string, note?: string) =>
+    api.post(`/admin/payouts/${transactionId}/mark-paid`, { note: note ?? null }),
+
   getAuditLogs: (params?: { page?: number; page_size?: number }) =>
     api.get("/admin/audit-logs", { params }),
 

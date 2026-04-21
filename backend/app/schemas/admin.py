@@ -126,6 +126,22 @@ class AdminEscrowInfo(BaseModel):
     freelancer: AdminEscrowFreelancerInfo
 
 
+class AdminProcessingPayoutInfo(BaseModel):
+    """One PAYOUT transaction awaiting admin 'mark paid' after manual Qi Card transfer."""
+    transaction_id: uuid.UUID
+    amount: float
+    currency: str
+    requested_at: datetime
+    provider: str | None = None
+    description: str | None = None
+    freelancer: AdminEscrowFreelancerInfo
+
+
+class MarkPayoutPaidBody(BaseModel):
+    """Optional admin note recorded in the audit log."""
+    note: Optional[str] = None
+
+
 # === Payout Approval (Dual-Control) ===
 
 class ReleaseRequestResult(BaseModel):

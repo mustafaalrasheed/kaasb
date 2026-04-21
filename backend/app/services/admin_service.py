@@ -411,6 +411,56 @@ class AdminService(BaseService):
             })
         return escrows
 
+    async def list_processing_payouts(self) -> list[dict]:
+        """
+        List PAYOUT transactions stuck in PROCESSING — the admin must send
+        the money manually via the Qi Card merchant portal, then hit
+        POST /admin/payouts/{id}/mark-paid to flip each to COMPLETED and
+        notify the freelancer.
+        """
+        stmt = (
+            select(Transaction, User)
+            .join(User, User.id == Transaction.payee_id)
+            .where(
+                Transaction.transaction_type == TransactionType.PAYOUT,
+                Transaction.status == TransactionStatus.PROCESSING,
+            )
+            .order_by(Transaction.created_at.asc())
+        )
+        result = await self.db.execute(stmt)
+        rows = result.all()
+
+        freelancer_ids = [r[1].id for r in rows]
+        qi_phones: dict[uuid.UUID, str | None] = {}
+        if freelancer_ids:
+            accounts_result = await self.db.execute(
+                select(PaymentAccount.user_id, PaymentAccount.qi_card_phone).where(
+                    PaymentAccount.user_id.in_(freelancer_ids),
+                    PaymentAccount.provider == PaymentProvider.QI_CARD,
+                )
+            )
+            for user_id, phone in accounts_result.all():
+                qi_phones[user_id] = phone
+
+        payouts = []
+        for tx, freelancer in rows:
+            payouts.append({
+                "transaction_id": tx.id,
+                "amount": float(tx.amount),
+                "currency": tx.currency,
+                "requested_at": tx.created_at,
+                "provider": tx.provider.value if tx.provider else None,
+                "description": tx.description,
+                "freelancer": {
+                    "id": freelancer.id,
+                    "username": freelancer.username,
+                    "email": freelancer.email,
+                    "phone": freelancer.phone,
+                    "qi_card_phone": qi_phones.get(freelancer.id),
+                },
+            })
+        return payouts
+
     # === Transaction Overview ===
 
     async def list_transactions_admin(

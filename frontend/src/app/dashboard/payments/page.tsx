@@ -144,10 +144,20 @@ export default function PaymentsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {isFreelancer ? (
             <>
-              <SummaryCard label={ar ? "إجمالي الأرباح" : "Total Earned"} value={summary.total_earned} color="green" ar={ar} />
+              <SummaryCard
+                label={ar ? "متاح للسحب" : "Available to Withdraw"}
+                value={summary.available_balance}
+                color="green"
+                ar={ar}
+              />
+              <SummaryCard
+                label={ar ? "قيد السحب" : "Pending Payout"}
+                value={summary.pending_payout}
+                color="yellow"
+                ar={ar}
+              />
               <SummaryCard label={ar ? "محتجز في الضمان" : "In Escrow"} value={summary.pending_escrow} color="blue" ar={ar} />
-              <SummaryCard label={ar ? "عمولة المنصة" : "Platform Fees"} value={summary.total_platform_fees} color="yellow" ar={ar} />
-              <SummaryCard label={ar ? "المعاملات" : "Transactions"} value={summary.transaction_count} isCurrency={false} color="gray" ar={ar} />
+              <SummaryCard label={ar ? "إجمالي الأرباح" : "Total Earned"} value={summary.total_earned} color="gray" ar={ar} />
             </>
           ) : (
             <>
