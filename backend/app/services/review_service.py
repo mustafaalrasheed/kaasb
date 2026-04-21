@@ -85,14 +85,18 @@ class ReviewService(BaseService):
         # Notify the reviewee their counterparty left feedback. Link to the
         # reviewee's own profile where the review shows up (contracts page
         # works too but the profile surface matches the review's display home).
+        reviewer_name = f"{reviewer.first_name} {reviewer.last_name}"
         await notify(
             self.db,
             user_id=reviewee_id,
             type=NotificationType.REVIEW_RECEIVED,
-            title="تلقيت تقييماً جديداً",
-            message=(
-                f"ترك {reviewer.first_name} {reviewer.last_name} تقييماً "
-                f"بـ {data.rating}/5 على عقدك"
+            title_ar="تلقيت تقييماً جديداً",
+            title_en="You received a new review",
+            message_ar=(
+                f"ترك {reviewer_name} تقييماً بـ {data.rating}/5 على عقدك"
+            ),
+            message_en=(
+                f"{reviewer_name} left you a {data.rating}/5 review on your contract"
             ),
             link_type="contract",
             link_id=contract_id,

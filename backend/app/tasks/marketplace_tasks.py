@@ -100,6 +100,12 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
         SellerLevel.TOP_RATED: "الأعلى تقييماً",
         SellerLevel.NEW_SELLER: "بائع جديد",
     }
+    level_labels_en = {
+        SellerLevel.LEVEL_1: "Level 1",
+        SellerLevel.LEVEL_2: "Level 2",
+        SellerLevel.TOP_RATED: "Top Rated",
+        SellerLevel.NEW_SELLER: "New Seller",
+    }
 
     freelancers_result = await db.execute(
         select(User).where(User.primary_role == UserRole.FREELANCER)
@@ -186,13 +192,16 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
     # downgrade) — demotions are silent to avoid demoralising freelancers, and
     # will eventually be visible on their profile anyway.
     for user_id, new_level in upgraded_users:
-        label = level_labels_ar.get(new_level, new_level.value)
+        label_ar = level_labels_ar.get(new_level, new_level.value)
+        label_en = level_labels_en.get(new_level, new_level.value)
         asyncio.create_task(
             notify_background(
                 user_id=user_id,
                 type=NotificationType.SELLER_LEVEL_UPGRADED,
-                title="تمت ترقية مستوى حسابك",
-                message=f"تهانينا — تمت ترقيتك إلى: {label}",
+                title_ar="تمت ترقية مستوى حسابك",
+                title_en="Your seller level was upgraded",
+                message_ar=f"تهانينا — تمت ترقيتك إلى: {label_ar}",
+                message_en=f"Congrats — you've been promoted to: {label_en}",
                 link_type=None,
                 link_id=None,
             )
@@ -247,8 +256,10 @@ async def auto_complete_delivered_orders(db: AsyncSession) -> int:
             asyncio.create_task(notify_background(
                 user_id=order.client_id,
                 type=NotificationType.ORDER_AUTO_COMPLETED,
-                title="تم إغلاق الطلب تلقائياً",
-                message="تم إغلاق الطلب تلقائياً بعد 3 أيام من التسليم دون رد.",
+                title_ar="تم إغلاق الطلب تلقائياً",
+                title_en="Order auto-completed",
+                message_ar="تم إغلاق الطلب تلقائياً بعد 3 أيام من التسليم دون رد.",
+                message_en="This order was auto-completed after 3 days of no response to the delivery.",
                 link_type="gig_order",
                 link_id=str(order.id),
             ))

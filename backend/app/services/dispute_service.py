@@ -105,11 +105,14 @@ class DisputeService(BaseService):
 
         # Notify the other party
         notify_target = order.freelancer_id if is_client else order.client_id
+        desc_snippet = data.description[:200]
         asyncio.create_task(notify_background(
             user_id=notify_target,
             type=NotificationType.DISPUTE_OPENED,
-            title="تم فتح نزاع على طلبك",
-            message=f"السبب: {data.description[:200]}",
+            title_ar="تم فتح نزاع على طلبك",
+            title_en="A dispute was opened on your order",
+            message_ar=f"السبب: {desc_snippet}",
+            message_en=f"Reason: {desc_snippet}",
             link_type="gig_order",
             link_id=str(order_id),
             actor_id=initiator.id,
@@ -122,12 +125,17 @@ class DisputeService(BaseService):
                 User.status == UserStatus.ACTIVE,
             )
         )
+        order_short = str(order_id)[:8]
+        reason_value = data.reason.value
+        desc_admin = data.description[:150]
         for admin in staff_result.scalars().all():
             asyncio.create_task(notify_background(
                 user_id=admin.id,
                 type=NotificationType.DISPUTE_OPENED,
-                title="نزاع جديد يحتاج مراجعة",
-                message=f"طلب #{str(order_id)[:8]} — {data.reason.value}: {data.description[:150]}",
+                title_ar="نزاع جديد يحتاج مراجعة",
+                title_en="New dispute needs review",
+                message_ar=f"طلب #{order_short} — {reason_value}: {desc_admin}",
+                message_en=f"Order #{order_short} — {reason_value}: {desc_admin}",
                 link_type="gig_order",
                 link_id=str(order_id),
                 actor_id=initiator.id,

@@ -208,11 +208,14 @@ class BuyerRequestService(BaseService):
         await self.db.refresh(offer)
 
         # Notify the client
+        title_snippet = req.title[:80]
         asyncio.create_task(notify_background(
             user_id=req.client_id,
             type=NotificationType.BUYER_REQUEST_OFFER_RECEIVED,
-            title="عرض جديد على طلبك",
-            message=f'أرسل {freelancer.first_name} عرضاً على طلبك "{req.title[:80]}"',
+            title_ar="عرض جديد على طلبك",
+            title_en="New offer on your request",
+            message_ar=f'أرسل {freelancer.first_name} عرضاً على طلبك "{title_snippet}"',
+            message_en=f'{freelancer.first_name} sent an offer on your request "{title_snippet}"',
             link_type="buyer_request",
             link_id=str(request_id),
             actor_id=freelancer.id,
@@ -268,11 +271,14 @@ class BuyerRequestService(BaseService):
         await self.db.commit()
 
         # Notify the freelancer whose offer was accepted
+        title_snippet = req.title[:80]
         asyncio.create_task(notify_background(
             user_id=offer.freelancer_id,
             type=NotificationType.BUYER_REQUEST_OFFER_ACCEPTED,
-            title="تم قبول عرضك",
-            message=f'قبل العميل عرضك على طلب "{req.title[:80]}"',
+            title_ar="تم قبول عرضك",
+            title_en="Your offer was accepted",
+            message_ar=f'قبل العميل عرضك على طلب "{title_snippet}"',
+            message_en=f'The client accepted your offer on "{title_snippet}"',
             link_type="buyer_request",
             link_id=str(request_id),
             actor_id=client.id,
@@ -301,11 +307,14 @@ class BuyerRequestService(BaseService):
         offer.status = BuyerRequestOfferStatus.REJECTED
         await self.db.commit()
 
+        title_snippet = req.title[:80]
         asyncio.create_task(notify_background(
             user_id=offer.freelancer_id,
             type=NotificationType.BUYER_REQUEST_OFFER_REJECTED,
-            title="تم رفض عرضك",
-            message=f'رفض العميل عرضك على طلب "{req.title[:80]}"',
+            title_ar="تم رفض عرضك",
+            title_en="Your offer was declined",
+            message_ar=f'رفض العميل عرضك على طلب "{title_snippet}"',
+            message_en=f'The client declined your offer on "{title_snippet}"',
             link_type="buyer_request",
             link_id=str(request_id),
             actor_id=client.id,

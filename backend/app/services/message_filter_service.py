@@ -163,8 +163,10 @@ class MessageFilterService:
             asyncio.create_task(notify_background(
                 user_id=sender.id,
                 type=NotificationType.CHAT_VIOLATION_WARNING,
-                title="تحذير: معلومات اتصال ممنوعة",
-                message="تم حذف معلومات اتصال خارجية من رسالتك. الانتهاك التالي سيؤدي لحظر الرسالة.",
+                title_ar="تحذير: معلومات اتصال ممنوعة",
+                title_en="Warning: contact details not allowed",
+                message_ar="تم حذف معلومات اتصال خارجية من رسالتك. الانتهاك التالي سيؤدي لحظر الرسالة.",
+                message_en="External contact info was removed from your message. The next violation will block the message.",
                 link_type=None,
                 link_id=None,
             ))
@@ -172,8 +174,10 @@ class MessageFilterService:
             asyncio.create_task(notify_background(
                 user_id=sender.id,
                 type=NotificationType.CHAT_VIOLATION_WARNING,
-                title="رسالتك تم حجبها",
-                message="تم حجب رسالتك لأنها تحتوي على معلومات اتصال خارجية. الانتهاك القادم سيؤدي لتعليق حسابك.",
+                title_ar="رسالتك تم حجبها",
+                title_en="Your message was blocked",
+                message_ar="تم حجب رسالتك لأنها تحتوي على معلومات اتصال خارجية. الانتهاك القادم سيؤدي لتعليق حسابك.",
+                message_en="Your message was blocked for containing external contact info. A further violation will suspend your account.",
                 link_type=None,
                 link_id=None,
             ))
@@ -181,8 +185,10 @@ class MessageFilterService:
             asyncio.create_task(notify_background(
                 user_id=sender.id,
                 type=NotificationType.CHAT_VIOLATION_WARNING,
-                title="تم تعليق محادثاتك مؤقتاً",
-                message=f"تم تعليق إمكانية إرسال الرسائل لمدة {SUSPENSION_HOURS} ساعة بسبب تكرار انتهاك سياسة التواصل خارج المنصة.",
+                title_ar="تم تعليق محادثاتك مؤقتاً",
+                title_en="Your messaging is temporarily suspended",
+                message_ar=f"تم تعليق إمكانية إرسال الرسائل لمدة {SUSPENSION_HOURS} ساعة بسبب تكرار انتهاك سياسة التواصل خارج المنصة.",
+                message_en=f"Messaging is suspended for {SUSPENSION_HOURS}h for repeated off-platform contact violations.",
                 link_type=None,
                 link_id=None,
             ))
@@ -198,8 +204,10 @@ class MessageFilterService:
                 asyncio.create_task(notify_background(
                     user_id=admin.id,
                     type=NotificationType.SYSTEM_ALERT,
-                    title="مستخدم معلق بسبب انتهاكات المحادثة",
-                    message=f"المستخدم {sender.username} تم تعليقه {SUSPENSION_HOURS}h بسبب {count} انتهاكات.",
+                    title_ar="مستخدم معلق بسبب انتهاكات المحادثة",
+                    title_en="User suspended for chat violations",
+                    message_ar=f"المستخدم {sender.username} تم تعليقه {SUSPENSION_HOURS}h بسبب {count} انتهاكات.",
+                    message_en=f"User {sender.username} suspended for {SUSPENSION_HOURS}h after {count} violations.",
                     link_type=None,
                     link_id=None,
                     actor_id=sender.id,
