@@ -34,6 +34,25 @@ export function NotificationBell() {
 
   useWebSocket({ onNotification: handleNotification, enabled: !!user });
 
+  // Optimistic decrement — the notifications page dispatches this event when
+  // the user marks one or many as read. Without this the badge stays stale
+  // until the 30s poll catches up. Clamped at 0 so a stale event can't push
+  // the badge negative.
+  useEffect(() => {
+    const onRead = (e: Event) => {
+      const detail = (e as CustomEvent<{ count?: number }>).detail ?? {};
+      const by = Math.max(1, detail.count ?? 1);
+      setUnreadCount((prev) => Math.max(0, prev - by));
+    };
+    const onAllRead = () => setUnreadCount(0);
+    window.addEventListener("kaasb:notifications:read", onRead);
+    window.addEventListener("kaasb:notifications:all-read", onAllRead);
+    return () => {
+      window.removeEventListener("kaasb:notifications:read", onRead);
+      window.removeEventListener("kaasb:notifications:all-read", onAllRead);
+    };
+  }, []);
+
   if (!isAuthenticated) return null;
 
   return (

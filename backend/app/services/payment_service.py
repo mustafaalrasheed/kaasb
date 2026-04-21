@@ -360,6 +360,24 @@ class PaymentService(BaseService):
             escrow.funded_at = datetime.now(UTC)
             _record_escrow_transition("pending", "funded")
 
+            # Notify freelancer that funds are safely in escrow (contract-milestone
+            # path only — gig orders are handled by the in-progress transition
+            # above and have their own ORDER_* notification flow).
+            if escrow.milestone_id is not None:
+                await notify(
+                    self.db,
+                    user_id=escrow.freelancer_id,
+                    type=NotificationType.MILESTONE_FUNDED,
+                    title="تم إيداع المبلغ في الضمان",
+                    message=(
+                        f"تم إيداع {int(escrow.freelancer_amount):,} د.ع "
+                        "في الضمان للمرحلة — يمكنك بدء العمل"
+                    ),
+                    link_type="contract",
+                    link_id=escrow.contract_id,
+                    actor_id=escrow.client_id,
+                )
+
         # For gig orders: transition the GigOrder from PENDING → IN_PROGRESS so the
         # freelancer can start work.  Without this, mark_delivered() always rejects
         # because it requires IN_PROGRESS, making the entire gig order lifecycle broken.

@@ -262,6 +262,18 @@ class ContractService(BaseService):
 
         await self.db.flush()
         await self.db.refresh(milestone)
+
+        # Notify the client that work is ready for review.
+        await notify(
+            self.db,
+            user_id=contract.client_id,
+            type=NotificationType.MILESTONE_SUBMITTED,
+            title="تم تسليم مرحلة للمراجعة",
+            message=f"تم تسليم المرحلة: {milestone.title}",
+            link_type="contract",
+            link_id=contract.id,
+            actor_id=freelancer.id,
+        )
         return milestone
 
     # === Review Milestone (Client) ===
@@ -375,6 +387,30 @@ class ContractService(BaseService):
         except SQLAlchemyError:
             raise
         await self.db.refresh(milestone)
+
+        # Notify freelancer of the review outcome.
+        if data.action == "approve":
+            await notify(
+                self.db,
+                user_id=contract.freelancer_id,
+                type=NotificationType.MILESTONE_APPROVED,
+                title="تمت الموافقة على مرحلتك",
+                message=f"وافق العميل على: {milestone.title}",
+                link_type="contract",
+                link_id=contract.id,
+                actor_id=client.id,
+            )
+        elif data.action == "request_revision":
+            await notify(
+                self.db,
+                user_id=contract.freelancer_id,
+                type=NotificationType.MILESTONE_REVISION,
+                title="طُلبت مراجعة لمرحلتك",
+                message=f"طلب العميل مراجعة لـ: {milestone.title}",
+                link_type="contract",
+                link_id=contract.id,
+                actor_id=client.id,
+            )
         return milestone
 
     # === Get Contract Detail ===

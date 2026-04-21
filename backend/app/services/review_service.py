@@ -12,10 +12,12 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.contract import Contract, ContractStatus
+from app.models.notification import NotificationType
 from app.models.review import Review
 from app.models.user import User
 from app.schemas.review import ReviewCreate
 from app.services.base import BaseService
+from app.services.notification_service import notify
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,23 @@ class ReviewService(BaseService):
 
         await self.db.refresh(review, attribute_names=["reviewer", "reviewee", "contract"])
         logger.info("Review submitted: %s by reviewer=%s on contract=%s", review.id, reviewer.id, contract_id)
+
+        # Notify the reviewee their counterparty left feedback. Link to the
+        # reviewee's own profile where the review shows up (contracts page
+        # works too but the profile surface matches the review's display home).
+        await notify(
+            self.db,
+            user_id=reviewee_id,
+            type=NotificationType.REVIEW_RECEIVED,
+            title="تلقيت تقييماً جديداً",
+            message=(
+                f"ترك {reviewer.first_name} {reviewer.last_name} تقييماً "
+                f"بـ {data.rating}/5 على عقدك"
+            ),
+            link_type="contract",
+            link_id=contract_id,
+            actor_id=reviewer.id,
+        )
         return review
 
     async def _update_user_rating(self, user_id: uuid.UUID):
