@@ -6,7 +6,7 @@ Business logic for reviews and rating aggregation.
 import logging
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +14,7 @@ from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, 
 from app.models.contract import Contract, ContractStatus
 from app.models.notification import NotificationType
 from app.models.review import Review
+from app.models.service import Service
 from app.models.user import User
 from app.schemas.review import ReviewCreate
 from app.services.base import BaseService
@@ -105,7 +106,14 @@ class ReviewService(BaseService):
         return review
 
     async def _update_user_rating(self, user_id: uuid.UUID):
-        """Recalculate user's average rating and total reviews."""
+        """Recalculate user's average rating and total reviews.
+
+        Also mirrors the rating onto every Service the user owns so that the
+        gig-style listing surface shows the freelancer's current rating
+        instead of the default 0.0 (reviews are contract-scoped, so services
+        have no per-listing review aggregate of their own — the whole-
+        freelancer rating is what the UI ends up showing anyway).
+        """
         result = await self.db.execute(
             select(
                 func.avg(Review.rating),
@@ -113,7 +121,7 @@ class ReviewService(BaseService):
             ).where(Review.reviewee_id == user_id)
         )
         row = result.one()
-        avg_rating = float(row[0]) if row[0] else 0.0
+        avg_rating = round(float(row[0]), 2) if row[0] else 0.0
         total_reviews = row[1] or 0
 
         user_result = await self.db.execute(
@@ -121,9 +129,19 @@ class ReviewService(BaseService):
         )
         user = user_result.scalar_one_or_none()
         if user:
-            user.avg_rating = round(avg_rating, 2)
+            user.avg_rating = avg_rating
             user.total_reviews = total_reviews
             await self.db.flush()
+
+            # Mirror the freelancer's aggregate rating across every service
+            # they own. synchronize_session=False avoids expiring in-memory
+            # Service rows the current request doesn't hold.
+            await self.db.execute(
+                update(Service)
+                .where(Service.freelancer_id == user_id)
+                .values(avg_rating=avg_rating, reviews_count=total_reviews)
+                .execution_options(synchronize_session=False)
+            )
 
     async def get_reviews_for_user(
         self,
