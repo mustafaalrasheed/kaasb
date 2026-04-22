@@ -36,12 +36,13 @@ Scope: service lifecycle, packages, categories, search+ranking, images, F3 requi
 **Impact:** Client stuck on a freshly-paid order where the freelancer never even started work. The only way out is an admin-issued refund via /admin/disputes — which requires opening a support ticket because the normal "Raise dispute" button rejects.
 **Fix sketch:** Add `ServiceOrderStatus.PENDING_REQUIREMENTS` to the acceptable-statuses list in `raise_dispute`. Test to cover the new transition.
 
-### P1-2 24-hour chat suspensions have no admin override UI
-**Where:** [backend/app/services/message_filter_service.py](backend/app/services/message_filter_service.py), [backend/app/api/v1/endpoints/admin.py](backend/app/api/v1/endpoints/admin.py) (no `/admin/users/{id}/unsuspend-chat` consumer in frontend)
-**Symptom:** When the F6 filter auto-suspends a user for 24h after 3+ off-platform violations, an admin has a backend endpoint to clear the suspension but no frontend control. If the user genuinely had a reason (sharing a client's GitHub URL in an order chat, say), there's no path to unblock except via CLI or direct DB edit.
-**Root cause:** `/admin/users/{id}/unsuspend-chat` endpoint exists (confirmed by CLAUDE.md line referencing commit `6cdc706`) but no admin-tab button was wired. Frontend `admin/page.tsx` shows chat-violation count but no action.
-**Impact:** False-positive suspensions generate support tickets; admin response time is inflated by the extra server-side step.
-**Fix sketch:** Add an "Unsuspend chat" button to the admin users tab that appears when `user.chat_suspended_until > now()`. Call the existing backend endpoint. No schema change.
+### ~~P1-2 24-hour chat suspensions have no admin override UI~~ — NOT A BUG
+During Phase 4 implementation (2026-04-22) I verified the full chain is
+already wired: backend `/admin/users/{id}/unsuspend-chat` endpoint +
+`AdminService.unsuspend_chat`; frontend `adminApi.unsuspendChat`,
+`handleUnsuspendChat` handler in `admin/page.tsx:320`, and the visible
+"Unsuspend Chat" button in `users-tab.tsx:186-194` gated by
+`isChatSuspended(u)`. My audit read the code wrong. No fix needed.
 
 ### P1-3 `users.avg_rating` is updated on review create, but `Service.avg_rating` / `Service.reviews_count` are not
 **Where:** [backend/app/services/review_service.py:116-124](backend/app/services/review_service.py#L116), [backend/app/models/service.py](backend/app/models/service.py) (denorm columns on `Service`)
