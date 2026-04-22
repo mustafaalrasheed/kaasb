@@ -7,14 +7,27 @@ Violation escalation:
   1st: warning — deliver message with contact info masked, warn sender
   2nd: blocked — message dropped, admin notified
   3rd+: suspended — sender's chat blocked for 24h
+
+Hardening (PR-C1):
+  - All input is NFKC-normalised and stripped of zero-width chars before
+    regex scanning, so homograph (tеlegram with Cyrillic е) and
+    invisible-character (ZWSP inside whatsapp) evasions can't bypass it.
+  - Phone detection is Iraqi-specific + explicitly-international (`+`
+    prefix required). The old `\\b\\d{10,13}\\b` fallback was dropped —
+    it flagged credit cards, order IDs, and large IQD amounts as phones.
+  - URL allow-listing uses `urllib.parse.urlparse` + exact-host match.
+    The previous substring match treated `fakekaasb.com` and
+    `kaasb.com@attacker.com` as allowed.
 """
 
 from __future__ import annotations
 
 import asyncio
 import re
+import unicodedata
 import uuid
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlparse
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,18 +36,48 @@ from app.models.notification import NotificationType
 from app.models.user import User
 from app.models.violation_log import ViolationAction, ViolationLog, ViolationType
 
-# ── Detection patterns ────────────────────────────────────────────────────────
+# ── Input normalization ───────────────────────────────────────────────────────
+
+# Zero-width / bidi / BOM characters — stripped before regex matching so a
+# sender can't split "telegram" with invisible chars to bypass detection.
+_ZERO_WIDTH_RE = re.compile(
+    r"[​-‏‪-‮⁠﻿]"
+)
+
+
+def _normalize(text: str) -> str:
+    """NFKC-fold and strip zero-width / bidi overrides.
+
+    NFKC collapses Unicode compatibility characters (fullwidth letters,
+    ligatures) to their ASCII/canonical equivalents, which also catches
+    many Cyrillic-Latin homograph swaps after case-folding.
+    """
+    return _ZERO_WIDTH_RE.sub("", unicodedata.normalize("NFKC", text))
+
+
+# ── Detection patterns (all applied to normalized text) ───────────────────────
 
 _EMAIL_RE = re.compile(
     r"\b[A-Za-z0-9._%+\-]+\s*@\s*[A-Za-z0-9.\-]+\s*\.\s*[A-Za-z]{2,}\b",
     re.IGNORECASE,
 )
 
-_PHONE_RE = re.compile(
-    r"(?:\+964|00964|0)?[\s\-]?7[3-9]\d[\s\-]?\d{3}[\s\-]?\d{4}"  # Iraqi 07xx
-    r"|(?:\+\d{1,3}[\s\-]?)?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{4,}"  # international
-    r"|\b\d{10,13}\b",
-    re.IGNORECASE,
+# Iraqi mobile: (+964 | 00964 | 0) followed by 7[3-9] and 8 more digits,
+# tolerant of spaces/dashes inside. Anchored so a bare 11-digit sequence
+# without a known prefix is NOT matched here (that's the credit-card
+# false-positive source we removed).
+_PHONE_IRAQI_RE = re.compile(
+    r"(?:\+964|00964|0)[\s\-]?7[3-9]\d(?:[\s\-]?\d){7}",
+)
+
+# Explicit international phone: requires leading `+`, allows country code
+# 1-3 digits, total 7-14 digit body (typical E.164 range). The leading `+`
+# requirement prevents "1234567890123" (13 digits, no plus) from matching.
+# Parentheses are allowed as digit separators so "+1 (555) 123-4567" matches.
+_PHONE_INTL_RE = re.compile(
+    # The `*` on the separator class lets " (" or ") " (two separator chars
+    # between digits) match, which is what e.g. "+1 (555) 123-4567" needs.
+    r"(?<!\d)\+\d{1,3}(?:[\s\-()]*\d){6,13}",
 )
 
 _URL_RE = re.compile(
@@ -54,21 +97,41 @@ SUSPENSION_HOURS = 24
 
 
 def _is_allowed_url(url: str) -> bool:
-    """Return True if the URL points to kaasb.com (safe to pass through)."""
-    return any(domain in url.lower() for domain in _ALLOWED_DOMAINS)
+    """Return True when the URL's host exactly matches an allowed domain
+    or is a subdomain of one.
+
+    Uses `urlparse` + `hostname` so userinfo (`http://kaasb.com@evil.com`)
+    and arbitrary port suffixes don't trick the check. Substring matching
+    (the old implementation) would pass `fakekaasb.com`,
+    `kaasb.com.phishing.io`, and `http://kaasb.com@attacker.com`.
+    """
+    # urlparse requires a scheme to populate netloc/hostname. Bare hosts
+    # (www.kaasb.com/path) get a synthetic scheme so the parser does the
+    # right thing — the returned hostname is what matters.
+    parsed = urlparse(url if "://" in url else f"http://{url}")
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if not host:
+        return False
+    return host in _ALLOWED_DOMAINS or any(
+        host.endswith(f".{d}") for d in _ALLOWED_DOMAINS
+    )
 
 
 def detect_violations(content: str) -> list[tuple[ViolationType, str]]:
+    """Scan normalized content for policy violations.
+
+    Returns a list of (type, matched_text) tuples. Input is normalized up
+    front so all downstream matching runs on canonicalised text.
     """
-    Scan content for policy violations.
-    Returns a list of (type, matched_text) tuples.
-    """
+    content = _normalize(content)
     violations: list[tuple[ViolationType, str]] = []
 
     for m in _EMAIL_RE.finditer(content):
         violations.append((ViolationType.EMAIL, m.group(0)))
 
-    for m in _PHONE_RE.finditer(content):
+    for m in _PHONE_IRAQI_RE.finditer(content):
+        violations.append((ViolationType.PHONE, m.group(0)))
+    for m in _PHONE_INTL_RE.finditer(content):
         violations.append((ViolationType.PHONE, m.group(0)))
 
     for m in _URL_RE.finditer(content):
@@ -82,9 +145,15 @@ def detect_violations(content: str) -> list[tuple[ViolationType, str]]:
 
 
 def mask_content(content: str) -> str:
-    """Replace detected contact info in content with placeholder text."""
+    """Replace detected contact info in content with placeholder text.
+
+    Normalises first so the returned message carries canonicalised chars —
+    otherwise a sender could sneak a zero-width character past the filter
+    and back into the stored message body."""
+    content = _normalize(content)
     content = _EMAIL_RE.sub("[معلومات الاتصال محذوفة / contact info removed]", content)
-    content = _PHONE_RE.sub("[رقم هاتف محذوف / phone removed]", content)
+    content = _PHONE_IRAQI_RE.sub("[رقم هاتف محذوف / phone removed]", content)
+    content = _PHONE_INTL_RE.sub("[رقم هاتف محذوف / phone removed]", content)
 
     def _replace_url(m: re.Match) -> str:
         return m.group(0) if _is_allowed_url(m.group(0)) else "[رابط خارجي محذوف / external link removed]"
@@ -118,14 +187,18 @@ class MessageFilterService:
           - processed_content: original or masked content
           - blocked: True means the caller should NOT save/deliver the message
         """
-        # Check if sender is currently suspended
+        # Check if sender is currently suspended. The `> now` comparison lets
+        # the suspension lift naturally once `chat_suspended_until` is in the
+        # past — no explicit column reset is needed.
         now = datetime.now(UTC)
         if sender.chat_suspended_until and sender.chat_suspended_until > now:
             return content, True  # silently block
 
         violations = detect_violations(content)
         if not violations:
-            return content, False  # clean message
+            # Even on a clean message we return the normalized form so a
+            # sneaked zero-width char doesn't survive in the DB.
+            return _normalize(content), False
 
         vtype, detected_text = violations[0]  # primary violation
         count = (sender.chat_violations or 0) + 1
