@@ -718,6 +718,12 @@ class CatalogService(BaseService):
         order.status = ServiceOrderStatus.REVISION_REQUESTED
         if order.revisions_remaining > 0:
             order.revisions_remaining -= 1
+        # Reset the clock so a revision doesn't instantly count as OVERDUE
+        # against the freelancer's on-time-delivery metric (F2 seller level).
+        # Capped at 3 days — a 14-day package shouldn't silently become
+        # another 14 on every revision loop, but the freelancer needs enough
+        # time to make the changes without a negative performance hit.
+        order.due_date = datetime.now(UTC) + timedelta(days=min(order.delivery_days, 3))
         await self.db.commit()
         return order
 
