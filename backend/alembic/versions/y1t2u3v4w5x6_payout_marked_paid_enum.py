@@ -1,7 +1,7 @@
 """Add payout_marked_paid to adminauditaction enum
 
 Revision ID: y1t2u3v4w5x6
-Revises: z2v3w4x5y6z7
+Revises: b4x5y6z7a8b9
 Create Date: 2026-04-21
 
 Supports the new admin "Mark Paid" action on freelancer-initiated payouts:
@@ -13,7 +13,7 @@ audit row is written with action=PAYOUT_MARKED_PAID.
 from alembic import op
 
 revision = "y1t2u3v4w5x6"
-down_revision = "z2v3w4x5y6z7"
+down_revision = "b4x5y6z7a8b9"
 branch_labels = None
 depends_on = None
 
