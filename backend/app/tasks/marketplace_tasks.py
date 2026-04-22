@@ -78,6 +78,83 @@ async def expire_buyer_requests(db: AsyncSession) -> int:
     return count
 
 
+# A PENDING service order that never saw its QiCard success callback is
+# assumed dead after this many minutes. Generous enough for a slow
+# checkout + reasonable webhook retry window; short enough that the
+# order doesn't sit on the service's orders_count inflating rank.
+_STALE_PENDING_ORDER_MINUTES = 30
+
+
+async def expire_stale_pending_orders(db: AsyncSession) -> int:
+    """Cancel service orders stuck in PENDING with no matching FUNDED escrow.
+
+    Created-but-never-paid orders inflate Service.orders_count (which feeds
+    into rank_score, per F7) and clutter the client's order list. A client
+    who opened checkout but never completed the QiCard redirect should not
+    permanently boost the freelancer's ranking.
+
+    Safety: only cancels orders older than 30 min that have NO funded
+    escrow. If the escrow is FUNDED but the order is still PENDING, that's
+    a different bug (status-transition drift) and shouldn't be swept up
+    here — the normal payment-confirmation path will fix it.
+    """
+    from app.models.payment import Escrow, EscrowStatus
+    from app.models.service import Service, ServiceOrder, ServiceOrderStatus
+
+    cutoff = datetime.now(UTC) - timedelta(minutes=_STALE_PENDING_ORDER_MINUTES)
+
+    # Orders older than cutoff with status PENDING and no FUNDED escrow.
+    # Keeping this as two passes (find, then update per-order) so we can
+    # atomically decrement the per-service orders_count without a
+    # cross-table UPDATE … FROM, which varies in behaviour between
+    # SQLAlchemy engines.
+    result = await db.execute(
+        select(ServiceOrder.id, ServiceOrder.service_id)
+        .outerjoin(
+            Escrow,
+            (Escrow.service_order_id == ServiceOrder.id)
+            & (Escrow.status == EscrowStatus.FUNDED),
+        )
+        .where(
+            ServiceOrder.status == ServiceOrderStatus.PENDING,
+            ServiceOrder.created_at < cutoff,
+            Escrow.id.is_(None),
+        )
+    )
+    rows = list(result.all())
+    cancelled = 0
+
+    for row in rows:
+        order_id, service_id = row
+        try:
+            # Transition the order and decrement the denormalised counter
+            # in a single transaction so a crash between the two can't
+            # corrupt the rank-score signal.
+            upd = await db.execute(
+                update(ServiceOrder)
+                .where(
+                    ServiceOrder.id == order_id,
+                    ServiceOrder.status == ServiceOrderStatus.PENDING,
+                )
+                .values(status=ServiceOrderStatus.CANCELLED)
+            )
+            if upd.rowcount:
+                await db.execute(
+                    update(Service)
+                    .where(Service.id == service_id, Service.orders_count > 0)
+                    .values(orders_count=Service.orders_count - 1)
+                    .execution_options(synchronize_session=False)
+                )
+                cancelled += 1
+            await db.commit()
+        except Exception as exc:
+            logger.exception("Failed to expire stale PENDING order %s: %s", order_id, exc)
+            await db.rollback()
+
+    logger.info("Stale PENDING service orders expired: %d", cancelled)
+    return cancelled
+
+
 async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
     """
     Recalculate seller_level for all freelancers based on their completed orders,
@@ -384,6 +461,7 @@ async def flag_stuck_pending_transactions(
 async def run_all(db: AsyncSession) -> dict:
     summary: dict = {}
     summary["buyer_requests_expired"] = await expire_buyer_requests(db)
+    summary["stale_pending_orders_expired"] = await expire_stale_pending_orders(db)
     summary["seller_levels"] = await recalculate_seller_levels(db)
     summary["orders_auto_completed"] = await auto_complete_delivered_orders(db)
     summary["service_rank_scores_updated"] = await refresh_service_rank_scores(db)
