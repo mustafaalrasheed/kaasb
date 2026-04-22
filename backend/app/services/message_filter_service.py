@@ -178,14 +178,19 @@ def detect_violations(
 
 
 def mask_content(content: str, *, skip_urls: bool = False) -> str:
-    """Replace detected contact info in content with placeholder text.
+    """Replace detected contact info in content with a per-type placeholder.
+
+    Distinct placeholders per violation type (email / phone / link / app)
+    so the sender knows WHAT was stripped and why, rather than seeing a
+    generic "contact info removed" that's easy to misinterpret as a
+    server error. Bilingual to match the rest of Kaasb's copy.
 
     Normalises first so the returned message carries canonicalised chars —
     otherwise a sender could sneak a zero-width character past the filter
     and back into the stored message body.
     """
     content = _normalize(content)
-    content = _EMAIL_RE.sub("[معلومات الاتصال محذوفة / contact info removed]", content)
+    content = _EMAIL_RE.sub("[بريد إلكتروني محذوف / email removed]", content)
     content = _PHONE_IRAQI_RE.sub("[رقم هاتف محذوف / phone removed]", content)
     content = _PHONE_INTL_RE.sub("[رقم هاتف محذوف / phone removed]", content)
 
@@ -194,7 +199,7 @@ def mask_content(content: str, *, skip_urls: bool = False) -> str:
             return m.group(0) if _is_allowed_url(m.group(0)) else "[رابط خارجي محذوف / external link removed]"
         content = _URL_RE.sub(_replace_url, content)
 
-    content = _EXTERNAL_APP_RE.sub("[تطبيق خارجي محذوف / external app removed]", content)
+    content = _EXTERNAL_APP_RE.sub("[اسم تطبيق خارجي محذوف / external app removed]", content)
     return content
 
 
