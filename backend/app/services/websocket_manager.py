@@ -140,13 +140,24 @@ class ConnectionManager:
         Long-running coroutine: subscribes to all kaasb:ws:* channels via Redis
         psubscribe and forwards events to local connections.
         Should be started once per worker in the app lifespan.
+
+        Reconnect backoff: a transient Redis hiccup used to sleep a flat 2s
+        and retry, which could hammer the server during a longer outage.
+        Now exponential — 1, 2, 4, 8, 16, 30s cap — reset to 1s after a
+        full successful subscription so a single glitch doesn't leave the
+        worker on a 30s retry forever.
         """
+        attempt = 0
         while True:
             try:
                 r = await _get_redis()
                 pubsub = r.pubsub()
                 await pubsub.psubscribe(f"{_WS_CHANNEL_PREFIX}*")
                 logger.info("Redis WS subscriber started (pattern: %s*)", _WS_CHANNEL_PREFIX)
+                # We got through subscribe without raising — a real outage
+                # would have failed here. Reset the backoff counter so the
+                # next glitch starts the sequence fresh.
+                attempt = 0
 
                 async for raw in pubsub.listen():
                     if raw["type"] != "pmessage":
@@ -171,8 +182,16 @@ class ConnectionManager:
                 logger.info("Redis WS subscriber cancelled")
                 return
             except Exception as e:
-                logger.warning("Redis WS subscriber error, reconnecting in 2s: %s", e)
-                await asyncio.sleep(2)
+                # Exponential backoff capped at 30s. 2**n stalls: 1, 2, 4, 8,
+                # 16, 30. A fully-recovered subscribe() resets `attempt` at
+                # the top of the outer loop so the cap doesn't stick.
+                delay = min(2 ** attempt, 30)
+                attempt += 1
+                logger.warning(
+                    "Redis WS subscriber error, reconnecting in %ds (attempt %d): %s",
+                    delay, attempt, e,
+                )
+                await asyncio.sleep(delay)
 
 
 # Singleton — one per worker process

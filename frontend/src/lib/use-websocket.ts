@@ -198,8 +198,15 @@ export function useWebSocket({
   }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function scheduleReconnect() {
+    // Short-circuit if the hook is already unmounted — avoids scheduling a
+    // setTimeout that would fire into a closed-over connect() after the
+    // cleanup effect ran, which used to leak the timer id until the
+    // callback actually fired.
+    if (!mountedRef.current) return;
     if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
     reconnectTimer.current = setTimeout(() => {
+      reconnectTimer.current = null;
+      if (!mountedRef.current) return;
       reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000);
       connect();
     }, reconnectDelay.current);
