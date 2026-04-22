@@ -39,6 +39,8 @@ export interface PaymentSummary {
   total_spent: number;
   pending_escrow: number;
   available_balance: number;
+  total_paid_out: number;
+  pending_payout: number;
   total_platform_fees: number;
   transaction_count: number;
   payment_accounts: PaymentAccount[];

@@ -5,11 +5,14 @@ In-app notifications for key platform events.
 
 import enum
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
+    DateTime,
     Enum,
     ForeignKey,
+    Index,
     String,
     Text,
 )
@@ -89,6 +92,14 @@ class Notification(BaseModel):
     """In-app notification for a user."""
 
     __tablename__ = "notifications"
+    __table_args__ = (
+        # Composite index backs the /unread-count hot path and the "unread
+        # only" filter on /notifications. Created in migration b4w5x6y7z8a9.
+        Index("ix_notifications_user_is_read", "user_id", "is_read"),
+        # Retention sweep filters by archived_at so it benefits from its
+        # own index. Created in migration c5x6y7z8a9b0.
+        Index("ix_notifications_archived_at", "archived_at"),
+    )
 
     # === Content ===
     type: Mapped[NotificationType] = mapped_column(
@@ -99,14 +110,16 @@ class Notification(BaseModel):
     message: Mapped[str] = mapped_column(Text, nullable=False)
 
     # === Status ===
-    is_read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # Composite (user_id, is_read) index above covers is-read filtering.
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # === Target user ===
+    # Composite (user_id, is_read) index above covers queries on user_id alone
+    # via the leftmost-prefix rule, so no separate single-column index here.
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     user: Mapped["User"] = relationship(
         "User", foreign_keys=[user_id], backref="notifications", lazy="raise"
@@ -125,6 +138,14 @@ class Notification(BaseModel):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+    # === Soft-delete ===
+    # Active queries filter `archived_at IS NULL`. The retention task sets
+    # this instead of hard-deleting so GDPR export stays complete and
+    # admins can audit past notifications in dispute post-mortems.
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     def __repr__(self) -> str:

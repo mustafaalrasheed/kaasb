@@ -21,6 +21,7 @@ import asyncio
 import logging
 import math
 import sys
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, update
@@ -77,6 +78,83 @@ async def expire_buyer_requests(db: AsyncSession) -> int:
     return count
 
 
+# A PENDING service order that never saw its QiCard success callback is
+# assumed dead after this many minutes. Generous enough for a slow
+# checkout + reasonable webhook retry window; short enough that the
+# order doesn't sit on the service's orders_count inflating rank.
+_STALE_PENDING_ORDER_MINUTES = 30
+
+
+async def expire_stale_pending_orders(db: AsyncSession) -> int:
+    """Cancel service orders stuck in PENDING with no matching FUNDED escrow.
+
+    Created-but-never-paid orders inflate Service.orders_count (which feeds
+    into rank_score, per F7) and clutter the client's order list. A client
+    who opened checkout but never completed the QiCard redirect should not
+    permanently boost the freelancer's ranking.
+
+    Safety: only cancels orders older than 30 min that have NO funded
+    escrow. If the escrow is FUNDED but the order is still PENDING, that's
+    a different bug (status-transition drift) and shouldn't be swept up
+    here — the normal payment-confirmation path will fix it.
+    """
+    from app.models.payment import Escrow, EscrowStatus
+    from app.models.service import Service, ServiceOrder, ServiceOrderStatus
+
+    cutoff = datetime.now(UTC) - timedelta(minutes=_STALE_PENDING_ORDER_MINUTES)
+
+    # Orders older than cutoff with status PENDING and no FUNDED escrow.
+    # Keeping this as two passes (find, then update per-order) so we can
+    # atomically decrement the per-service orders_count without a
+    # cross-table UPDATE … FROM, which varies in behaviour between
+    # SQLAlchemy engines.
+    result = await db.execute(
+        select(ServiceOrder.id, ServiceOrder.service_id)
+        .outerjoin(
+            Escrow,
+            (Escrow.service_order_id == ServiceOrder.id)
+            & (Escrow.status == EscrowStatus.FUNDED),
+        )
+        .where(
+            ServiceOrder.status == ServiceOrderStatus.PENDING,
+            ServiceOrder.created_at < cutoff,
+            Escrow.id.is_(None),
+        )
+    )
+    rows = list(result.all())
+    cancelled = 0
+
+    for row in rows:
+        order_id, service_id = row
+        try:
+            # Transition the order and decrement the denormalised counter
+            # in a single transaction so a crash between the two can't
+            # corrupt the rank-score signal.
+            upd = await db.execute(
+                update(ServiceOrder)
+                .where(
+                    ServiceOrder.id == order_id,
+                    ServiceOrder.status == ServiceOrderStatus.PENDING,
+                )
+                .values(status=ServiceOrderStatus.CANCELLED)
+            )
+            if upd.rowcount:
+                await db.execute(
+                    update(Service)
+                    .where(Service.id == service_id, Service.orders_count > 0)
+                    .values(orders_count=Service.orders_count - 1)
+                    .execution_options(synchronize_session=False)
+                )
+                cancelled += 1
+            await db.commit()
+        except Exception as exc:
+            logger.exception("Failed to expire stale PENDING order %s: %s", order_id, exc)
+            await db.rollback()
+
+    logger.info("Stale PENDING service orders expired: %d", cancelled)
+    return cancelled
+
+
 async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
     """
     Recalculate seller_level for all freelancers based on their completed orders,
@@ -84,16 +162,34 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
 
     Returns summary dict of level transitions.
     """
+    from app.models.notification import NotificationType
     from app.models.service import ServiceOrder, ServiceOrderStatus
     from app.models.user import SellerLevel, User, UserRole
+    from app.services.notification_service import notify_background
 
     summary = {"upgraded": 0, "downgraded": 0, "unchanged": 0}
     now = datetime.now(UTC)
+
+    # Human-readable labels for notification copy.
+    level_labels_ar = {
+        SellerLevel.LEVEL_1: "المستوى الأول",
+        SellerLevel.LEVEL_2: "المستوى الثاني",
+        SellerLevel.TOP_RATED: "الأعلى تقييماً",
+        SellerLevel.NEW_SELLER: "بائع جديد",
+    }
+    level_labels_en = {
+        SellerLevel.LEVEL_1: "Level 1",
+        SellerLevel.LEVEL_2: "Level 2",
+        SellerLevel.TOP_RATED: "Top Rated",
+        SellerLevel.NEW_SELLER: "New Seller",
+    }
 
     freelancers_result = await db.execute(
         select(User).where(User.primary_role == UserRole.FREELANCER)
     )
     freelancers = list(freelancers_result.scalars().all())
+
+    upgraded_users: list[tuple[uuid.UUID, SellerLevel]] = []
 
     for user in freelancers:
         completed_result = await db.execute(
@@ -155,6 +251,7 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
         if new_level != old_level:
             if list(SellerLevel).index(new_level) > list(SellerLevel).index(old_level):
                 summary["upgraded"] += 1
+                upgraded_users.append((user.id, new_level))
             else:
                 summary["downgraded"] += 1
         else:
@@ -165,6 +262,26 @@ async def recalculate_seller_levels(db: AsyncSession) -> dict[str, int]:
         "Seller levels recalculated: %d upgraded, %d downgraded, %d unchanged",
         summary["upgraded"], summary["downgraded"], summary["unchanged"],
     )
+
+    # Notify users who moved up a level. We only notify on upgrade (never on
+    # downgrade) — demotions are silent to avoid demoralising freelancers, and
+    # will eventually be visible on their profile anyway.
+    for user_id, new_level in upgraded_users:
+        label_ar = level_labels_ar.get(new_level, new_level.value)
+        label_en = level_labels_en.get(new_level, new_level.value)
+        asyncio.create_task(
+            notify_background(
+                user_id=user_id,
+                type=NotificationType.SELLER_LEVEL_UPGRADED,
+                title_ar="تمت ترقية مستوى حسابك",
+                title_en="Your seller level was upgraded",
+                message_ar=f"تهانينا — تمت ترقيتك إلى: {label_ar}",
+                message_en=f"Congrats — you've been promoted to: {label_en}",
+                link_type=None,
+                link_id=None,
+            )
+        )
+
     return summary
 
 
@@ -196,16 +313,23 @@ async def auto_complete_delivered_orders(db: AsyncSession) -> int:
             from sqlalchemy import select as _select
 
             from app.models.payment import Escrow, EscrowStatus
+            # Lock the escrow row, then release via the internal path. The public
+            # release_escrow_by_id validates the freelancer's QiCard payout fields
+            # and raises BadRequestError when they're missing — correct for admin
+            # manual payouts, but here it would roll back the whole auto-complete
+            # and leave the order stranded in DELIVERED forever. The internal
+            # ledger release is safe; admin reconciliation catches the account gap
+            # on the pending-payouts tab.
             escrow_result = await db.execute(
                 _select(Escrow).where(
                     Escrow.service_order_id == order.id,
                     Escrow.status == EscrowStatus.FUNDED,
-                )
+                ).with_for_update()
             )
             escrow = escrow_result.scalar_one_or_none()
             if escrow:
                 from app.services.payment_service import PaymentService
-                await PaymentService(db).release_escrow_by_id(escrow.id)
+                await PaymentService(db)._release_locked_escrow(escrow)
 
             await db.commit()
             completed += 1
@@ -213,8 +337,10 @@ async def auto_complete_delivered_orders(db: AsyncSession) -> int:
             asyncio.create_task(notify_background(
                 user_id=order.client_id,
                 type=NotificationType.ORDER_AUTO_COMPLETED,
-                title="تم إغلاق الطلب تلقائياً",
-                message="تم إغلاق الطلب تلقائياً بعد 3 أيام من التسليم دون رد.",
+                title_ar="تم إغلاق الطلب تلقائياً",
+                title_en="Order auto-completed",
+                message_ar="تم إغلاق الطلب تلقائياً بعد 3 أيام من التسليم دون رد.",
+                message_en="This order was auto-completed after 3 days of no response to the delivery.",
                 link_type="service_order",
                 link_id=str(order.id),
             ))
@@ -291,12 +417,55 @@ async def refresh_service_rank_scores(db: AsyncSession) -> int:
 refresh_gig_rank_scores = refresh_service_rank_scores
 
 
+async def flag_stuck_pending_transactions(
+    db: AsyncSession, min_age_minutes: int = 30
+) -> int:
+    """
+    Count PENDING Transactions older than `min_age_minutes`.
+
+    These are the canonical signal for "Qi Card redirect succeeded on the
+    user's browser but the success webhook never reached Kaasb" — the money
+    may already be on the merchant balance while Kaasb still thinks the
+    payment is in progress. Counted here so the daily task updates the
+    Prometheus gauge; admins see the queue via GET /admin/payments/stuck-pending
+    and resolve each one manually until the v1 3DS status API is wired up
+    (P0-3 in the payments plan).
+    """
+    from app.models.payment import Transaction, TransactionStatus
+
+    cutoff = datetime.now(UTC) - timedelta(minutes=min_age_minutes)
+    result = await db.execute(
+        select(func.count(Transaction.id)).where(
+            Transaction.status == TransactionStatus.PENDING,
+            Transaction.created_at < cutoff,
+        )
+    )
+    count = int(result.scalar() or 0)
+
+    if count:
+        logger.warning(
+            "payments: %d PENDING transactions older than %dmin — likely need "
+            "manual reconciliation against Qi Card merchant dashboard",
+            count, min_age_minutes,
+        )
+
+    try:
+        from app.middleware.monitoring import STUCK_PENDING_TRANSACTIONS
+        STUCK_PENDING_TRANSACTIONS.set(count)
+    except Exception:
+        logger.debug("metrics: stuck-pending gauge emit failed", exc_info=True)
+
+    return count
+
+
 async def run_all(db: AsyncSession) -> dict:
     summary: dict = {}
     summary["buyer_requests_expired"] = await expire_buyer_requests(db)
+    summary["stale_pending_orders_expired"] = await expire_stale_pending_orders(db)
     summary["seller_levels"] = await recalculate_seller_levels(db)
     summary["orders_auto_completed"] = await auto_complete_delivered_orders(db)
     summary["service_rank_scores_updated"] = await refresh_service_rank_scores(db)
+    summary["stuck_pending_transactions"] = await flag_stuck_pending_transactions(db)
     return summary
 
 

@@ -4,15 +4,29 @@ import { usePathname } from 'next/navigation';
 import { useTransition } from 'react';
 import { useLocale } from '@/providers/locale-provider';
 import { setLocaleCookie } from '@/app/actions/locale';
+import { useAuthStore } from '@/lib/auth-store';
+import { usersApi } from '@/lib/api';
 
 export function LanguageSwitcher() {
   const { locale } = useLocale();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
+  const user = useAuthStore((s) => s.user);
 
   const toggle = () => {
     const newLocale = locale === 'ar' ? 'en' : 'ar';
     startTransition(async () => {
+      // Authenticated users: persist the preference to the backend first so
+      // server-emitted notifications (bell + email) pick the right locale.
+      // Fire-and-forget — a failed PUT shouldn't block the UI toggle because
+      // the cookie drives UI rendering regardless.
+      if (user) {
+        try {
+          await usersApi.updateLocale(newLocale);
+        } catch {
+          // Silent — the server action below still flips the UI.
+        }
+      }
       // Server Action: sets cookie server-side → redirects → server re-renders layout
       // with correct html[dir/lang], all text, all context — guaranteed correct
       await setLocaleCookie(newLocale, pathname);

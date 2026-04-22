@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState, useCallback, useEffect } from "react";
 import { useAuthStore } from "@/lib/auth-store";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
@@ -55,10 +56,20 @@ export function Navbar() {
         <div className={`flex items-center h-16 ${isRTL ? "flex-row-reverse" : "flex-row"} justify-between`}>
 
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <span className="text-2xl font-bold text-brand-500">
-              {isRTL ? "كاسب" : "Kaasb"}
-            </span>
+          <Link
+            href="/"
+            aria-label={isRTL ? "كاسب — الصفحة الرئيسية" : "Kaasb — Home"}
+            className="flex items-center shrink-0"
+          >
+            <Image
+              src="/logo-wordmark.png"
+              alt="Kaasb"
+              width={163}
+              height={44}
+              priority
+              sizes="163px"
+              className="h-10 w-auto"
+            />
           </Link>
 
           {/* Desktop Navigation */}

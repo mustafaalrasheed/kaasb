@@ -60,6 +60,57 @@ async def health_check(db: AsyncSession = Depends(get_db)):
 # GET /health/ready  — readiness probe (traffic gate)
 # ─────────────────────────────────────────────────────────────────────────────
 
+@router.get("/health/scheduler", summary="Scheduler staleness probe")
+async def scheduler_health():
+    """
+    Report the last successful run of each scheduled job. Returns 503 when
+    any tracked job hasn't run within its expected window — paging signal
+    for ops.
+
+    The only tracked job today is `marketplace_daily` which must run every
+    24h. It's considered stale after 30h (3h grace window for delivery slop).
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.tasks.scheduler import get_last_run_timestamps
+
+    # Per-job max-age window. Grow with caution — a wider window delays
+    # alerting on genuine scheduler failures.
+    max_age: dict[str, timedelta] = {
+        "marketplace_daily": timedelta(hours=30),
+    }
+
+    now = datetime.now(UTC)
+    try:
+        last_runs = await get_last_run_timestamps()
+    except Exception:
+        # Can't reach Redis → we don't know scheduler state → fail conservatively.
+        return JSONResponse(
+            content={"ok": False, "reason": "scheduler state unavailable"},
+            status_code=503,
+        )
+
+    jobs_payload: dict[str, dict] = {}
+    all_ok = True
+    for name, window in max_age.items():
+        last = last_runs.get(name)
+        age_seconds = (now - last).total_seconds() if last else None
+        stale = (last is None) or ((now - last) > window)
+        if stale:
+            all_ok = False
+        jobs_payload[name] = {
+            "last_run": last.isoformat() if last else None,
+            "age_seconds": age_seconds,
+            "max_age_seconds": window.total_seconds(),
+            "stale": stale,
+        }
+
+    return JSONResponse(
+        content={"ok": all_ok, "jobs": jobs_payload},
+        status_code=200 if all_ok else 503,
+    )
+
+
 @router.get("/health/ready", summary="Readiness probe")
 async def readiness_check(db: AsyncSession = Depends(get_db)):
     """

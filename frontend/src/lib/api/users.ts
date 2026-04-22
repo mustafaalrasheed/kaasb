@@ -34,5 +34,13 @@ export const usersApi = {
     new_password: string;
   }) => api.put("/users/password", data),
 
+  updateLocale: (locale: "ar" | "en") =>
+    api.put("/users/me/locale", { locale }),
+
+  getEmailPreferences: () => api.get("/users/me/email-preferences"),
+
+  updateEmailPreferences: (email_notifications_enabled: boolean) =>
+    api.put("/users/me/email-preferences", { email_notifications_enabled }),
+
   deactivateAccount: () => api.delete("/users/account"),
 };

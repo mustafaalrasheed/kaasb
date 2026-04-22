@@ -53,6 +53,10 @@ export function PayoutApprovalsTab({ ar, dateLocale, currentAdminId }: Props) {
 
   useEffect(() => {
     fetchApprovals();
+    // Poll every 10s so a second admin sees fresh state without reloading —
+    // another admin approving/rejecting elsewhere is reflected here.
+    const interval = window.setInterval(fetchApprovals, 10_000);
+    return () => window.clearInterval(interval);
   }, [fetchApprovals]);
 
   const handleApprove = async (a: PayoutApproval) => {

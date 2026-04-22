@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { notificationsApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { useWebSocket } from "@/lib/use-websocket";
-import type { WsNotificationData } from "@/lib/use-websocket";
+import type { WsNotificationData, WsNotificationReadData } from "@/lib/use-websocket";
 
 export function NotificationBell() {
   const { isAuthenticated, user } = useAuthStore();
@@ -16,15 +16,22 @@ export function NotificationBell() {
       const res = await notificationsApi.getUnreadCount();
       setUnreadCount(res.data.count ?? 0);
     } catch {
-      // Silent — don't disrupt UI on polling failure
+      // Silent — don't disrupt UI on refetch failure
     }
   }, []);
 
+  // Initial + focus + online refetch — keeps the badge accurate without
+  // the 30s polling interval. WebSocket push handles everything in between.
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchCount();
-    const interval = setInterval(fetchCount, 30_000);
-    return () => clearInterval(interval);
+    const onFocus = () => fetchCount();
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onFocus);
+    };
   }, [isAuthenticated, fetchCount]);
 
   // Increment badge instantly on WebSocket push (no round-trip needed)
@@ -32,7 +39,40 @@ export function NotificationBell() {
     setUnreadCount((prev) => prev + 1);
   }, []);
 
-  useWebSocket({ onNotification: handleNotification, enabled: !!user });
+  // Server-broadcast notification_read keeps every open tab and every
+  // device in sync as soon as the user marks anything read anywhere.
+  const handleNotificationRead = useCallback((data: WsNotificationReadData) => {
+    if (data.all) {
+      setUnreadCount(0);
+    } else {
+      setUnreadCount((prev) => Math.max(0, prev - Math.max(1, data.marked)));
+    }
+  }, []);
+
+  useWebSocket({
+    onNotification: handleNotification,
+    onNotificationRead: handleNotificationRead,
+    enabled: !!user,
+  });
+
+  // Same-tab optimistic decrement — the notifications page dispatches this
+  // when the user interacts directly. WS keeps other tabs in sync; this
+  // keeps the current tab instant even if the WS round-trip hasn't landed
+  // yet. Clamped at 0 so a stale event can't push the badge negative.
+  useEffect(() => {
+    const onRead = (e: Event) => {
+      const detail = (e as CustomEvent<{ count?: number }>).detail ?? {};
+      const by = Math.max(1, detail.count ?? 1);
+      setUnreadCount((prev) => Math.max(0, prev - by));
+    };
+    const onAllRead = () => setUnreadCount(0);
+    window.addEventListener("kaasb:notifications:read", onRead);
+    window.addEventListener("kaasb:notifications:all-read", onAllRead);
+    return () => {
+      window.removeEventListener("kaasb:notifications:read", onRead);
+      window.removeEventListener("kaasb:notifications:all-read", onAllRead);
+    };
+  }, []);
 
   if (!isAuthenticated) return null;
 

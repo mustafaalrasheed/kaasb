@@ -21,7 +21,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,6 +55,18 @@ from app.services.qi_card_client import QiCardClient, QiCardError
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def _record_escrow_transition(from_status: str, to_status: str) -> None:
+    """Emit the Prometheus transition counter. Isolated in a helper so service
+    call-sites stay readable and so the import doesn't fire at module load
+    time (the middleware package is only imported when FastAPI boots)."""
+    try:
+        from app.middleware.monitoring import ESCROW_STATE_TRANSITIONS
+        ESCROW_STATE_TRANSITIONS.labels(from_status=from_status, to_status=to_status).inc()
+    except Exception:
+        # Metrics must never block the money-state transition they observe.
+        logger.debug("metrics: escrow transition emit failed", exc_info=True)
 
 
 class PaymentService(BaseService):
@@ -222,10 +234,15 @@ class PaymentService(BaseService):
         failure_url = f"{base}/api/v1/payments/qi-card/failure?sig={sig}"
         cancel_url  = f"{base}/api/v1/payments/qi-card/cancel?sig={sig}"
 
-        # Initiate Qi Card payment (milestone.amount is already IQD)
+        # Initiate Qi Card payment (milestone.amount is already IQD).
+        # Round to the nearest whole IQD (Qi Card requires int amounts); plain
+        # int() truncates toward zero and systematically underpays by up to 0.99.
+        amount_iqd_int = int(
+            Decimal(str(fees["amount"])).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
         try:
             qi_result = await self.qi_card.create_payment(
-                amount_iqd=int(fees["amount"]),
+                amount_iqd=amount_iqd_int,
                 order_id=order_id,
                 success_url=success_url,
                 failure_url=failure_url,
@@ -233,13 +250,21 @@ class PaymentService(BaseService):
             )
         except QiCardError as e:
             logger.exception("Qi Card error in fund_escrow: %s", e)
+            # Explicit rollback mirrors place_order's pattern — drops any
+            # validation-time selects or partial state from the session so
+            # the outer request gets a clean slate on the error path.
+            await self.db.rollback()
             raise ExternalServiceError("Payment gateway error. Please try again later.") from e
 
         qi_payment_id = order_id   # Qi Card uses our orderId to identify the payment
         amount_iqd = qi_result["amount_iqd"]
         form_url = qi_result.get("link")
 
-        # Create transaction and escrow atomically in a single flush
+        # Create transaction + escrow and flush them together. BaseModel.id is
+        # generated client-side (uuid.uuid4 default), so transaction.id is
+        # available before any DB round-trip and can be used as the escrow's
+        # funding_transaction_id FK without an intermediate flush. This removes
+        # the window where the Transaction was persisted but the Escrow wasn't.
         transaction = Transaction(
             transaction_type=TransactionType.ESCROW_FUND,
             status=TransactionStatus.PENDING,
@@ -254,17 +279,6 @@ class PaymentService(BaseService):
             external_transaction_id=qi_payment_id,
             description=f"Qi Card escrow payment for milestone: {milestone.title}",
         )
-        self.db.add(transaction)
-
-        # Flush transaction first to get its ID for the escrow FK
-        try:
-            await self.db.flush()
-        except IntegrityError as e:
-            raise ConflictError("Duplicate or constraint violation") from e
-        except SQLAlchemyError:
-            raise
-
-        # Create escrow in PENDING state (will be FUNDED after webhook)
         escrow = Escrow(
             amount=fees["amount"],
             platform_fee=fees["platform_fee"],
@@ -278,12 +292,14 @@ class PaymentService(BaseService):
             funding_transaction_id=transaction.id,
             funded_at=None,  # Set only when webhook confirms actual payment
         )
-        self.db.add(escrow)
+        self.db.add_all([transaction, escrow])
         try:
             await self.db.flush()
         except IntegrityError as e:
+            await self.db.rollback()
             raise ConflictError("Duplicate or constraint violation") from e
         except SQLAlchemyError:
+            await self.db.rollback()
             raise
 
         logger.info(
@@ -356,6 +372,31 @@ class PaymentService(BaseService):
         if escrow:
             escrow.status = EscrowStatus.FUNDED
             escrow.funded_at = datetime.now(UTC)
+            _record_escrow_transition("pending", "funded")
+
+            # Notify freelancer that funds are safely in escrow (contract-milestone
+            # path only — service orders are handled by the in-progress transition
+            # below and have their own ORDER_* notification flow).
+            if escrow.milestone_id is not None:
+                amount_int = int(escrow.freelancer_amount)
+                await notify(
+                    self.db,
+                    user_id=escrow.freelancer_id,
+                    type=NotificationType.MILESTONE_FUNDED,
+                    title_ar="تم إيداع المبلغ في الضمان",
+                    title_en="Milestone funded",
+                    message_ar=(
+                        f"تم إيداع {amount_int:,} د.ع "
+                        "في الضمان للمرحلة — يمكنك بدء العمل"
+                    ),
+                    message_en=(
+                        f"{amount_int:,} IQD is held in escrow — "
+                        "you can start working on this milestone"
+                    ),
+                    link_type="contract",
+                    link_id=escrow.contract_id,
+                    actor_id=escrow.client_id,
+                )
 
         # For service orders: transition the ServiceOrder from PENDING → IN_PROGRESS so
         # the freelancer can start work. Without this, mark_delivered() always rejects
@@ -434,6 +475,7 @@ class PaymentService(BaseService):
         escrow = result.scalar_one_or_none()
         if escrow:
             escrow.status = EscrowStatus.REFUNDED  # Nothing was actually charged
+            _record_escrow_transition("pending", "refunded")
 
         await self.db.flush()
         logger.info("Qi Card payment failed/cancelled: order_id=%s", order_id)
@@ -486,22 +528,56 @@ class PaymentService(BaseService):
         self.db.add(release_tx)
         await self.db.flush()
 
+        # Optimistic-lock UPDATE: WHERE id=... AND version=:expected. If a
+        # racing coroutine already released this escrow (would only be possible
+        # if the FOR UPDATE row lock was bypassed), the rowcount comes back 0
+        # and we refuse to record a duplicate release.
+        expected_version = escrow.version
+        now = datetime.now(UTC)
+        update_result = await self.db.execute(
+            update(Escrow)
+            .where(
+                Escrow.id == escrow.id,
+                Escrow.version == expected_version,
+                Escrow.status == EscrowStatus.FUNDED,
+            )
+            .values(
+                status=EscrowStatus.RELEASED,
+                released_at=now,
+                release_transaction_id=release_tx.id,
+                version=expected_version + 1,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if update_result.rowcount != 1:
+            # Someone else flipped the row between our FOR UPDATE read and now.
+            # Raising aborts the outer transaction so the ledger transactions
+            # we just flushed get rolled back — no phantom release.
+            raise ConflictError(
+                "Escrow state changed concurrently (version mismatch); release aborted"
+            )
+        _record_escrow_transition("funded", "released")
+
+        # Keep the in-memory ORM object consistent with what we just wrote.
         escrow.status = EscrowStatus.RELEASED
-        escrow.released_at = datetime.now(UTC)
+        escrow.released_at = now
         escrow.release_transaction_id = release_tx.id
-        await self.db.flush()
+        escrow.version = expected_version + 1
 
         logger.info(
-            "Escrow released: escrow=%s milestone=%s amount=%s",
-            escrow.id, escrow.milestone_id, escrow.freelancer_amount,
+            "Escrow released: escrow=%s milestone=%s amount=%s version=%d",
+            escrow.id, escrow.milestone_id, escrow.freelancer_amount, escrow.version,
         )
 
+        amount_iqd = int(escrow.freelancer_amount)
         await notify(
             self.db,
             user_id=escrow.freelancer_id,
             type=NotificationType.PAYMENT_RECEIVED,
-            title="تم استلام دفعة",
-            message=f"تم تحرير مبلغ ${escrow.freelancer_amount:.2f} إلى رصيدك",
+            title_ar="تم استلام دفعة",
+            title_en="Payment received",
+            message_ar=f"تم تحرير مبلغ {amount_iqd:,} د.ع إلى رصيدك",
+            message_en=f"{amount_iqd:,} IQD has been released to your balance",
             link_type="contract",
             link_id=escrow.contract_id,
             actor_id=escrow.client_id,
@@ -598,16 +674,21 @@ class PaymentService(BaseService):
             description=reason,
         )
         self.db.add(refund_tx)
+        prev_status = "disputed" if escrow.status == EscrowStatus.DISPUTED else "funded"
         escrow.status = EscrowStatus.REFUNDED
         escrow.released_at = datetime.now(UTC)
+        _record_escrow_transition(prev_status, "refunded")
         await self.db.flush()
 
+        refund_amount = int(escrow.amount)
         await notify(
             self.db,
             user_id=escrow.client_id,
             type=NotificationType.PAYMENT_RECEIVED,
-            title="تم بدء استرداد المبلغ",
-            message=f"سيتم إعادة ${escrow.amount:.2f} إلى حسابك خلال 3-5 أيام عمل.",
+            title_ar="تم بدء استرداد المبلغ",
+            title_en="Refund initiated",
+            message_ar=f"سيتم إعادة {refund_amount:,} د.ع إلى حسابك خلال 3-5 أيام عمل.",
+            message_en=f"{refund_amount:,} IQD will be returned to you within 3-5 business days.",
             link_type="service_order",
             link_id=escrow.service_order_id,
         )
@@ -640,7 +721,9 @@ class PaymentService(BaseService):
             original_tx = tx_result.scalar_one_or_none()
 
         qi_payment_id = original_tx.external_transaction_id if original_tx else None
-        amount_iqd = int(escrow.amount)
+        amount_iqd = int(
+            Decimal(str(escrow.amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
 
         gateway_refund_succeeded = False
         if qi_payment_id:
@@ -674,8 +757,10 @@ class PaymentService(BaseService):
         )
         self.db.add(refund_tx)
 
+        prev_status = "disputed" if escrow.status == EscrowStatus.DISPUTED else "funded"
         escrow.status = EscrowStatus.REFUNDED
         escrow.released_at = datetime.now(UTC)
+        _record_escrow_transition(prev_status, "refunded")
 
         await self.db.flush()
         logger.info("Escrow refunded: milestone=%s amount=%s", milestone_id, escrow.amount)
@@ -726,7 +811,16 @@ class PaymentService(BaseService):
         if data.amount > available:
             raise BadRequestError(f"Insufficient balance. Available: {available:,.0f} IQD")
 
-        amount_iqd = int(data.amount)
+        # Enforce minimum payout to prevent tiny withdrawals whose manual
+        # admin-processing cost exceeds their value.
+        if data.amount < settings.MINIMUM_PAYOUT_IQD:
+            raise BadRequestError(
+                f"Minimum payout is {settings.MINIMUM_PAYOUT_IQD:,.0f} IQD"
+            )
+
+        amount_iqd = int(
+            Decimal(str(data.amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
 
         # For Qi Card payouts: in production, call Qi Card payout/transfer API
         # Currently logged as processing — admin confirms manually until payout API is available
@@ -770,8 +864,10 @@ class PaymentService(BaseService):
                 self.db,
                 user_id=freelancer.id,
                 type=NotificationType.PAYOUT_COMPLETED,
-                title="تم سحب الأموال بنجاح",
-                message=f"تم تحويل {amount_iqd:,} د.ع (${data.amount:.2f}) إلى حسابك",
+                title_ar="تم سحب الأموال بنجاح",
+                title_en="Payout completed",
+                message_ar=f"تم تحويل {amount_iqd:,} د.ع إلى حسابك",
+                message_en=f"{amount_iqd:,} IQD has been transferred to your account",
                 link_type=None,
                 link_id=None,
             )
@@ -788,6 +884,90 @@ class PaymentService(BaseService):
                 f"via {account.provider.value}"
             ),
         )
+
+    async def mark_payout_paid(
+        self,
+        transaction_id: uuid.UUID,
+        admin: User,
+        note: str | None = None,
+        ip_address: str | None = None,
+    ) -> Transaction:
+        """
+        Admin-triggered completion of a freelancer payout.
+
+        Qi Card has no payout API (Known Issue #3): admins send the money
+        manually through the Qi Card merchant dashboard, then call this
+        endpoint to flip the Transaction from PROCESSING to COMPLETED so
+        the freelancer sees the payout as received.
+
+        - FOR UPDATE locks the transaction row to block double-marking.
+        - Only admins / superusers should reach this via the endpoint layer.
+        - Writes an audit log entry and notifies the freelancer.
+        """
+        from app.models.admin_audit import AdminAuditAction
+        from app.services.audit_service import AuditService
+
+        result = await self.db.execute(
+            select(Transaction)
+            .where(Transaction.id == transaction_id)
+            .with_for_update()
+        )
+        tx = result.scalar_one_or_none()
+        if tx is None:
+            raise NotFoundError("Payout transaction")
+
+        if tx.transaction_type != TransactionType.PAYOUT:
+            raise BadRequestError("Transaction is not a payout")
+        if tx.status != TransactionStatus.PROCESSING:
+            raise BadRequestError(
+                f"Only PROCESSING payouts can be marked paid (current: {tx.status.value})"
+            )
+
+        tx.status = TransactionStatus.COMPLETED
+        tx.completed_at = datetime.now(UTC)
+        if note:
+            # Preserve the original description and append the admin note for context.
+            tx.description = f"{tx.description or ''} | marked paid: {note[:200]}".strip(" |")
+
+        try:
+            await self.db.flush()
+        except SQLAlchemyError:
+            raise
+
+        # Best-effort audit log. AuditService.log swallows its own failures so
+        # the money-state transition is never blocked by a logging hiccup.
+        await AuditService(self.db).log(
+            admin_id=admin.id,
+            action=AdminAuditAction.PAYOUT_MARKED_PAID,
+            target_type="transaction",
+            target_id=tx.id,
+            amount=float(tx.amount),
+            currency=tx.currency,
+            ip_address=ip_address,
+            details={"note": note} if note else None,
+        )
+
+        if tx.payee_id is not None:
+            amount_iqd = int(
+                Decimal(str(tx.amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
+            await notify(
+                self.db,
+                user_id=tx.payee_id,
+                type=NotificationType.PAYOUT_COMPLETED,
+                title_ar="تم سحب الأموال بنجاح",
+                title_en="Payout completed",
+                message_ar=f"تم تحويل {amount_iqd:,} د.ع إلى حسابك",
+                message_en=f"{amount_iqd:,} IQD has been transferred to your account",
+                link_type=None,
+                link_id=None,
+            )
+
+        logger.info(
+            "Payout marked paid: tx=%s admin=%s amount=%s %s",
+            tx.id, admin.id, tx.amount, tx.currency,
+        )
+        return tx
 
     # === Transaction History ===
 
@@ -859,16 +1039,31 @@ class PaymentService(BaseService):
         )
         total_fees = fees_result.scalar() or 0.0
 
-        # Subtract paid-out (completed or processing) amounts from earned to get
-        # the balance actually available for withdrawal.
-        paid_out_result = await self.db.execute(
+        # Payouts already paid by admin (status=COMPLETED). Subtracting these
+        # from earnings gives the "money that has settled to Qi Card" view.
+        paid_out_completed_result = await self.db.execute(
             select(func.coalesce(func.sum(Transaction.amount), 0.0)).where(
                 Transaction.payee_id == user.id,
                 Transaction.transaction_type == TransactionType.PAYOUT,
-                Transaction.status.in_([TransactionStatus.COMPLETED, TransactionStatus.PROCESSING]),
+                Transaction.status == TransactionStatus.COMPLETED,
             )
         )
-        total_paid_out = paid_out_result.scalar() or 0.0
+        total_paid_out_completed = paid_out_completed_result.scalar() or 0.0
+
+        # Payouts the freelancer requested but the admin hasn't marked paid yet.
+        pending_payout_result = await self.db.execute(
+            select(func.coalesce(func.sum(Transaction.amount), 0.0)).where(
+                Transaction.payee_id == user.id,
+                Transaction.transaction_type == TransactionType.PAYOUT,
+                Transaction.status == TransactionStatus.PROCESSING,
+            )
+        )
+        pending_payout = pending_payout_result.scalar() or 0.0
+
+        # The available balance check and the request_payout validator both
+        # subtract pending+completed — a freelancer can't request a second
+        # payout that would overdraw their released balance.
+        total_paid_out = total_paid_out_completed + pending_payout
 
         count_result = await self.db.execute(
             select(func.count()).where(
@@ -884,6 +1079,8 @@ class PaymentService(BaseService):
             "total_spent": total_spent,
             "pending_escrow": pending_escrow,
             "available_balance": max(0.0, round(total_earned - total_paid_out, 2)),
+            "total_paid_out": total_paid_out_completed,
+            "pending_payout": pending_payout,
             "total_platform_fees": total_fees,
             "transaction_count": tx_count,
             "payment_accounts": accounts,

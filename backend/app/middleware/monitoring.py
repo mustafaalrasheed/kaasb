@@ -128,6 +128,49 @@ BUSINESS_EVENTS = Counter(
     ["event"],  # job_posted | proposal_submitted | contract_created | review_submitted
 )
 
+# Escrow state transitions — every fund/release/refund/dispute emits here so
+# we can alert on anomalies (e.g. zero releases for 24h, high refund rate).
+ESCROW_STATE_TRANSITIONS = Counter(
+    "kaasb_escrow_state_transitions_total",
+    "Escrow state transitions by source and target status",
+    ["from_status", "to_status"],
+)
+
+# Audit-log write failures. AuditService.log swallows its own errors so the
+# money-state transition is never blocked by a logging hiccup — this counter
+# is the only signal the ops team gets that an audit entry was lost.
+AUDIT_LOG_FAILURES = Counter(
+    "kaasb_audit_log_failures_total",
+    "AuditService.log exceptions (action still completed)",
+    ["action"],
+)
+
+# Stuck PENDING Transactions — updated by the reconciliation task. A non-zero
+# value for >30min is a signal that Qi Card webhook delivery is failing or
+# that funded payments are being dropped.
+STUCK_PENDING_TRANSACTIONS = Gauge(
+    "kaasb_stuck_pending_transactions",
+    "Count of PENDING Transactions older than the reconciliation threshold",
+)
+
+# Scheduler job health — last successful-run timestamp per job, used by
+# /health/scheduler to detect missed runs.
+SCHEDULER_LAST_RUN_TIMESTAMP = Gauge(
+    "kaasb_scheduler_last_run_timestamp_seconds",
+    "Unix-epoch seconds of the most recent successful run of each scheduled job",
+    ["job_name"],
+)
+
+# Notification dispatch — tracks the in-app insert success rate and the
+# WS push success rate separately so ops can alert on each independently.
+# A sustained WS fail rate is normal (offline users); a sustained in_app
+# fail rate means notifications are being dropped entirely.
+NOTIFICATION_DISPATCH_TOTAL = Counter(
+    "kaasb_notification_dispatch_total",
+    "Notification dispatch counts by channel and outcome",
+    ["channel", "status"],  # channel: in_app|ws; status: ok|fail
+)
+
 
 # ─── Request context middleware ───────────────────────────────────────────────
 

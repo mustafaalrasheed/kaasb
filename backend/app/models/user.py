@@ -68,6 +68,18 @@ class User(BaseModel):
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     timezone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Preferred UI locale, used server-side to resolve notification copy at
+    # emission time. 2-letter ISO code, constrained to ('ar', 'en') by a
+    # CHECK in migration a3v4w5x6y7z8. New users default to 'ar'.
+    locale: Mapped[str] = mapped_column(
+        String(2), nullable=False, server_default="ar", default="ar"
+    )
+    # Per-user opt-out for email notifications. When False, notification
+    # emails are skipped (in-app bell still fires). Granular per-type
+    # control is a future enhancement.
+    email_notifications_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true", default=True
+    )
 
     # === Role & Status ===
     primary_role: Mapped[UserRole] = mapped_column(

@@ -141,3 +141,29 @@ class EmailService:
         subject = f"طلب جديد: {order_title} | Kaasb" if lang == "ar" else f"New order: {order_title} | Kaasb"
         html = self._render(template, ctx)
         return await self._send(to=to_email, subject=subject, html=html)
+
+    async def send_notification_email(
+        self,
+        *,
+        to_email: str,
+        title: str,
+        message: str,
+        link_url: str | None = None,
+        lang: Literal["ar", "en"] = "ar",
+    ) -> bool:
+        """Generic notification email. Called from NotificationService for the
+        opted-in notification types. The title/message arguments are expected
+        to already be in the recipient's preferred language (the notification
+        service resolves locale before calling this)."""
+        ctx = {
+            "title": title,
+            "message": message,
+            "link_url": link_url,
+            "site_name": "Kaasb",
+            "lang": lang,
+            "dir": "rtl" if lang == "ar" else "ltr",
+        }
+        template = f"notification_{lang}.html"
+        subject = f"{title} | Kaasb"
+        html = self._render(template, ctx)
+        return await self._send(to=to_email, subject=subject, html=html)

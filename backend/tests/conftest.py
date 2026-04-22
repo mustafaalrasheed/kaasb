@@ -100,7 +100,6 @@ async def sample_freelancer_user(db_session: AsyncSession) -> User:
         primary_role=UserRole.FREELANCER,
         status=UserStatus.ACTIVE,
         is_email_verified=True,
-        hourly_rate=50.0,
         skills=["Python", "FastAPI"],
         title="Senior Developer",
     )

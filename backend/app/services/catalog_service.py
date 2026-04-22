@@ -152,8 +152,10 @@ class CatalogService(BaseService):
             asyncio.create_task(notify_background(
                 user_id=admin_id,
                 type=NotificationType.SERVICE_SUBMITTED,
-                title="New service pending review",
-                message=f'"{service_title}" by {freelancer_username} is awaiting approval.',
+                title_ar="خدمة جديدة بانتظار المراجعة",
+                title_en="New service pending review",
+                message_ar=f'"{service_title}" من {freelancer_username} بانتظار الموافقة.',
+                message_en=f'"{service_title}" by {freelancer_username} is awaiting approval.',
                 link_type="service",
                 link_id=service_id_str,
             ))
@@ -338,8 +340,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=freelancer_id,
             type=NotificationType.SERVICE_APPROVED,
-            title="Your service was approved",
-            message=f'Your service "{service_title}" is now live and visible to clients.',
+            title_ar="تمت الموافقة على خدمتك",
+            title_en="Your service was approved",
+            message_ar=f'خدمتك "{service_title}" منشورة الآن وظاهرة للعملاء.',
+            message_en=f'Your service "{service_title}" is now live and visible to clients.',
             link_type="service",
             link_id=service_id_str,
         ))
@@ -372,8 +376,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=freelancer_id,
             type=NotificationType.SERVICE_NEEDS_REVISION,
-            title="Your service needs edits before it can go live",
-            message=f'Your service "{service_title}" needs changes: {note}',
+            title_ar="خدمتك تحتاج تعديلات قبل النشر",
+            title_en="Your service needs edits before it can go live",
+            message_ar=f'خدمتك "{service_title}" تحتاج إلى تعديلات: {note}',
+            message_en=f'Your service "{service_title}" needs changes: {note}',
             link_type="service",
             link_id=service_id_str,
         ))
@@ -407,8 +413,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=freelancer_id,
             type=NotificationType.SERVICE_REJECTED,
-            title="Your service was rejected",
-            message=f'Your service "{service_title}" was rejected. Reason: {reason}',
+            title_ar="تم رفض خدمتك",
+            title_en="Your service was rejected",
+            message_ar=f'خدمتك "{service_title}" مرفوضة. السبب: {reason}',
+            message_en=f'Your service "{service_title}" was rejected. Reason: {reason}',
             link_type="service",
             link_id=service_id_str,
         ))
@@ -534,10 +542,13 @@ class CatalogService(BaseService):
         base = f"https://{settings.DOMAIN}"
         payment_url: str | None = None
 
+        # Round to the nearest whole IQD; plain int() truncates toward zero and
+        # systematically underpays by up to 0.99 IQD per order.
+        amount_iqd_int = int(price_d.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         try:
             qi_card = QiCardClient()
             qi_result = await qi_card.create_payment(
-                amount_iqd=int(price_d),
+                amount_iqd=amount_iqd_int,
                 order_id=order_ref,
                 success_url=f"{base}/api/v1/payments/qi-card/success?sig={sig}",
                 failure_url=f"{base}/api/v1/payments/qi-card/failure?sig={sig}",
@@ -625,8 +636,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=order.freelancer_id,
             type=NotificationType.ORDER_REQUIREMENTS_SUBMITTED,
-            title="العميل أرسل متطلبات الطلب",
-            message="قدّم العميل إجاباته على أسئلة المتطلبات — يمكنك البدء بالعمل الآن.",
+            title_ar="العميل أرسل متطلبات الطلب",
+            title_en="Client submitted order requirements",
+            message_ar="قدّم العميل إجاباته على أسئلة المتطلبات — يمكنك البدء بالعمل الآن.",
+            message_en="The client answered the requirement questions — you can start work now.",
             link_type="service_order",
             link_id=str(order_id),
             actor_id=client.id,
@@ -670,8 +683,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=order.client_id,
             type=NotificationType.ORDER_DELIVERED,
-            title="تم تسليم طلبك",
-            message="قدّم المستقل العمل المطلوب — راجعه وأبدِ رأيك.",
+            title_ar="تم تسليم طلبك",
+            title_en="Your order was delivered",
+            message_ar="قدّم المستقل العمل المطلوب — راجعه وأبدِ رأيك.",
+            message_en="The freelancer delivered your order — please review and respond.",
             link_type="service_order",
             link_id=str(order_id),
             actor_id=freelancer.id,
@@ -703,6 +718,12 @@ class CatalogService(BaseService):
         order.status = ServiceOrderStatus.REVISION_REQUESTED
         if order.revisions_remaining > 0:
             order.revisions_remaining -= 1
+        # Reset the clock so a revision doesn't instantly count as OVERDUE
+        # against the freelancer's on-time-delivery metric (F2 seller level).
+        # Capped at 3 days — a 14-day package shouldn't silently become
+        # another 14 on every revision loop, but the freelancer needs enough
+        # time to make the changes without a negative performance hit.
+        order.due_date = datetime.now(UTC) + timedelta(days=min(order.delivery_days, 3))
         await self.db.commit()
         return order
 
@@ -716,19 +737,22 @@ class CatalogService(BaseService):
         order.completed_at = datetime.now(UTC)
         await self.db.flush()
 
-        # Release escrow via PaymentService so the lock, fee transaction, and
-        # freelancer notification are handled consistently with contract milestones.
+        # Release escrow via PaymentService — use the internal _release_locked_escrow
+        # so service-order completion isn't gated on the freelancer's payout-account
+        # fields (that check exists on release_escrow_by_id for admin-driven manual
+        # payouts; applied here it would block the client from closing their own
+        # order through no fault of their own, leaving the order stuck in DELIVERED).
         escrow_result = await self.db.execute(
-            select(Escrow.id).where(
+            select(Escrow).where(
                 Escrow.service_order_id == order_id,
                 Escrow.status == EscrowStatus.FUNDED,
-            )
+            ).with_for_update()
         )
-        escrow_id = escrow_result.scalar_one_or_none()
-        if escrow_id:
+        escrow = escrow_result.scalar_one_or_none()
+        if escrow:
             from app.services.payment_service import PaymentService
             payment_svc = PaymentService(self.db)
-            await payment_svc.release_escrow_by_id(escrow_id)
+            await payment_svc._release_locked_escrow(escrow)
         else:
             logger.warning("complete_order: no funded escrow found for order %s", order_id)
 
@@ -745,12 +769,18 @@ class CatalogService(BaseService):
         client: User,
         reason: str,
     ) -> ServiceOrder:
-        """Client raises a dispute on an in-progress or delivered order."""
+        """Client raises a dispute on an active or delivered order."""
         order = await self._get_order(order_id)
         if str(order.client_id) != str(client.id):
             raise ForbiddenError("Only the client can raise a dispute")
 
+        # PENDING_REQUIREMENTS is included so a client who paid and then
+        # realised the freelancer was fraudulent (F3 questionnaire never
+        # surfaces work, etc.) has a legitimate dispute path — without it
+        # they'd be stuck with a paid order awaiting answers they don't
+        # want to give, and the freelancer could never actually start.
         allowed_statuses = {
+            ServiceOrderStatus.PENDING_REQUIREMENTS,
             ServiceOrderStatus.IN_PROGRESS,
             ServiceOrderStatus.DELIVERED,
             ServiceOrderStatus.REVISION_REQUESTED,
@@ -758,7 +788,7 @@ class CatalogService(BaseService):
         if order.status not in allowed_statuses:
             raise BadRequestError(
                 f"Cannot raise a dispute on an order with status '{order.status.value}'. "
-                "Disputes can only be raised on in-progress or delivered orders."
+                "Disputes can only be raised on paid orders awaiting delivery."
             )
         if order.status == ServiceOrderStatus.DISPUTED:
             raise BadRequestError("A dispute has already been raised for this order")
@@ -777,6 +807,11 @@ class CatalogService(BaseService):
         escrow = escrow_result.scalar_one_or_none()
         if escrow:
             escrow.status = EscrowStatus.DISPUTED
+            try:
+                from app.middleware.monitoring import ESCROW_STATE_TRANSITIONS
+                ESCROW_STATE_TRANSITIONS.labels(from_status="funded", to_status="disputed").inc()
+            except Exception:
+                pass
 
         await self.db.commit()
         await self.db.refresh(order)
@@ -801,8 +836,10 @@ class CatalogService(BaseService):
         asyncio.create_task(notify_background(
             user_id=order.freelancer_id,
             type=NotificationType.DISPUTE_OPENED,
-            title="نزاع تم فتحه على طلبك",
-            message=f"قدّم العميل نزاعاً على الطلب. السبب: {reason[:200]}",
+            title_ar="نزاع تم فتحه على طلبك",
+            title_en="A dispute was opened on your order",
+            message_ar=f"قدّم العميل نزاعاً على الطلب. السبب: {reason[:200]}",
+            message_en=f"The client raised a dispute on this order. Reason: {reason[:200]}",
             link_type="service_order",
             link_id=str(order_id),
             actor_id=client.id,
@@ -817,8 +854,10 @@ class CatalogService(BaseService):
             asyncio.create_task(notify_background(
                 user_id=admin.id,
                 type=NotificationType.DISPUTE_OPENED,
-                title="New dispute opened",
-                message=f"Client raised a dispute on order {order_id}. Reason: {reason[:200]}",
+                title_ar="نزاع جديد مفتوح",
+                title_en="New dispute opened",
+                message_ar=f"فتح العميل نزاعاً على الطلب {order_id}. السبب: {reason[:200]}",
+                message_en=f"Client raised a dispute on order {order_id}. Reason: {reason[:200]}",
                 link_type="service_order",
                 link_id=str(order_id),
                 actor_id=client.id,
@@ -863,8 +902,10 @@ class CatalogService(BaseService):
             order.status = ServiceOrderStatus.COMPLETED
             order.completed_at = datetime.now(UTC)
             order.dispute_resolution = "released_to_freelancer"
-            notify_client_msg = "تم حل النزاع: تم تحرير المبلغ للمستقل."
-            notify_freelancer_msg = "تم حل النزاع لصالحك: تم تحرير المبلغ."
+            client_msg_ar = "تم حل النزاع: تم تحرير المبلغ للمستقل."
+            client_msg_en = "Dispute resolved: the amount was released to the freelancer."
+            freelancer_msg_ar = "تم حل النزاع لصالحك: تم تحرير المبلغ."
+            freelancer_msg_en = "Dispute resolved in your favour — payment released."
         else:  # refund
             if escrow:
                 from app.services.payment_service import PaymentService  # noqa: PLC0415
@@ -873,8 +914,10 @@ class CatalogService(BaseService):
             order.cancellation_reason = f"Dispute resolved: refund to client. {admin_note}"
             order.cancelled_by = admin.id
             order.dispute_resolution = "refunded_to_client"
-            notify_client_msg = "تم حل النزاع: تم استرداد المبلغ إليك."
-            notify_freelancer_msg = "تم حل النزاع: تم إرجاع المبلغ للعميل."
+            client_msg_ar = "تم حل النزاع: تم استرداد المبلغ إليك."
+            client_msg_en = "Dispute resolved: refund issued to you."
+            freelancer_msg_ar = "تم حل النزاع: تم إرجاع المبلغ للعميل."
+            freelancer_msg_en = "Dispute resolved: the amount was refunded to the client."
 
         order.dispute_resolved_at = datetime.now(UTC)
         await self.db.commit()
@@ -901,15 +944,18 @@ class CatalogService(BaseService):
             )
             await self.db.commit()
 
-        for user_id, msg in [
-            (order.client_id, notify_client_msg),
-            (order.freelancer_id, notify_freelancer_msg),
+        # Notify both parties
+        for user_id, msg_ar, msg_en in [
+            (order.client_id, client_msg_ar, client_msg_en),
+            (order.freelancer_id, freelancer_msg_ar, freelancer_msg_en),
         ]:
             asyncio.create_task(notify_background(
                 user_id=user_id,
                 type=NotificationType.DISPUTE_RESOLVED,
-                title="تم حل النزاع",
-                message=msg,
+                title_ar="تم حل النزاع",
+                title_en="Dispute resolved",
+                message_ar=msg_ar,
+                message_en=msg_en,
                 link_type="service_order",
                 link_id=str(order_id),
                 actor_id=admin.id,

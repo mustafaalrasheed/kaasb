@@ -113,8 +113,10 @@ class ContractService(BaseService):
             self.db,
             user_id=proposal.freelancer_id,
             type=NotificationType.CONTRACT_CREATED,
-            title="تم إنشاء عقد جديد",
-            message=f"تم إنشاء عقد عمل لوظيفة: {job.title}",
+            title_ar="تم إنشاء عقد جديد",
+            title_en="New contract created",
+            message_ar=f"تم إنشاء عقد عمل لوظيفة: {job.title}",
+            message_en=f"A contract has been created for: {job.title}",
             link_type="contract",
             link_id=contract.id,
             actor_id=job.client_id,
@@ -262,6 +264,20 @@ class ContractService(BaseService):
 
         await self.db.flush()
         await self.db.refresh(milestone)
+
+        # Notify the client that work is ready for review.
+        await notify(
+            self.db,
+            user_id=contract.client_id,
+            type=NotificationType.MILESTONE_SUBMITTED,
+            title_ar="تم تسليم مرحلة للمراجعة",
+            title_en="Milestone submitted for review",
+            message_ar=f"تم تسليم المرحلة: {milestone.title}",
+            message_en=f"Milestone submitted: {milestone.title}",
+            link_type="contract",
+            link_id=contract.id,
+            actor_id=freelancer.id,
+        )
         return milestone
 
     # === Review Milestone (Client) ===
@@ -375,6 +391,34 @@ class ContractService(BaseService):
         except SQLAlchemyError:
             raise
         await self.db.refresh(milestone)
+
+        # Notify freelancer of the review outcome.
+        if data.action == "approve":
+            await notify(
+                self.db,
+                user_id=contract.freelancer_id,
+                type=NotificationType.MILESTONE_APPROVED,
+                title_ar="تمت الموافقة على مرحلتك",
+                title_en="Your milestone was approved",
+                message_ar=f"وافق العميل على: {milestone.title}",
+                message_en=f"The client approved: {milestone.title}",
+                link_type="contract",
+                link_id=contract.id,
+                actor_id=client.id,
+            )
+        elif data.action == "request_revision":
+            await notify(
+                self.db,
+                user_id=contract.freelancer_id,
+                type=NotificationType.MILESTONE_REVISION,
+                title_ar="طُلبت مراجعة لمرحلتك",
+                title_en="Revision requested",
+                message_ar=f"طلب العميل مراجعة لـ: {milestone.title}",
+                message_en=f"The client requested changes to: {milestone.title}",
+                link_type="contract",
+                link_id=contract.id,
+                actor_id=client.id,
+            )
         return milestone
 
     # === Get Contract Detail ===

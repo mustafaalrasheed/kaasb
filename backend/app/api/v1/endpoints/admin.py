@@ -21,16 +21,19 @@ from app.schemas.admin import (
     AdminEscrowInfo,
     AdminJobListResponse,
     AdminJobStatusUpdate,
+    AdminProcessingPayoutInfo,
     AdminTransactionListResponse,
     AdminUserInfo,
     AdminUserListResponse,
     AdminUserStatusUpdate,
+    MarkPayoutPaidBody,
     PayoutApprovalDecision,
     PayoutApprovalInfo,
     PayoutApprovalListResponse,
     PlatformStats,
     ReleaseRequestBody,
     ReleaseRequestResult,
+    StuckPendingTransactionInfo,
 )
 from app.schemas.message import (
     ConversationJobInfo,
@@ -43,6 +46,7 @@ from app.schemas.message import (
 from app.services.admin_service import AdminService
 from app.services.audit_service import AuditService
 from app.services.message_service import MessageService
+from app.services.payment_service import PaymentService
 from app.services.payout_approval_service import PayoutApprovalService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -288,6 +292,82 @@ async def release_escrow(
     )
 
 
+# === Stuck PENDING payments (reconciliation surface) ===
+
+@router.get(
+    "/payments/stuck-pending",
+    response_model=list[StuckPendingTransactionInfo],
+    summary="List PENDING transactions older than the reconciliation threshold",
+)
+async def list_stuck_pending_payments(
+    min_age_minutes: int = Query(30, ge=5, le=1440),
+    _staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Surface PENDING Transactions whose Qi Card success webhook never landed.
+
+    Admin reconciles each one manually against the Qi Card merchant
+    dashboard — if the payment actually completed on Qi Card's side the
+    admin can trigger a manual FUNDED transition (future: auto-reconciled
+    by the v1 3DS status API, Known Issue #2). If the payment never
+    completed, the admin can refund / close it out.
+    """
+    service = AdminService(db)
+    return await service.list_stuck_pending_transactions(min_age_minutes)
+
+
+# === Freelancer-initiated payouts awaiting admin "Mark Paid" ===
+
+@router.get(
+    "/payouts/processing",
+    response_model=list[AdminProcessingPayoutInfo],
+    summary="List PAYOUT transactions stuck in PROCESSING",
+)
+async def list_processing_payouts(
+    _staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List freelancer-initiated payouts that have been queued but not yet
+    settled. Admin manually transfers the money via the Qi Card merchant
+    dashboard, then hits POST /admin/payouts/{transaction_id}/mark-paid
+    to flip each row to COMPLETED.
+    """
+    service = AdminService(db)
+    return await service.list_processing_payouts()
+
+
+@router.post(
+    "/payouts/{transaction_id}/mark-paid",
+    summary="Mark a freelancer payout as paid (after manual Qi Card transfer)",
+)
+async def mark_payout_paid(
+    transaction_id: uuid.UUID,
+    request: Request,
+    body: MarkPayoutPaidBody | None = None,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin confirms that a PROCESSING payout has been sent to the freelancer
+    through the Qi Card merchant portal. Flips the transaction to COMPLETED,
+    writes an audit log row (PAYOUT_MARKED_PAID), and notifies the freelancer.
+    """
+    svc = PaymentService(db)
+    tx = await svc.mark_payout_paid(
+        transaction_id,
+        admin,
+        note=(body.note if body else None),
+        ip_address=_get_client_ip(request),
+    )
+    return {
+        "transaction_id": tx.id,
+        "status": tx.status.value,
+        "completed_at": tx.completed_at,
+    }
+
+
 # === Dual-Control Payout Approvals ===
 
 @router.get(
@@ -483,29 +563,37 @@ def _serialize_support_conversation(c: Conversation) -> ConversationSummary:
 @router.get(
     "/support/conversations",
     response_model=ConversationListResponse,
-    summary="List support conversations",
+    summary="List support conversations (scoped to caller + queue)",
 )
 async def list_support_conversations(
     only_unread: bool = Query(False, description="Only threads with pending messages"),
     status: SupportTicketStatus | None = Query(
         None, description="Filter by ticket status (open/in_progress/resolved)",
     ),
-    mine: bool = Query(False, description="Only tickets assigned to me"),
+    only_mine: bool = Query(False, description="Only tickets assigned to me"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    List every SUPPORT conversation on the platform. Used by the admin
-    support inbox to triage tickets across all admins — not scoped to the
-    calling admin's own participant threads.
+    List SUPPORT conversations visible to the calling staff user.
+
+    Scope rules:
+      - default: tickets assigned to me + the unassigned queue
+      - only_mine=true: tickets assigned to me only
+
+    Other staff members' tickets are hidden — each support user sees only
+    their own work and tickets available to claim.
     """
     service = MessageService(db)
     result = await service.list_support_conversations(
-        page, page_size, only_unread,
+        staff,
+        page=page,
+        page_size=page_size,
+        only_unread=only_unread,
         status=status,
-        assignee_id=staff.id if mine else None,
+        only_mine=only_mine,
     )
     conversations = [
         _serialize_support_conversation(c) for c in result["conversations"]
@@ -529,9 +617,30 @@ async def claim_support_ticket(
     staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
-    """Staff takes ownership → status flips to in_progress."""
+    """Staff takes ownership → status flips to in_progress. Returns 409
+    if another staff user already claimed it (prevents two people stepping
+    on each other in the queue)."""
     service = MessageService(db)
     conv = await service.claim_support_ticket(conversation_id, staff)
+    await db.commit()
+    return _serialize_support_conversation(conv)
+
+
+@router.post(
+    "/support/conversations/{conversation_id}/release",
+    response_model=ConversationSummary,
+    summary="Release a support ticket back to the queue",
+)
+async def release_support_ticket(
+    conversation_id: uuid.UUID,
+    staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Release an assigned SUPPORT ticket back to the unassigned queue so
+    another staff user can pick it up. Only the current assignee may
+    release their own tickets."""
+    service = MessageService(db)
+    conv = await service.release_support_ticket(conversation_id, staff)
     await db.commit()
     return _serialize_support_conversation(conv)
 

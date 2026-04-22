@@ -62,6 +62,20 @@ interface AdminEscrow {
   };
 }
 
+interface ProcessingPayout {
+  transaction_id: string; amount: number; currency: string;
+  requested_at: string; provider: string | null; description: string | null;
+  freelancer: { id: string; username: string; email: string; phone: string | null; qi_card_phone: string | null };
+}
+
+interface StuckPendingTransaction {
+  transaction_id: string; external_order_id: string | null;
+  amount: number; currency: string; transaction_type: string;
+  created_at: string; age_minutes: number; provider: string | null;
+  description: string | null;
+  payer: { id: string; username: string; email: string } | null;
+}
+
 interface PendingGig {
   id: string; title: string; slug: string; description: string;
   status: string; rejection_reason: string | null; revision_note: string | null;
@@ -118,9 +132,12 @@ function AdminPageContent() {
   const [txTypeFilter, setTxTypeFilter] = useState("");
   const [txStatusFilter, setTxStatusFilter] = useState("");
 
-  // ── Payouts (escrows) ──
+  // ── Payouts (escrows + freelancer-initiated payouts awaiting mark-paid) ──
   const [escrows, setEscrows] = useState<AdminEscrow[]>([]);
   const [escrowActionLoading, setEscrowActionLoading] = useState<string | null>(null);
+  const [processingPayouts, setProcessingPayouts] = useState<ProcessingPayout[]>([]);
+  const [markPaidLoading, setMarkPaidLoading] = useState<string | null>(null);
+  const [stuckPending, setStuckPending] = useState<StuckPendingTransaction[]>([]);
 
   // ── Gig review ──
   const [pendingGigs, setPendingGigs] = useState<PendingGig[]>([]);
@@ -204,12 +221,41 @@ function AdminPageContent() {
   const fetchEscrows = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await adminApi.getEscrows();
-      setEscrows(res.data);
+      // Fetch all three lists in parallel so the admin sees one unified payouts view.
+      const [escrowRes, payoutRes, stuckRes] = await Promise.all([
+        adminApi.getEscrows(),
+        adminApi.getProcessingPayouts(),
+        adminApi.getStuckPendingPayments(),
+      ]);
+      setEscrows(escrowRes.data);
+      setProcessingPayouts(payoutRes.data);
+      setStuckPending(stuckRes.data);
     } catch {
       toast.error(ar ? "تعذّر تحميل المدفوعات المعلقة" : "Failed to load pending payouts");
     } finally { setLoading(false); }
   }, [ar]);
+
+  const handleMarkPayoutPaid = useCallback(async (p: ProcessingPayout) => {
+    const amount = `${p.amount.toLocaleString(ar ? "ar-IQ" : "en-US")} ${p.currency}`;
+    const who = p.freelancer.username;
+    const confirmed = confirm(
+      ar
+        ? `تأكيد: هل أرسلت ${amount} إلى ${who} عبر Qi Card؟ سيظهر الدفع كمكتمل ويُرسَل له إشعار.`
+        : `Confirm: Did you send ${amount} to ${who} via Qi Card? The payout will be marked completed and the freelancer notified.`,
+    );
+    if (!confirmed) return;
+    setMarkPaidLoading(p.transaction_id);
+    try {
+      await adminApi.markPayoutPaid(p.transaction_id);
+      toast.success(ar ? "تم تأكيد الدفع" : "Payout marked paid");
+      fetchEscrows();
+    } catch (err) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(msg || (ar ? "تعذّر تأكيد الدفع" : "Failed to mark paid"));
+    } finally {
+      setMarkPaidLoading(null);
+    }
+  }, [ar, fetchEscrows]);
 
   const fetchPendingGigs = useCallback(async () => {
     try {
@@ -217,7 +263,7 @@ function AdminPageContent() {
       const res = await adminApi.getPendingGigs();
       setPendingGigs(res.data);
     } catch {
-      toast.error(ar ? "تعذّر تحميل الخدمات المعلقة" : "Failed to load pending gigs");
+      toast.error(ar ? "تعذّر تحميل الخدمات المعلقة" : "Failed to load pending services");
     } finally { setLoading(false); }
   }, [ar]);
 
@@ -285,7 +331,7 @@ function AdminPageContent() {
     setGigActionLoading(gigId);
     try {
       await adminApi.approveGig(gigId);
-      toast.success(ar ? "تمت الموافقة على الخدمة" : "Gig approved — now live");
+      toast.success(ar ? "تمت الموافقة على الخدمة" : "Service approved — now live");
       fetchPendingGigs();
     } catch (err: unknown) {
       toast.error(getApiError(err, ar ? "تعذّرت الموافقة" : "Failed to approve"));
@@ -301,7 +347,7 @@ function AdminPageContent() {
         toast.success(ar ? "تم إرسال طلب التعديل للمستقل" : "Revision request sent to freelancer");
       } else {
         await adminApi.rejectGig(gigModalState.gigId, gigModalText.trim());
-        toast.success(ar ? "تم رفض الخدمة" : "Gig rejected");
+        toast.success(ar ? "تم رفض الخدمة" : "Service rejected");
       }
       setGigModalState(null);
       setGigModalText("");
@@ -500,6 +546,10 @@ function AdminPageContent() {
             ar={ar}
             dateLocale={dateLocale}
             onRelease={handleReleaseEscrow}
+            processingPayouts={processingPayouts}
+            markPaidLoading={markPaidLoading}
+            onMarkPaid={handleMarkPayoutPaid}
+            stuckPending={stuckPending}
           />
         )}
 

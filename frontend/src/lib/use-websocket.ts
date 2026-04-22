@@ -9,12 +9,25 @@ const WS_BASE =
     .replace(/^https/, "wss")
     .replace(/^http/, "ws");
 
+// Max size of the per-hook "seen message IDs" Set before we prune. Bounded
+// so a long-lived tab doesn't grow memory unboundedly. 2048 IDs ≈ 60 KB at
+// UUID-string size, well below any memory concern.
+const _SEEN_ID_CAP = 2048;
+
 export type WsMessage =
   | { type: "message"; data: WsMessageData }
   | { type: "messages_read"; data: WsMessagesReadData }
   | { type: "typing"; data: WsTypingData }
   | { type: "notification"; data: WsNotificationData }
+  | { type: "notification_read"; data: WsNotificationReadData }
   | { type: "ping" };
+
+export interface WsNotificationReadData {
+  /** Number of notifications flipped to read. */
+  marked: number;
+  /** True when the server ran mark_all_read; false for a specific id list. */
+  all: boolean;
+}
 
 export interface WsMessageData {
   conversation_id: string;
@@ -41,11 +54,13 @@ export interface WsTypingData {
   user_id: string;
 }
 
+import type { NotificationType } from "@/types/notification";
+
 export interface WsNotificationData {
   id: string;
   title: string;
   message: string;
-  type: string;
+  type: NotificationType;
   link_type?: string;
   link_id?: string;
   created_at: string;
@@ -56,6 +71,7 @@ interface UseWebSocketOptions {
   onMessagesRead?: (data: WsMessagesReadData) => void;
   onTyping?: (data: WsTypingData) => void;
   onNotification?: (data: WsNotificationData) => void;
+  onNotificationRead?: (data: WsNotificationReadData) => void;
   enabled?: boolean;
 }
 
@@ -78,21 +94,28 @@ export function useWebSocket({
   onMessagesRead,
   onTyping,
   onNotification,
+  onNotificationRead,
   enabled = true,
 }: UseWebSocketOptions): UseWebSocketApi {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(1000);
   const mountedRef = useRef(true);
+  // Dedup window for inbound messages. Populated from the `message` event
+  // id and checked before invoking onMessage — guards against Redis
+  // pub/sub double-delivery across workers.
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
 
   const onMessageRef = useRef(onMessage);
   const onMessagesReadRef = useRef(onMessagesRead);
   const onTypingRef = useRef(onTyping);
   const onNotificationRef = useRef(onNotification);
+  const onNotificationReadRef = useRef(onNotificationRead);
   onMessageRef.current = onMessage;
   onMessagesReadRef.current = onMessagesRead;
   onTypingRef.current = onTyping;
   onNotificationRef.current = onNotification;
+  onNotificationReadRef.current = onNotificationRead;
 
   const connect = useCallback(async () => {
     if (!mountedRef.current || !enabled) return;
@@ -132,6 +155,24 @@ export function useWebSocket({
       if (parsed.type === "ping") {
         ws.send(JSON.stringify({ type: "pong" }));
       } else if (parsed.type === "message") {
+        // Redis pub/sub can occasionally deliver the same message twice
+        // across workers (the bridge pattern fires for each subscriber).
+        // Track recently-seen IDs so the UI never renders a duplicate row.
+        // The Set is bounded — we drop the oldest half once it grows past
+        // the cap so memory stays flat under long sessions.
+        const id = parsed.data.id;
+        if (id && seenMessageIdsRef.current.has(id)) {
+          return;
+        }
+        if (id) {
+          seenMessageIdsRef.current.add(id);
+          if (seenMessageIdsRef.current.size > _SEEN_ID_CAP) {
+            const keep = Array.from(seenMessageIdsRef.current).slice(
+              -Math.floor(_SEEN_ID_CAP / 2),
+            );
+            seenMessageIdsRef.current = new Set(keep);
+          }
+        }
         onMessageRef.current?.(parsed.data);
       } else if (parsed.type === "messages_read") {
         onMessagesReadRef.current?.(parsed.data);
@@ -139,6 +180,8 @@ export function useWebSocket({
         onTypingRef.current?.(parsed.data);
       } else if (parsed.type === "notification") {
         onNotificationRef.current?.(parsed.data);
+      } else if (parsed.type === "notification_read") {
+        onNotificationReadRef.current?.(parsed.data);
       }
     };
 
@@ -155,8 +198,15 @@ export function useWebSocket({
   }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function scheduleReconnect() {
+    // Short-circuit if the hook is already unmounted — avoids scheduling a
+    // setTimeout that would fire into a closed-over connect() after the
+    // cleanup effect ran, which used to leak the timer id until the
+    // callback actually fired.
+    if (!mountedRef.current) return;
     if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
     reconnectTimer.current = setTimeout(() => {
+      reconnectTimer.current = null;
+      if (!mountedRef.current) return;
       reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000);
       connect();
     }, reconnectDelay.current);

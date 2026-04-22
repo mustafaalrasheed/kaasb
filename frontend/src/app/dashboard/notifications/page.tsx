@@ -39,6 +39,8 @@ export default function NotificationsPage() {
   const handleMarkAllRead = async () => {
     try {
       await notificationsApi.markAllRead();
+      // Zero out the bell immediately — avoids waiting for the 30s poll.
+      window.dispatchEvent(new CustomEvent("kaasb:notifications:all-read"));
       toast.success(ar ? "تم تحديد جميع الإشعارات كمقروءة" : "All notifications marked as read");
       fetchNotifications();
     } catch {
@@ -47,21 +49,47 @@ export default function NotificationsPage() {
   };
 
   const handleMarkRead = async (id: string) => {
+    // Only tell the bell to decrement if we're actually flipping an unread
+    // entry — re-clicking an already-read row shouldn't push the badge below
+    // its true value.
+    const target = notifications.find((n) => n.id === id);
+    const wasUnread = target ? !target.is_read : false;
     try {
       await notificationsApi.markRead({ notification_ids: [id] });
+      if (wasUnread) {
+        window.dispatchEvent(
+          new CustomEvent("kaasb:notifications:read", { detail: { count: 1 } }),
+        );
+      }
       fetchNotifications();
     } catch { /* silent */ }
   };
 
   const getLink = (n: NotificationDetail): string | null => {
-    if (!n.link_type || !n.link_id) return null;
-    const links: Record<string, string> = {
-      contract: `/dashboard/contracts/${n.link_id}`,
-      job: `/jobs/${n.link_id}`,
-      proposal: `/dashboard/my-proposals`,
-      message: `/dashboard/messages`,
-    };
-    return links[n.link_type] || null;
+    if (!n.link_type) return null;
+    // Resolve each link_type the backend actually emits. Some routes don't
+    // need link_id (proposal/message land on a list view); others do.
+    const id = n.link_id;
+    switch (n.link_type) {
+      case "contract":
+        return id ? `/dashboard/contracts/${id}` : "/dashboard/contracts";
+      case "job":
+        return id ? `/jobs/${id}` : "/jobs";
+      case "proposal":
+        return "/dashboard/my-proposals";
+      case "message":
+        return id ? `/dashboard/messages?conversation=${id}` : "/dashboard/messages";
+      case "gig":
+        return id ? `/dashboard/gigs?highlight=${id}` : "/dashboard/gigs";
+      case "gig_order":
+        return id
+          ? `/dashboard/gigs/orders?order=${id}`
+          : "/dashboard/gigs/orders";
+      case "buyer_request":
+        return id ? `/dashboard/requests?highlight=${id}` : "/dashboard/requests";
+      default:
+        return null;
+    }
   };
 
   const totalPages = Math.ceil(total / 20);
