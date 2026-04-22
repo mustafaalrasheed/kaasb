@@ -731,19 +731,22 @@ class CatalogService(BaseService):
         order.completed_at = datetime.now(UTC)
         await self.db.flush()
 
-        # Release escrow via PaymentService so the lock, fee transaction, and
-        # freelancer notification are handled consistently with contract milestones.
+        # Release escrow via PaymentService — use the internal _release_locked_escrow
+        # so service-order completion isn't gated on the freelancer's payout-account
+        # fields (that check exists on release_escrow_by_id for admin-driven manual
+        # payouts; applied here it would block the client from closing their own
+        # order through no fault of their own, leaving the order stuck in DELIVERED).
         escrow_result = await self.db.execute(
-            select(Escrow.id).where(
+            select(Escrow).where(
                 Escrow.service_order_id == order_id,
                 Escrow.status == EscrowStatus.FUNDED,
-            )
+            ).with_for_update()
         )
-        escrow_id = escrow_result.scalar_one_or_none()
-        if escrow_id:
+        escrow = escrow_result.scalar_one_or_none()
+        if escrow:
             from app.services.payment_service import PaymentService
             payment_svc = PaymentService(self.db)
-            await payment_svc.release_escrow_by_id(escrow_id)
+            await payment_svc._release_locked_escrow(escrow)
         else:
             logger.warning("complete_order: no funded escrow found for order %s", order_id)
 

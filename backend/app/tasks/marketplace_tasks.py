@@ -236,16 +236,23 @@ async def auto_complete_delivered_orders(db: AsyncSession) -> int:
             from sqlalchemy import select as _select
 
             from app.models.payment import Escrow, EscrowStatus
+            # Lock the escrow row, then release via the internal path. The public
+            # release_escrow_by_id validates the freelancer's QiCard payout fields
+            # and raises BadRequestError when they're missing — correct for admin
+            # manual payouts, but here it would roll back the whole auto-complete
+            # and leave the order stranded in DELIVERED forever. The internal
+            # ledger release is safe; admin reconciliation catches the account gap
+            # on the pending-payouts tab.
             escrow_result = await db.execute(
                 _select(Escrow).where(
                     Escrow.service_order_id == order.id,
                     Escrow.status == EscrowStatus.FUNDED,
-                )
+                ).with_for_update()
             )
             escrow = escrow_result.scalar_one_or_none()
             if escrow:
                 from app.services.payment_service import PaymentService
-                await PaymentService(db).release_escrow_by_id(escrow.id)
+                await PaymentService(db)._release_locked_escrow(escrow)
 
             await db.commit()
             completed += 1
