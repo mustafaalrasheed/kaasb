@@ -763,12 +763,18 @@ class CatalogService(BaseService):
         client: User,
         reason: str,
     ) -> ServiceOrder:
-        """Client raises a dispute on an in-progress or delivered order."""
+        """Client raises a dispute on an active or delivered order."""
         order = await self._get_order(order_id)
         if str(order.client_id) != str(client.id):
             raise ForbiddenError("Only the client can raise a dispute")
 
+        # PENDING_REQUIREMENTS is included so a client who paid and then
+        # realised the freelancer was fraudulent (F3 questionnaire never
+        # surfaces work, etc.) has a legitimate dispute path — without it
+        # they'd be stuck with a paid order awaiting answers they don't
+        # want to give, and the freelancer could never actually start.
         allowed_statuses = {
+            ServiceOrderStatus.PENDING_REQUIREMENTS,
             ServiceOrderStatus.IN_PROGRESS,
             ServiceOrderStatus.DELIVERED,
             ServiceOrderStatus.REVISION_REQUESTED,
@@ -776,7 +782,7 @@ class CatalogService(BaseService):
         if order.status not in allowed_statuses:
             raise BadRequestError(
                 f"Cannot raise a dispute on an order with status '{order.status.value}'. "
-                "Disputes can only be raised on in-progress or delivered orders."
+                "Disputes can only be raised on paid orders awaiting delivery."
             )
         if order.status == ServiceOrderStatus.DISPUTED:
             raise BadRequestError("A dispute has already been raised for this order")
