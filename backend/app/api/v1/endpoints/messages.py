@@ -5,7 +5,7 @@ Kaasb Platform - Message Endpoints
 import uuid
 
 from fastapi import APIRouter, Body, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
@@ -167,7 +167,24 @@ async def send_message(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Send a message in an existing conversation."""
+    """Send a message in an existing conversation.
+
+    Application-level rate limit: 20 messages per 60 seconds per
+    (user, conversation). The platform-wide per-IP limiter in
+    middleware/security.py still applies; this adds a narrower guard on
+    the abuse path where a single user floods a single thread.
+    """
+    from app.core.exceptions import RateLimitError  # noqa: PLC0415
+    from app.middleware.monitoring import RATE_LIMIT_HITS  # noqa: PLC0415
+    from app.middleware.security import rate_limiter  # noqa: PLC0415
+
+    rate_key = f"msg_send:{current_user.id}:{conversation_id}"
+    if not await rate_limiter.is_allowed(rate_key, limit=20, window=60):
+        RATE_LIMIT_HITS.labels(tier="message_send").inc()
+        raise RateLimitError(
+            "You're sending messages too fast — slow down for a moment."
+        )
+
     service = MessageService(db)
     msg, warning = await service.send_message(current_user, conversation_id, data)
     detail = MessageDetail.model_validate(msg)
@@ -182,7 +199,7 @@ async def send_message(
 @router.get(
     "/presence",
     response_model=PresenceListResponse,
-    summary="Batch presence lookup",
+    summary="Batch presence lookup (scoped to conversation partners)",
 )
 async def presence(
     user_ids: list[uuid.UUID] = Query(..., alias="user_ids"),
@@ -190,23 +207,55 @@ async def presence(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Batch online/last-seen lookup. Clients call this when rendering the
-    conversation list to show the green dot + "Last seen" subtitle.
+    Batch online/last-seen lookup, scoped to users the caller already has
+    a conversation with. Clients call this when rendering the conversation
+    list to show the green dot + "Last seen" subtitle.
 
-    No authorization check on which users you can query — presence is
-    low-stakes info that's already implicitly exposed by "message me" flows.
+    Scope: only users who share at least one conversation with the caller
+    (as the other participant) are returned. Queried IDs for strangers are
+    silently dropped — the response says nothing about whether those users
+    exist or are online. Staff (admin/support) are exempt from the scope
+    check so their inbox listing can show user presence without needing a
+    prior conversation row.
     """
     ids = user_ids[:_PRESENCE_BATCH_MAX]
+
+    # Staff skip the scope check: they legitimately need presence for any
+    # user they're managing in the admin dashboard.
+    is_staff = bool(getattr(current_user, "is_superuser", False) or
+                    getattr(current_user, "is_support", False))
+    if not is_staff and ids:
+        # Find the subset of requested IDs that share a conversation with
+        # the caller. A single SELECT with OR on participant_one/two
+        # handles either slot.
+        partners_stmt = (
+            select(Conversation.participant_one_id, Conversation.participant_two_id)
+            .where(
+                or_(
+                    Conversation.participant_one_id == current_user.id,
+                    Conversation.participant_two_id == current_user.id,
+                )
+            )
+        )
+        rows = await db.execute(partners_stmt)
+        allowed: set[uuid.UUID] = set()
+        for p1, p2 in rows.all():
+            if p1 != current_user.id:
+                allowed.add(p1)
+            if p2 != current_user.id:
+                allowed.add(p2)
+        ids = [u for u in ids if u in allowed]
+
     online = await get_online(ids)
 
     # Fetch last_seen_at for offline users only — online ones are online now.
     offline_ids = [u for u in ids if u not in online]
     last_seen_map: dict[uuid.UUID, object] = {}
     if offline_ids:
-        rows = await db.execute(
+        rows2 = await db.execute(
             select(User.id, User.last_seen_at).where(User.id.in_(offline_ids))
         )
-        last_seen_map = {row.id: row.last_seen_at for row in rows}
+        last_seen_map = {row.id: row.last_seen_at for row in rows2}
 
     return PresenceListResponse(
         users=[

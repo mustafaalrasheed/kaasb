@@ -563,29 +563,37 @@ def _serialize_support_conversation(c: Conversation) -> ConversationSummary:
 @router.get(
     "/support/conversations",
     response_model=ConversationListResponse,
-    summary="List support conversations",
+    summary="List support conversations (scoped to caller + queue)",
 )
 async def list_support_conversations(
     only_unread: bool = Query(False, description="Only threads with pending messages"),
     status: SupportTicketStatus | None = Query(
         None, description="Filter by ticket status (open/in_progress/resolved)",
     ),
-    mine: bool = Query(False, description="Only tickets assigned to me"),
+    only_mine: bool = Query(False, description="Only tickets assigned to me"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    List every SUPPORT conversation on the platform. Used by the admin
-    support inbox to triage tickets across all admins — not scoped to the
-    calling admin's own participant threads.
+    List SUPPORT conversations visible to the calling staff user.
+
+    Scope rules:
+      - default: tickets assigned to me + the unassigned queue
+      - only_mine=true: tickets assigned to me only
+
+    Other staff members' tickets are hidden — each support user sees only
+    their own work and tickets available to claim.
     """
     service = MessageService(db)
     result = await service.list_support_conversations(
-        page, page_size, only_unread,
+        staff,
+        page=page,
+        page_size=page_size,
+        only_unread=only_unread,
         status=status,
-        assignee_id=staff.id if mine else None,
+        only_mine=only_mine,
     )
     conversations = [
         _serialize_support_conversation(c) for c in result["conversations"]
@@ -609,9 +617,30 @@ async def claim_support_ticket(
     staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
-    """Staff takes ownership → status flips to in_progress."""
+    """Staff takes ownership → status flips to in_progress. Returns 409
+    if another staff user already claimed it (prevents two people stepping
+    on each other in the queue)."""
     service = MessageService(db)
     conv = await service.claim_support_ticket(conversation_id, staff)
+    await db.commit()
+    return _serialize_support_conversation(conv)
+
+
+@router.post(
+    "/support/conversations/{conversation_id}/release",
+    response_model=ConversationSummary,
+    summary="Release a support ticket back to the queue",
+)
+async def release_support_ticket(
+    conversation_id: uuid.UUID,
+    staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Release an assigned SUPPORT ticket back to the unassigned queue so
+    another staff user can pick it up. Only the current assignee may
+    release their own tickets."""
+    service = MessageService(db)
+    conv = await service.release_support_ticket(conversation_id, staff)
     await db.commit()
     return _serialize_support_conversation(conv)
 

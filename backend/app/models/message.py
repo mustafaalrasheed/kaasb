@@ -158,6 +158,11 @@ class Conversation(BaseModel):
     unread_two: Mapped[int] = mapped_column(Integer, default=0)
 
     # === Support ticket lifecycle (only meaningful when type=SUPPORT) ===
+    # support_status null = USER/ORDER thread; populated only for SUPPORT.
+    # support_assignee_id null = unassigned (in the shared queue); set to
+    # the staff user who claimed the ticket. list_support_conversations
+    # filters to support_assignee_id IS NULL OR = :me so staff see their
+    # own tickets + the queue.
     support_status: Mapped[SupportTicketStatus | None] = mapped_column(
         Enum(
             SupportTicketStatus,
@@ -177,7 +182,7 @@ class Conversation(BaseModel):
         "User", foreign_keys=[support_assignee_id], lazy="raise"
     )
     support_resolved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(timezone=True), nullable=True,
     )
 
     def __repr__(self) -> str:

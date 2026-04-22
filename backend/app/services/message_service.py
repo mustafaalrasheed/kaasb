@@ -19,7 +19,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
+from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.contract import Contract
 from app.models.gig import GigOrder
 from app.models.job import Job, JobStatus
@@ -654,16 +654,25 @@ class MessageService(BaseService):
 
     async def list_support_conversations(
         self,
+        staff: User,
         page: int = 1,
         page_size: int = 20,
         only_unread: bool = False,
         status: SupportTicketStatus | None = None,
         assignee_id: uuid.UUID | None = None,
+        only_mine: bool = False,
     ) -> dict:
-        """
-        Admin-only: list every SUPPORT conversation on the platform regardless
-        of which admin is a participant, so the support inbox can surface
-        tickets addressed to other admins (or admins who've left).
+        """Support inbox for staff — scoped to the querying staff user's own
+        tickets plus the unassigned queue. Before the PR-C2 scoping change
+        this method returned every SUPPORT thread to every staff user,
+        leaking private conversations across staff.
+
+        Filter rules:
+          - default (only_mine=False): support_assignee_id = me OR IS NULL
+            (my tickets + the queue I can claim from)
+          - only_mine=True: support_assignee_id = me only
+          - ``status`` / ``assignee_id`` are applied on top of the scoping as
+            admin-UI filters (by lifecycle or by specific owner).
         """
         page_size = self.clamp_page_size(page_size)
         stmt = (
@@ -681,6 +690,19 @@ class MessageService(BaseService):
             stmt = stmt.where(Conversation.support_status == status)
         if assignee_id is not None:
             stmt = stmt.where(Conversation.support_assignee_id == assignee_id)
+
+        # Scope to the staff user's own tickets + the unassigned queue.
+        # only_mine=True narrows further to just their own claims.
+        if only_mine:
+            stmt = stmt.where(Conversation.support_assignee_id == staff.id)
+        else:
+            stmt = stmt.where(
+                or_(
+                    Conversation.support_assignee_id == staff.id,
+                    Conversation.support_assignee_id.is_(None),
+                )
+            )
+
         if only_unread:
             # "Unread" for the inbox = whichever side still has unread > 0.
             # We surface threads where the user side has pending messages the
@@ -701,6 +723,35 @@ class MessageService(BaseService):
         return self.paginated_response(
             items=conversations, total=total, page=page, page_size=page_size, key="conversations",
         )
+
+    async def release_support_ticket(
+        self, conversation_id: uuid.UUID, staff: User
+    ) -> Conversation:
+        """Release an assigned SUPPORT ticket back to the queue. Only the
+        current assignee can release their own ticket — prevents staff B
+        from yanking a ticket out from under staff A. Status stays on its
+        current value so the ticket re-enters the queue in the same lifecycle
+        state it was in (claiming it again does not restart the clock)."""
+        result = await self.db.execute(
+            select(Conversation)
+            .options(
+                selectinload(Conversation.participant_one),
+                selectinload(Conversation.participant_two),
+                selectinload(Conversation.support_assignee),
+            )
+            .where(Conversation.id == conversation_id)
+        )
+        conversation = result.scalar_one_or_none()
+        if conversation is None:
+            raise NotFoundError("Conversation")
+        if conversation.conversation_type != ConversationType.SUPPORT:
+            raise BadRequestError("Only SUPPORT conversations can be released")
+        if conversation.support_assignee_id != staff.id:
+            raise ForbiddenError("You can only release tickets assigned to you")
+        conversation.support_assignee_id = None
+        await self.db.commit()
+        await self.db.refresh(conversation)
+        return conversation
 
     async def get_messages(
         self,
