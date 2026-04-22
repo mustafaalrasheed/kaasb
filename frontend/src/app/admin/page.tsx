@@ -263,7 +263,7 @@ function AdminPageContent() {
       const res = await adminApi.getPendingGigs();
       setPendingGigs(res.data);
     } catch {
-      toast.error(ar ? "تعذّر تحميل الخدمات المعلقة" : "Failed to load pending gigs");
+      toast.error(ar ? "تعذّر تحميل الخدمات المعلقة" : "Failed to load pending services");
     } finally { setLoading(false); }
   }, [ar]);
 
@@ -331,7 +331,7 @@ function AdminPageContent() {
     setGigActionLoading(gigId);
     try {
       await adminApi.approveGig(gigId);
-      toast.success(ar ? "تمت الموافقة على الخدمة" : "Gig approved — now live");
+      toast.success(ar ? "تمت الموافقة على الخدمة" : "Service approved — now live");
       fetchPendingGigs();
     } catch (err: unknown) {
       toast.error(getApiError(err, ar ? "تعذّرت الموافقة" : "Failed to approve"));
@@ -347,7 +347,7 @@ function AdminPageContent() {
         toast.success(ar ? "تم إرسال طلب التعديل للمستقل" : "Revision request sent to freelancer");
       } else {
         await adminApi.rejectGig(gigModalState.gigId, gigModalText.trim());
-        toast.success(ar ? "تم رفض الخدمة" : "Gig rejected");
+        toast.success(ar ? "تم رفض الخدمة" : "Service rejected");
       }
       setGigModalState(null);
       setGigModalText("");
