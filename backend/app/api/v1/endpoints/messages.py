@@ -4,7 +4,7 @@ Kaasb Platform - Message Endpoints
 
 import uuid
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -153,6 +153,32 @@ async def contact_support(
     service = MessageService(db)
     c = await service.contact_support(current_user, message, order_id)
     return _serialize_conversation(c, current_user.id)
+
+
+@router.post(
+    "/attachments",
+    summary="Upload a chat attachment",
+    status_code=201,
+)
+async def upload_attachment(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload a file for attachment to a chat message. Returns the
+    {url, filename, mime_type, size_bytes} tuple the client then sends
+    back inside a MessageCreate.attachments entry.
+
+    Validation mirrors MessageAttachment Pydantic rules from PR-C1:
+    MIME whitelist (images, PDF, Office, zip, txt), size ≤
+    MAX_UPLOAD_SIZE_MB, path-traversal-safe filename, and magic-byte
+    check for image MIMEs. Non-image formats skip magic-bytes because
+    Office formats share a zip container and false negatives would
+    break legitimate uploads; the MIME whitelist + Pydantic re-check
+    on message send give defence in depth.
+    """
+    from app.utils.files import save_chat_attachment  # noqa: PLC0415
+
+    return await save_chat_attachment(file, str(current_user.id))
 
 
 @router.post(

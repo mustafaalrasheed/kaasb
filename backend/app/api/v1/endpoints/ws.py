@@ -23,6 +23,7 @@ Typing events are ephemeral (never persisted) and are rate-limited to at most
 one relay per conversation per second, per connection.
 """
 
+import asyncio
 import logging
 import time
 import uuid
@@ -42,6 +43,17 @@ router = APIRouter(tags=["WebSocket"])
 # Clients are expected to heartbeat typing every ~3s, so 1s gives slack
 # without letting a misbehaving client fan out dozens/sec.
 _TYPING_MIN_INTERVAL_SECONDS = 1.0
+
+# Interval between server-sent ping frames. nginx/cloudflare/browsers
+# usually idle-timeout WebSockets around 60s; 25s keeps the connection
+# comfortably alive with slack for packet jitter. The client responds
+# with {"type": "pong"} which the main receive loop silently ignores.
+_PING_INTERVAL_SECONDS = 25.0
+
+# How long a cached other_participant lookup is valid. Beyond this, the
+# per-connection cache is invalidated and the DB is re-consulted — picks up
+# membership changes like a blocked user or a removed conversation.
+_TYPING_CACHE_TTL_SECONDS = 300.0
 
 
 async def _resolve_other_participant(
@@ -91,12 +103,29 @@ async def websocket_endpoint(
     logger.info("WebSocket connected: user_id=%s", user_id)
 
     # Per-connection caches:
-    #   other_participant[conv_id] = the other user's UUID (populated on first
-    #     typing event for that conversation, then reused).
+    #   other_participant[conv_id] = (other_user_id, cached_at_monotonic).
+    #     Populated on first typing event, invalidated after
+    #     _TYPING_CACHE_TTL_SECONDS so membership changes propagate.
     #   last_typing_emit[conv_id] = monotonic timestamp of last relayed typing
     #     event, used to rate-limit downstream broadcasts.
-    other_participant: dict[uuid.UUID, uuid.UUID] = {}
+    other_participant: dict[uuid.UUID, tuple[uuid.UUID, float]] = {}
     last_typing_emit: dict[uuid.UUID, float] = {}
+
+    # Server-sent heartbeat. Without this the connection idles and the
+    # browser / reverse proxy closes it after ~60s; the frontend's
+    # reconnect loop recovers but the user sees a gap. The task is
+    # cancelled in `finally` below when the socket closes.
+    async def _ping_loop() -> None:
+        try:
+            while True:
+                await asyncio.sleep(_PING_INTERVAL_SECONDS)
+                await websocket.send_json({"type": "ping"})
+        except Exception:
+            # A failed send means the connection is already closing;
+            # the receive-loop below will exit next iteration.
+            return
+
+    ping_task = asyncio.create_task(_ping_loop())
 
     try:
         while True:
@@ -121,13 +150,22 @@ async def websocket_endpoint(
                 if now - last < _TYPING_MIN_INTERVAL_SECONDS:
                     continue
 
-                # Resolve + cache the other participant (validates membership)
-                other_id = other_participant.get(conv_id)
+                # Resolve + cache the other participant (validates membership).
+                # Entries expire after _TYPING_CACHE_TTL_SECONDS so that
+                # membership changes — user blocked, conversation deleted —
+                # propagate to long-lived WS connections without a manual
+                # reconnect.
+                cached = other_participant.get(conv_id)
+                other_id: uuid.UUID | None = None
+                if cached is not None:
+                    cached_id, cached_at = cached
+                    if now - cached_at <= _TYPING_CACHE_TTL_SECONDS:
+                        other_id = cached_id
                 if other_id is None:
                     other_id = await _resolve_other_participant(user_id, conv_id)
                     if other_id is None:
                         continue  # Not a participant, silently drop
-                    other_participant[conv_id] = other_id
+                    other_participant[conv_id] = (other_id, now)
 
                 last_typing_emit[conv_id] = now
                 await manager.send_to_user(other_id, {
@@ -143,5 +181,6 @@ async def websocket_endpoint(
     except Exception as exc:
         logger.warning("WebSocket error for user %s: %s", user_id, exc)
     finally:
+        ping_task.cancel()
         await manager.disconnect(user_id, websocket)
         logger.info("WebSocket disconnected: user_id=%s", user_id)

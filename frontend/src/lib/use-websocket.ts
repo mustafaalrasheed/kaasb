@@ -9,6 +9,11 @@ const WS_BASE =
     .replace(/^https/, "wss")
     .replace(/^http/, "ws");
 
+// Max size of the per-hook "seen message IDs" Set before we prune. Bounded
+// so a long-lived tab doesn't grow memory unboundedly. 2048 IDs ≈ 60 KB at
+// UUID-string size, well below any memory concern.
+const _SEEN_ID_CAP = 2048;
+
 export type WsMessage =
   | { type: "message"; data: WsMessageData }
   | { type: "messages_read"; data: WsMessagesReadData }
@@ -96,6 +101,10 @@ export function useWebSocket({
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(1000);
   const mountedRef = useRef(true);
+  // Dedup window for inbound messages. Populated from the `message` event
+  // id and checked before invoking onMessage — guards against Redis
+  // pub/sub double-delivery across workers.
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
 
   const onMessageRef = useRef(onMessage);
   const onMessagesReadRef = useRef(onMessagesRead);
@@ -146,6 +155,24 @@ export function useWebSocket({
       if (parsed.type === "ping") {
         ws.send(JSON.stringify({ type: "pong" }));
       } else if (parsed.type === "message") {
+        // Redis pub/sub can occasionally deliver the same message twice
+        // across workers (the bridge pattern fires for each subscriber).
+        // Track recently-seen IDs so the UI never renders a duplicate row.
+        // The Set is bounded — we drop the oldest half once it grows past
+        // the cap so memory stays flat under long sessions.
+        const id = parsed.data.id;
+        if (id && seenMessageIdsRef.current.has(id)) {
+          return;
+        }
+        if (id) {
+          seenMessageIdsRef.current.add(id);
+          if (seenMessageIdsRef.current.size > _SEEN_ID_CAP) {
+            const keep = Array.from(seenMessageIdsRef.current).slice(
+              -Math.floor(_SEEN_ID_CAP / 2),
+            );
+            seenMessageIdsRef.current = new Set(keep);
+          }
+        }
         onMessageRef.current?.(parsed.data);
       } else if (parsed.type === "messages_read") {
         onMessagesReadRef.current?.(parsed.data);
