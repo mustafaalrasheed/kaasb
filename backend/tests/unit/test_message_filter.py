@@ -51,9 +51,16 @@ class TestDetectPhone:
     def test_phone_with_dashes(self):
         assert ViolationType.PHONE in _types(detect_violations("0770-123-4567"))
 
-    def test_bare_10_to_13_digits(self):
-        # Catch-all for contact-info-length digit blobs.
-        assert ViolationType.PHONE in _types(detect_violations("my number is 1234567890"))
+    def test_bare_digits_not_matched(self):
+        # Intentional: the bare \d{10,13} catch-all was dropped to stop
+        # flagging credit card numbers. Only anchored Iraqi / international
+        # formats trigger now.
+        assert detect_violations("my number is 1234567890") == []
+
+    def test_international_requires_plus(self):
+        # Explicit international pattern requires a leading `+` so that a
+        # 13-digit number with no prefix (common CC length) doesn't trip it.
+        assert ViolationType.PHONE in _types(detect_violations("+1 555 123 4567"))
 
 
 class TestDetectUrl:
@@ -122,7 +129,9 @@ class TestMaskContent:
     def test_masks_email(self):
         masked = mask_content("reach me at foo@bar.com please")
         assert "foo@bar.com" not in masked
-        assert "contact info removed" in masked
+        # Per-type bilingual placeholder — checked via the EN half so the
+        # test doesn't fight RTL copy changes on the AR half.
+        assert "email removed" in masked
 
     def test_masks_phone(self):
         masked = mask_content("call 07701234567")

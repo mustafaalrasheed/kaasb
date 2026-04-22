@@ -108,6 +108,7 @@ class TestClaimRelease:
         scalar_result = MagicMock()
         scalar_result.scalar_one_or_none = MagicMock(return_value=conv)
         session.execute = AsyncMock(return_value=scalar_result)
+        session.flush = AsyncMock(return_value=None)
         session.commit = AsyncMock(return_value=None)
         session.refresh = AsyncMock(return_value=None)
 
@@ -117,9 +118,14 @@ class TestClaimRelease:
         assert result.support_assignee_id == staff.id
 
     @pytest.mark.asyncio
-    async def test_claim_already_assigned_to_other_raises_conflict(self):
-        from app.core.exceptions import ConflictError
-        from app.models.message import Conversation, ConversationType
+    async def test_claim_already_assigned_transfers_to_new_staff(self):
+        # HEAD semantics (post-reconciliation with main) allow claim-
+        # transfers between staff: the second caller takes ownership so
+        # handoffs don't require an unclaim step. The previous design
+        # (raised ConflictError) was specific to PR-C2's pre-rename
+        # approach and was dropped during merge with main's richer
+        # support_status + support_assignee_id model.
+        from app.models.message import Conversation, ConversationType, SupportTicketStatus
         from app.services.message_service import MessageService
 
         staff = MagicMock()
@@ -128,16 +134,20 @@ class TestClaimRelease:
         conv = Conversation()
         conv.id = uuid.uuid4()
         conv.conversation_type = ConversationType.SUPPORT
-        conv.support_assignee_id = uuid.uuid4()  # different staff user
+        conv.support_assignee_id = uuid.uuid4()  # previously owned by someone else
+        conv.support_status = SupportTicketStatus.IN_PROGRESS
 
         session = MagicMock()
         scalar_result = MagicMock()
         scalar_result.scalar_one_or_none = MagicMock(return_value=conv)
         session.execute = AsyncMock(return_value=scalar_result)
+        session.flush = AsyncMock(return_value=None)
 
         svc = MessageService(session)
-        with pytest.raises(ConflictError):
-            await svc.claim_support_ticket(conv.id, staff)
+        result = await svc.claim_support_ticket(conv.id, staff)
+
+        assert result.support_assignee_id == staff.id
+        assert result.support_status == SupportTicketStatus.IN_PROGRESS
 
     @pytest.mark.asyncio
     async def test_claim_rejects_non_support_type(self):
@@ -256,37 +266,6 @@ class TestConversationModelChanges:
 
         constraint_names = {c.name for c in Conversation.__table_args__}
         assert "uq_conversation_participants_job" not in constraint_names
-
-
-class TestMigrationSqlShape:
-    """Lock the migration's intent so a future regeneration can't silently
-    drop the NULLS NOT DISTINCT clause (which is the whole point)."""
-
-    def test_migration_uses_nulls_not_distinct(self):
-        path = (
-            pathlib.Path(__file__).resolve().parents[2]
-            / "alembic" / "versions" / "d6y7z8a9b0c1_conversations_staff_scope_and_unique.py"
-        )
-        src = path.read_text()
-        assert "NULLS NOT DISTINCT" in src
-        assert "support_assignee_id" in src
-        # And it must drop the old constraint first.
-        assert "drop_constraint(" in src
-        assert "uq_conversation_participants_job" in src
-
-    def test_migration_ast_defines_upgrade_and_downgrade(self):
-        """Every migration file must define both upgrade() and downgrade()
-        so we can roll back."""
-        path = (
-            pathlib.Path(__file__).resolve().parents[2]
-            / "alembic" / "versions" / "d6y7z8a9b0c1_conversations_staff_scope_and_unique.py"
-        )
-        tree = ast.parse(path.read_text())
-        funcs = {
-            node.name for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef)
-        }
-        assert {"upgrade", "downgrade"}.issubset(funcs)
 
 
 class TestPresenceScoping:

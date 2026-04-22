@@ -54,7 +54,7 @@ def _references_enum_value(path: pathlib.Path, value: NotificationType) -> bool:
         # These are not new in PR-N1 but were flagged in the audit; lock them
         # in as well so a future refactor can't silently drop them.
         ("services/buyer_request_service.py", NotificationType.BUYER_REQUEST_OFFER_REJECTED),
-        ("services/gig_service.py", NotificationType.DISPUTE_RESOLVED),
+        ("services/catalog_service.py", NotificationType.DISPUTE_RESOLVED),
         ("services/message_subscribers.py", NotificationType.NEW_MESSAGE),
         ("services/payment_service.py", NotificationType.PAYOUT_COMPLETED),
     ],

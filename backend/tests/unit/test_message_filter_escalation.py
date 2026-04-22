@@ -71,7 +71,7 @@ class TestAlreadySuspended:
             suspended_until=datetime.now(UTC) + timedelta(hours=5),
         )
 
-        with patch("app.services.message_filter_service.notify_background", new=AsyncMock()):
+        with patch("app.services.notification_service.notify_background", new=AsyncMock()):
             outcome = await svc.process_message(sender, "any message at all")
 
         assert outcome.blocked is True
@@ -90,7 +90,7 @@ class TestAlreadySuspended:
             suspended_until=datetime.now(UTC) - timedelta(hours=1),
         )
 
-        with patch("app.services.message_filter_service.notify_background", new=AsyncMock()):
+        with patch("app.services.notification_service.notify_background", new=AsyncMock()):
             outcome = await svc.process_message(sender, "hello there")
 
         # Clean message, no violations → not blocked, not a warning.
@@ -106,7 +106,7 @@ class TestEscalationLadder:
         svc = _make_service()
         sender = _make_sender(violations=0)
 
-        with patch("app.services.message_filter_service.notify_background", new=AsyncMock()):
+        with patch("app.services.notification_service.notify_background", new=AsyncMock()):
             outcome = await svc.process_message(sender, "email me at foo@bar.com")
 
         assert outcome.blocked is False
@@ -127,7 +127,7 @@ class TestEscalationLadder:
         svc = _make_service()
         sender = _make_sender(violations=1)  # already had 1 warning
 
-        with patch("app.services.message_filter_service.notify_background", new=AsyncMock()):
+        with patch("app.services.notification_service.notify_background", new=AsyncMock()):
             outcome = await svc.process_message(sender, "call 07701234567 please")
 
         assert outcome.blocked is True
@@ -146,7 +146,7 @@ class TestEscalationLadder:
         sender = _make_sender(violations=2)  # one warning, one block
 
         before = datetime.now(UTC)
-        with patch("app.services.message_filter_service.notify_background", new=AsyncMock()):
+        with patch("app.services.notification_service.notify_background", new=AsyncMock()):
             outcome = await svc.process_message(sender, "move to whatsapp")
         after = datetime.now(UTC)
 
@@ -168,7 +168,7 @@ class TestEscalationLadder:
         svc = _make_service()
         sender = _make_sender(violations=5)
 
-        with patch("app.services.message_filter_service.notify_background", new=AsyncMock()):
+        with patch("app.services.notification_service.notify_background", new=AsyncMock()):
             outcome = await svc.process_message(sender, "signal me at foo@bar.com")
 
         assert outcome.blocked is True
@@ -184,7 +184,7 @@ class TestOrderConversationBypass:
         svc = _make_service()
         sender = _make_sender(violations=0)
 
-        with patch("app.services.message_filter_service.notify_background", new=AsyncMock()):
+        with patch("app.services.notification_service.notify_background", new=AsyncMock()):
             outcome = await svc.process_message(
                 sender,
                 "here's your delivery: https://drive.google.com/xyz",
@@ -203,7 +203,7 @@ class TestOrderConversationBypass:
         svc = _make_service()
         sender = _make_sender(violations=0)
 
-        with patch("app.services.message_filter_service.notify_background", new=AsyncMock()):
+        with patch("app.services.notification_service.notify_background", new=AsyncMock()):
             outcome = await svc.process_message(
                 sender,
                 "reply to foo@bar.com when ready",
