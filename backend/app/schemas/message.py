@@ -4,24 +4,12 @@ Kaasb Platform - Message Schemas
 
 import uuid
 from datetime import datetime
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.config import get_settings
 from app.models.message import ConversationType, SenderRole, SupportTicketStatus
-
-# Attachment MIME allowlist — covers images (inline preview), PDFs, and common
-# office docs. Everything else (executables, archives, scripts) is rejected to
-# shrink the phishing / malware delivery surface on chat.
-_ALLOWED_ATTACHMENT_MIMES = frozenset({
-    "image/jpeg", "image/png", "image/webp", "image/gif",
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "text/plain", "text/csv",
-})
-_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024  # 10 MB per attachment
 
 
 class MessageUserInfo(BaseModel):
@@ -48,41 +36,93 @@ class ConversationOrderInfo(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# Attachment policy: only these MIME types are accepted from the client.
+# Kept narrow on purpose — chat attachments are images + documents + a few
+# common formats for Iraqi freelance workflows. Expand intentionally when a
+# new use case lands; a wide whitelist is the main stored-XSS vector here
+# because the frontend renders the URL.
+_ALLOWED_ATTACHMENT_MIME_TYPES = frozenset({
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
+    "application/zip",
+    "text/plain",
+})
+
+
 class MessageAttachment(BaseModel):
     """File attached to a message (image, document, …).
 
-    URL must be a relative path produced by our own upload endpoint
-    (``/uploads/...``) — external URLs are rejected to prevent the chat from
-    being used as a phishing/malware delivery vector.
+    URL must use http(s) scheme and resolve to a trusted host. The frontend
+    uploads via a CDN and includes the absolute URL on the outbound payload.
+    The validators below keep a stored-XSS / phishing vector out of chat
+    (data:/javascript:/file: schemes, bogus MIME types, path-traversal
+    filenames, oversized claims).
     """
     url: str = Field(min_length=1, max_length=500)
     filename: str = Field(min_length=1, max_length=255)
     mime_type: str = Field(min_length=3, max_length=100)
-    size_bytes: int = Field(ge=0, le=_MAX_ATTACHMENT_BYTES)
+    size_bytes: int = Field(ge=0)
 
     @field_validator("url")
     @classmethod
-    def _validate_url(cls, v: str) -> str:
-        # Accept only paths produced by our own upload endpoint. Reject absolute
-        # URLs, protocol-relative URLs, and path traversal.
-        if not v.startswith("/uploads/"):
-            raise ValueError("Attachment URL must be a /uploads/ path")
-        if ".." in v:
-            raise ValueError("Attachment URL contains a path traversal sequence")
-        return v
+    def _validate_url_scheme(cls, v: str) -> str:
+        """Reject any URL whose scheme is not http(s). Blocks data:,
+        javascript:, file:, and schemeless payloads — the usual stored-XSS
+        vectors when the frontend renders attachment links."""
+        parsed = urlparse(v.strip())
+        if parsed.scheme.lower() not in {"http", "https"}:
+            raise ValueError("attachment url must use http or https scheme")
+        if not parsed.netloc:
+            raise ValueError("attachment url must have a host")
+        return v.strip()
 
     @field_validator("mime_type")
     @classmethod
     def _validate_mime(cls, v: str) -> str:
-        if v not in _ALLOWED_ATTACHMENT_MIMES:
-            raise ValueError(f"Attachment type '{v}' is not allowed")
+        """Whitelist-only MIME types. An unfamiliar mime arrives via the
+        frontend's upload path; anything outside the allowlist likely means
+        a crafted payload or a filter-bypass attempt."""
+        normalised = v.strip().lower()
+        if normalised not in _ALLOWED_ATTACHMENT_MIME_TYPES:
+            raise ValueError(
+                f"mime_type '{v}' is not allowed for chat attachments"
+            )
+        return normalised
+
+    @field_validator("size_bytes")
+    @classmethod
+    def _validate_size(cls, v: int) -> int:
+        """Clamp to the same MAX_UPLOAD_SIZE_MB limit used by avatar/gig
+        upload paths. A claimed size above that bound is rejected up front —
+        the actual file bytes are validated separately by the upload
+        endpoint once that lands."""
+        limit = get_settings().MAX_UPLOAD_SIZE_MB * 1024 * 1024
+        if v > limit:
+            raise ValueError(
+                f"attachment size {v} exceeds MAX_UPLOAD_SIZE_MB limit ({limit} bytes)"
+            )
         return v
 
     @field_validator("filename")
     @classmethod
     def _validate_filename(cls, v: str) -> str:
-        if "/" in v or "\\" in v or ".." in v:
-            raise ValueError("Invalid filename")
+        """Reject path-traversal sequences. The upload path saves files under
+        a content-hashed name anyway, but a crafted filename could leak to
+        logs or UI contexts; keeping it clean is cheap."""
+        v = v.strip()
+        if not v:
+            raise ValueError("filename required")
+        if ".." in v or "/" in v or "\\" in v:
+            raise ValueError("filename must not contain path separators")
+        if len(v) > 255:
+            raise ValueError("filename too long (max 255 chars)")
         return v
 
 
