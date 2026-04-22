@@ -522,22 +522,34 @@ def _serialize_support_conversation(c: Conversation) -> ConversationSummary:
 @router.get(
     "/support/conversations",
     response_model=ConversationListResponse,
-    summary="List support conversations",
+    summary="List support conversations (scoped to caller + queue)",
 )
 async def list_support_conversations(
     only_unread: bool = Query(False, description="Only threads with pending messages"),
+    only_mine: bool = Query(False, description="Only tickets assigned to me"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
-    _staff: User = Depends(get_current_staff),
+    staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    List every SUPPORT conversation on the platform. Used by the admin
-    support inbox to triage tickets across all admins — not scoped to the
-    calling admin's own participant threads.
+    List SUPPORT conversations visible to the calling staff user.
+
+    Scope rules:
+      - default: tickets assigned to me + the unassigned queue
+      - only_mine=true: tickets assigned to me only
+
+    Other staff members' tickets are hidden — each support user sees only
+    their own work and tickets available to claim.
     """
     service = MessageService(db)
-    result = await service.list_support_conversations(page, page_size, only_unread)
+    result = await service.list_support_conversations(
+        staff,
+        page=page,
+        page_size=page_size,
+        only_unread=only_unread,
+        only_mine=only_mine,
+    )
     conversations = [
         _serialize_support_conversation(c) for c in result["conversations"]
     ]
@@ -548,6 +560,40 @@ async def list_support_conversations(
         page_size=result["page_size"],
         total_pages=result["total_pages"],
     )
+
+
+@router.post(
+    "/support/conversations/{conversation_id}/claim",
+    summary="Claim an unassigned support ticket",
+)
+async def claim_support_conversation(
+    conversation_id: uuid.UUID,
+    staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Claim an unassigned SUPPORT ticket. Once claimed, only the assigned
+    staff user (and the user participant) can see it in the inbox listing.
+    Returns 409 if the ticket was already claimed by a different staff user."""
+    service = MessageService(db)
+    conv = await service.claim_support_conversation(conversation_id, staff)
+    return {"conversation_id": conv.id, "assigned_staff_id": conv.assigned_staff_id}
+
+
+@router.post(
+    "/support/conversations/{conversation_id}/release",
+    summary="Release a support ticket back to the queue",
+)
+async def release_support_conversation(
+    conversation_id: uuid.UUID,
+    staff: User = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Release an assigned SUPPORT ticket back to the unassigned queue so
+    another staff user can pick it up. Only the current assignee may
+    release their own tickets."""
+    service = MessageService(db)
+    conv = await service.release_support_conversation(conversation_id, staff)
+    return {"conversation_id": conv.id, "assigned_staff_id": conv.assigned_staff_id}
 
 
 @router.get(

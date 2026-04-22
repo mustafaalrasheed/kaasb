@@ -17,7 +17,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -54,10 +53,12 @@ class Conversation(BaseModel):
 
     __tablename__ = "conversations"
     __table_args__ = (
-        UniqueConstraint(
-            "participant_one_id", "participant_two_id", "job_id",
-            name="uq_conversation_participants_job",
-        ),
+        # Composite unique index is created via raw DDL in migration
+        # d6y7z8a9b0c1 with NULLS NOT DISTINCT, which SQLAlchemy 2.0 can't
+        # express declaratively yet. The column list mirrors what the
+        # migration builds so alembic --autogenerate stays clean.
+        # Listed here so the model is self-documenting; the actual
+        # constraint lives in the DB and is asserted by the migration.
     )
 
     # === Participants ===
@@ -123,6 +124,21 @@ class Conversation(BaseModel):
     # === Unread counts ===
     unread_one: Mapped[int] = mapped_column(Integer, default=0)
     unread_two: Mapped[int] = mapped_column(Integer, default=0)
+
+    # === Staff routing (SUPPORT conversations only) ===
+    # Null = unassigned (in the queue); set to the staff user who claimed
+    # the ticket. list_support_conversations filters to
+    # assigned_staff_id IS NULL OR assigned_staff_id = :me so staff can
+    # only see their own tickets + the queue.
+    assigned_staff_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    assigned_staff: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[assigned_staff_id], lazy="raise"
+    )
 
     def __repr__(self) -> str:
         return f"<Conversation {self.id} {self.conversation_type.value} ({self.message_count} msgs)>"
