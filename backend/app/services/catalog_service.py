@@ -287,17 +287,14 @@ class CatalogService(BaseService):
         count_q = select(func.count()).select_from(q.subquery())
         total = (await self.db.execute(count_q)).scalar_one()
 
+        # "relevance" and unknown sort_by values fall through to rank_score.desc()
+        # — the same default used whether or not a query is present.
         sort_map = {
-            "relevance": Service.rank_score.desc(),
             "newest": Service.created_at.desc(),
             "rating": Service.avg_rating.desc(),
             "orders": Service.orders_count.desc(),
         }
-        if not params.q and params.sort_by not in ("newest", "rating", "orders"):
-            order_col = Service.rank_score.desc()
-        else:
-            order_col = sort_map.get(params.sort_by, Service.rank_score.desc())
-        q = q.order_by(order_col)
+        q = q.order_by(sort_map.get(params.sort_by, Service.rank_score.desc()))
 
         offset = (params.page - 1) * params.page_size
         q = q.offset(offset).limit(params.page_size)

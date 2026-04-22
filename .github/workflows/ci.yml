@@ -140,6 +140,21 @@ jobs:
           fi
           exit $TEST_EXIT
 
+      # ---- Unit tests ----
+      # Unit tests use MagicMock for the DB (see tests/unit/test_escrow_hardening
+      # and test_message_filter_escalation) so they don't need Postgres to be
+      # running — the service containers above are reused by the integration
+      # fixtures in conftest for tests that DO hit the DB.
+      - name: Run unit tests (pytest)
+        env:
+          DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/test_db
+          REDIS_URL:    redis://localhost:6379/0
+          SECRET_KEY:   ci-test-secret-key-do-not-use
+          ENVIRONMENT:  testing
+        run: |
+          cd backend
+          pytest tests/ -v --tb=short
+
 
   # ===========================================================================
   # Frontend: lint → type-check → security → build
