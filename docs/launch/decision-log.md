@@ -6,6 +6,16 @@ Add new rows at the top. Keep each entry short: what was decided, why, who decid
 
 ---
 
+## 2026-04-23 — Don't wire monitor-backups.sh's own alert channels
+
+**Decision:** Leave `ALERT_WEBHOOK`, `ALERT_EMAIL`, and related vars used by `scripts/monitor-backups.sh` unset in `.env.production`. Primary alerting path (Prometheus `BackupTooOld` rule → Alertmanager → Discord) covers backup staleness; setting the secondary path would duplicate every backup alert.
+
+**Why:** The monitor-backups script predates the `BackupTooOld` Prometheus rule and was designed to be a standalone safety net with its own webhooks. Now that `kaasb_last_backup_timestamp_seconds` is wired into Prometheus (commits `af39716` + `b03ac55` + `310d22e`) and Alertmanager routing was proven end-to-end in Phase 2.6, the primary path is authoritative. The secondary checks monitor-backups does that Prometheus doesn't (checksum drift, per-file size) land in `/var/log/kaasb/backup-monitor.log` and get eyes-on during the weekly ops review.
+
+**How to apply:** If a future silent backup failure slips past the Prometheus path (e.g., a script bug that writes a fresh `.prom` file but fails the actual backup), wire `ALERT_WEBHOOK=$ALERTMANAGER_DISCORD_WEBHOOK_URL` in `.env.production` to reinstate the secondary. Two-line change; no script edit required.
+
+---
+
 ## 2026-04-23 — **DR gap discovered**: files + configs backups silently failed for 2+ weeks
 
 **Decision:** Recorded here because it's the single most material finding of Phase 2 and the go/no-go checklist needs to reflect it.
