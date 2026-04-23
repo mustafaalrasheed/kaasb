@@ -82,7 +82,7 @@ export function pageTitle(title: string): string {
 export function ogImageUrl(params: {
   title: string;
   subtitle?: string;
-  type?: "job" | "profile" | "page";
+  type?: "job" | "profile" | "page" | "service";
 }): string {
   const searchParams = new URLSearchParams({
     title: params.title,
@@ -222,6 +222,79 @@ export function profileMeta(profile: {
       title: `${titleStr} | ${SITE_NAME}`,
       description,
       images: [ogImageUrl({ title: profile.name, subtitle: jobTitle, type: "profile" })],
+    },
+  };
+}
+
+/**
+ * Generate standardized metadata for a service (gig) detail page.
+ * Mirrors jobDetailMeta shape so both entry points surface the same
+ * quality of OG + Twitter preview.
+ */
+export function serviceDetailMeta(service: {
+  title: string;
+  description: string;
+  slug: string;
+  category?: string;
+  minPrice?: number;
+  freelancerName?: string;
+  rating?: number;
+  images?: string[];
+}): Metadata {
+  const truncatedDesc =
+    service.description.length > 155
+      ? service.description.slice(0, 152) + "..."
+      : service.description;
+  const category = service.category || "Freelance Service";
+  const title = `${service.title} - ${category}`;
+  const url = canonicalUrl(`/services/${service.slug}`);
+  const priceFragment =
+    service.minPrice != null ? ` · From ${service.minPrice.toLocaleString()} IQD` : "";
+  const ratingFragment =
+    service.rating != null && service.rating > 0
+      ? ` · ${service.rating.toFixed(1)}★`
+      : "";
+  const subtitle = `${category}${priceFragment}${ratingFragment}`;
+
+  const keywords = [
+    category,
+    `${category} freelance`,
+    `${category} Iraq`,
+    service.freelancerName || "",
+    ...KEYWORDS.primary.slice(0, 3),
+  ].filter(Boolean);
+
+  // Prefer uploaded service image over generated OG if present (real
+  // product shots convert better on social previews).
+  const primaryImage =
+    service.images && service.images.length > 0 && service.images[0]?.startsWith("http")
+      ? service.images[0]
+      : ogImageUrl({ title: service.title, subtitle, type: "service" });
+
+  return {
+    title,
+    description: truncatedDesc,
+    keywords,
+    alternates: { canonical: `/services/${service.slug}` },
+    openGraph: {
+      title: `${title} | ${SITE_NAME}`,
+      description: truncatedDesc,
+      url,
+      type: "website",
+      images: [
+        {
+          url: primaryImage,
+          width: 1200,
+          height: 630,
+          alt: service.title,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${title} | ${SITE_NAME}`,
+      description: truncatedDesc,
+      images: [primaryImage],
     },
   };
 }

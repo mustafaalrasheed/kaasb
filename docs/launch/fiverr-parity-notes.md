@@ -72,15 +72,28 @@ Kaasb's current flow: register → basic profile form → dashboard. No guided "
 
 **Effort:** Medium. Multi-step wizard component + progress bar on `/dashboard/onboarding`. Could be 3-5 days of frontend work. Worth it.
 
-### 3. Custom offers sendable from any order chat
+### 3. Custom offers sendable from any order chat — highest-leverage gap
 
 Fiverr's seller can send a "Custom Offer" inside ANY chat (not just responding to buyer requests). This lets a seller quote a specific price for a specific scope as a message-level attachment.
 
-Kaasb currently: custom pricing only via Buyer Requests. If a client contacts a freelancer directly via the services page, they have to purchase a pre-defined package at the published price.
+Kaasb currently: custom pricing only via Buyer Requests. If a client contacts a freelancer directly via the services page, they have to purchase a pre-defined package at the published price — no negotiation.
 
-**Why it matters:** captures the price-negotiation flow that happens on every gig platform.
+**Why it matters:** captures the price-negotiation flow that happens on every marketplace. Without it, returning clients who know which freelancer they want to work with have no way to quote a custom scope without going through the Buyer Request flow (heavier, slower, broadcast to others).
 
-**Effort:** Medium. Message + service order hybrid — attach a "pending offer" to a message, client accepts via a single click.
+**User question on 2026-04-23:** "Can we use this instead of our Jobs/Proposals model?" — No. Jobs and Custom Offers serve different buyer intents (broadcast-and-bid vs. bilateral-quote). Keep both. Custom Offers add a third entry-point into the order-creation flow; they do not replace Jobs.
+
+**Proposed UX:**
+1. Inside any chat, seller sees a "Send Custom Offer" button
+2. Modal: title, description, price (IQD), delivery days, revisions
+3. Posts as a chat attachment — message card with Accept/Reject/Counter buttons
+4. Accept → QiCard checkout for that amount → funds escrow → creates a ServiceOrder
+5. Reject/Counter → conversation continues
+
+**Backend effort:** ~2 days. `buyer_request_offers` already has most of the data model; add a `direct_offer` variant that doesn't require an open BuyerRequest. One endpoint to convert an accepted offer into a ServiceOrder.
+
+**Frontend effort:** ~1-2 days. New modal, new message-attachment type.
+
+**Priority:** Phase 7 (content polish). Order after the Switch-to-Selling toggle + seller onboarding wizard since those unblock broader UX first.
 
 ---
 

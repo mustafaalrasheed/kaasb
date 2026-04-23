@@ -37,6 +37,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1.0,
     },
     {
+      url: `${SITE_URL}/services`,
+      lastModified: now,
+      changeFrequency: "hourly",
+      priority: 0.9,
+    },
+    {
       url: `${SITE_URL}/jobs`,
       lastModified: now,
       changeFrequency: "hourly",
@@ -47,6 +53,36 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: now,
       changeFrequency: "daily",
       priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/how-it-works`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
+    {
+      url: `${SITE_URL}/faq`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
+    {
+      url: `${SITE_URL}/help`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.5,
+    },
+    {
+      url: `${SITE_URL}/privacy`,
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.3,
+    },
+    {
+      url: `${SITE_URL}/terms`,
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.3,
     },
     {
       url: `${SITE_URL}/auth/login`,
@@ -99,5 +135,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }))
     : [];
 
-  return [...staticRoutes, ...jobRoutes, ...profileRoutes];
+  // === Dynamic Routes: Services (gigs) ===
+  const servicesData = await safeFetch<{
+    services: Array<{
+      slug: string;
+      updated_at?: string;
+      created_at: string;
+    }>;
+  }>(`${API_URL}/services?page_size=500&status=active`);
+
+  const serviceRoutes: MetadataRoute.Sitemap = servicesData?.services
+    ? servicesData.services.map((s) => ({
+        url: `${SITE_URL}/services/${s.slug}`,
+        lastModified: s.updated_at || s.created_at,
+        changeFrequency: "weekly" as const,
+        priority: 0.7,
+      }))
+    : [];
+
+  return [...staticRoutes, ...jobRoutes, ...profileRoutes, ...serviceRoutes];
 }
