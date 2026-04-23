@@ -133,10 +133,12 @@ async def test_place_order_creates_pending_order_and_returns_payment_url(
     assert order.revisions_remaining == 2
     assert order.requirements == "Please deploy to Hetzner; I prefer Python 3.12."
 
-    # Service.orders_count was incremented
-    result = await db_session.execute(select(Service).where(Service.id == service.id))
-    refreshed = result.scalar_one()
-    assert refreshed.orders_count == 1
+    # Service.orders_count was incremented. place_order uses
+    # execution_options(synchronize_session=False) on its UPDATE, which
+    # bypasses the identity map — the in-memory Service instance still
+    # shows the pre-update value until we explicitly refresh from the DB.
+    await db_session.refresh(service)
+    assert service.orders_count == 1
 
 
 @pytest.mark.integration
