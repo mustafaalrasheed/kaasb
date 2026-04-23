@@ -6,6 +6,33 @@ Add new rows at the top. Keep each entry short: what was decided, why, who decid
 
 ---
 
+## 2026-04-23 — **DR gap discovered**: files + configs backups silently failed for 2+ weeks
+
+**Decision:** Recorded here because it's the single most material finding of Phase 2 and the go/no-go checklist needs to reflect it.
+
+**What happened:** `scripts/backup.sh` had a latent `set -euo pipefail` interaction with `zcat | head -1`. zcat's SIGPIPE (exit 141) killed the script silently right after the DB dump. For **16+ days (2026-04-07 → 2026-04-23)** only the first of three backup stages actually ran:
+
+- ✅ Database dumps written nightly (`/opt/kaasb/backups/db/`)
+- ❌ User upload files **never backed up** (empty `/opt/kaasb/backups/files/`)
+- ❌ Configs, `.env.production`, `nginx.conf`, SSL certs **never backed up** (empty `/opt/kaasb/backups/configs/`)
+
+Monitor-backups.sh did not alert because `ALERT_WEBHOOK` / `ALERT_EMAIL` are not configured in `.env.production`. The `BackupTooOld` Prometheus alert couldn't fire either — no metric was being written.
+
+**Why it matters:** If the backend uploads Docker volume had been corrupted (user avatars, service images, message attachments) or `.env.production` had been deleted, there would have been **no recovery path**. Beta traffic is low so data loss exposure is small, but the same bug at GA traffic levels would be a disaster.
+
+**Fix:** One-line change in `backup.sh`: `HEADER_LINE=$(zcat ... | head -1 || true)` (matches the `|| true` pattern already used by the adjacent `TABLE_COUNT` line). Root cause was inconsistency, not deep design.
+
+**Follow-ups added to the go/no-go checklist:**
+
+1. Verify a full 3-stage backup (DB + files + configs) completes successfully.
+2. Confirm the `.prom` metric file gets written so `BackupTooOld` has a signal source.
+3. Wire `ALERT_EMAIL` and/or `ALERT_WEBHOOK` in `.env.production` so `monitor-backups.sh` actually speaks up next time something silently breaks.
+4. Consider adding `bash -x` tracing or explicit `log "Stage N complete"` between stages so any future silent failure shows up in the log.
+
+**How to apply:** Any new ops script added to `scripts/` that uses `set -e` + pipelines must either consistently `|| true` any subshell capture, or use `awk`/`sed` patterns that read to EOF instead of `head`-style early-exit readers. PR review should flag this.
+
+---
+
 ## 2026-04-23 — Phase 2 ops findings: cron mostly pre-installed, certbot auto-renews via container, textfile collector for backup metric
 
 **Decisions:**

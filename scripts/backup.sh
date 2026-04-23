@@ -147,7 +147,11 @@ if ! gzip -t "${DB_OUTFILE}" 2>/dev/null; then
     err "Database backup corrupt (gzip test failed): ${DB_OUTFILE}"; exit 1
 fi
 
-HEADER_LINE=$(zcat "${DB_OUTFILE}" 2>/dev/null | head -1)
+# `head -1` closes stdin after one line → zcat gets SIGPIPE → exit 141.
+# Under `set -euo pipefail` the assignment would silently kill the script,
+# which is exactly how files/configs backups were missing for 2+ weeks in prod.
+# `|| true` masks the SIGPIPE the same way the TABLE_COUNT line below does.
+HEADER_LINE=$(zcat "${DB_OUTFILE}" 2>/dev/null | head -1 || true)
 if [[ "$HEADER_LINE" != *"PostgreSQL database dump"* ]]; then
     err "Database backup invalid header: ${HEADER_LINE}"; exit 1
 fi
