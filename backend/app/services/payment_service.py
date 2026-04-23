@@ -7,11 +7,10 @@ Payment Flow:
 2. Client completes payment on Qi Card → webhook confirms → escrow marked FUNDED
 3. Freelancer works on milestone
 4. Client approves milestone → escrow released → freelancer gets paid
-5. Freelancer withdraws via Qi Card payout
+5. Admin manually transfers IQD via Qi Card merchant portal → marks payout confirmed
 
-Currency:
-  - Amounts stored as USD floats internally
-  - Converted to IQD at time of Qi Card transaction
+Currency: IQD only. All amounts are Iraqi Dinar (integer IQD at the Qi Card boundary,
+Decimal internally for fee math). There is no USD conversion.
 """
 
 import hashlib
