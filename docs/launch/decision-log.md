@@ -6,6 +6,22 @@ Add new rows at the top. Keep each entry short: what was decided, why, who decid
 
 ---
 
+## 2026-04-24 — Crosscutting quality bars applied to every phase (user reminder)
+
+**Decision:** Four concerns thread through every remaining phase as non-negotiable quality bars, not separate phases:
+
+1. **Security** — current posture is strong (rate limiting, CSRF, HSTS, CSP, Sentry PII scrubbing, JWT rotation, dual-control payouts, HMAC-signed QiCard redirects, pip-audit in CI, GitGuardian scanning). **Each phase must not degrade it.** New dependencies need pip-audit/npm-audit clean. New endpoints need auth + rate-limiting + input validation. Secrets stay in `.env.production` only — never in repo, never in logs (scrubber config in `backend/app/main.py:_SENTRY_SCRUB_KEYS`). Quarterly rotation in Phase 12.
+
+2. **SEO** — per-page `generateMetadata`, Organization + Website JSON-LD, sitemap.ts, robots.ts already in place. Gaps closed in Phase 7 (`/services/[slug]` metadata + Service JSON-LD, `/help`+`/faq`+`/how-it-works` pages). Every new public page must ship with: meta title + description, OG image, canonical URL, appropriate JSON-LD schema, sitemap entry.
+
+3. **UI/UX** — AR-primary RTL is the default; every new feature verified on RTL on mobile before shipping. Fiverr-parity gaps (switch-to-selling toggle, rich seller onboarding, custom offers in chat) land in Phase 7. Dashboard empty states need "what to do next" cards — no blank slates. Any destructive action requires explicit confirmation dialog. Every form has client + server validation with error messages in the active locale.
+
+4. **Professionalism** — legal pages reviewed by Iraqi counsel (Phase 10 blocker, running as parallel Legal Track A). Admin audit log + dual-control payouts shipped 2026-04-20. Every admin action must write a row to `admin_audit_logs`. Error pages (`404`, `500`, `503`) must be bilingual and on-brand, not Next.js defaults. No English leaking into the Arabic UI. Consistent typography + spacing from shadcn/ui design tokens. Never ship partially-migrated features to users — use feature flags or gate behind admin role.
+
+**How to apply:** Before marking any Phase complete, check that phase's work against these four bars. Flag any regression explicitly in the phase's commit or its decision-log entry. The go/no-go checklist already enforces some of this at the Phase 10 gate; the bars above apply continuously, not just at the gate.
+
+---
+
 ## 2026-04-23 — Phase 3 runbooks shipped with placeholders pending QiCard portal walkthrough
 
 **Decision:** Ship `payout-runbook.md` and `refund-runbook.md` with clearly-marked `[PENDING QICARD PORTAL WALKTHROUGH]` sections rather than wait for the walkthrough before publishing anything.
