@@ -77,6 +77,12 @@ coverage/
 .ruff_cache/
 junit*.xml
 
+# === Playwright ===
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
+frontend/playwright-results.xml
+
 # === Secrets detection baseline ===
 .secrets.baseline
 

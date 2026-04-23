@@ -207,6 +207,56 @@ jobs:
 
 
   # ===========================================================================
+  # E2E smoke: Playwright against the live site
+  # Runs on every push to main AFTER the build job succeeds. Read-only page
+  # checks — does not create accounts, submit forms, or mutate data. If these
+  # fail, something visible to real users broke.
+  # ===========================================================================
+  e2e-smoke:
+    name: E2E smoke (Playwright)
+    runs-on: ubuntu-latest
+    needs: [frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Install Playwright browsers
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium
+
+      - name: Run smoke tests against production
+        env:
+          BASE_URL: https://kaasb.com
+          CI: "true"
+        run: |
+          cd frontend
+          npm run test:smoke
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+
+  # ===========================================================================
   # Docker: build & push to GHCR on main branch only
   # ===========================================================================
   docker:
