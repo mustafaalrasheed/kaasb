@@ -87,10 +87,14 @@ services:
       - --path.sysfs=/host/sys
       - --path.rootfs=/host
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+      - --collector.textfile.directory=/var/lib/node_exporter/textfile
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/host:ro,rslave
+      # Textfile collector — backup.sh writes kaasb_last_backup_timestamp_seconds
+      # here so the BackupTooOld alert rule has a metric to evaluate.
+      - /var/lib/node_exporter/textfile:/var/lib/node_exporter/textfile:ro
     networks:
       - monitoring_net
     pid: host

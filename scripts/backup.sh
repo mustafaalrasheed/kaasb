@@ -360,6 +360,28 @@ if [ "${DISK_USED:-0}" -gt 80 ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Prometheus textfile collector metric
+# node_exporter scrapes /var/lib/node_exporter/textfile/*.prom and exposes
+# them on /metrics. The BackupTooOld alert rule evaluates this gauge.
+# Writes are atomic (tmp + mv) so node_exporter never reads a half-written file.
+# ---------------------------------------------------------------------------
+METRIC_DIR="/var/lib/node_exporter/textfile"
+if [ -d "${METRIC_DIR}" ]; then
+    METRIC_TMP=$(mktemp "${METRIC_DIR}/.kaasb_backup.prom.XXXXXX") || METRIC_TMP=""
+    if [ -n "${METRIC_TMP}" ]; then
+        cat > "${METRIC_TMP}" <<EOF
+# HELP kaasb_last_backup_timestamp_seconds Unix epoch of last successful Kaasb backup run
+# TYPE kaasb_last_backup_timestamp_seconds gauge
+kaasb_last_backup_timestamp_seconds $(date +%s)
+EOF
+        chmod 644 "${METRIC_TMP}"
+        mv -f "${METRIC_TMP}" "${METRIC_DIR}/kaasb_backup.prom"
+    else
+        warn "Could not write Prometheus metric to ${METRIC_DIR} — BackupTooOld alert will not fire"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 log "========================================================"
