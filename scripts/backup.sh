@@ -147,14 +147,21 @@ if ! gzip -t "${DB_OUTFILE}" 2>/dev/null; then
     err "Database backup corrupt (gzip test failed): ${DB_OUTFILE}"; exit 1
 fi
 
-# `head -1` closes stdin after one line → zcat gets SIGPIPE → exit 141.
-# Under `set -euo pipefail` the assignment would silently kill the script,
-# which is exactly how files/configs backups were missing for 2+ weeks in prod.
-# `|| true` masks the SIGPIPE the same way the TABLE_COUNT line below does.
-HEADER_LINE=$(zcat "${DB_OUTFILE}" 2>/dev/null | head -1 || true)
-if [[ "$HEADER_LINE" != *"PostgreSQL database dump"* ]]; then
-    err "Database backup invalid header: ${HEADER_LINE}"; exit 1
+# pg_dump --format=plain output starts with:
+#   --
+#   -- PostgreSQL database dump
+#   --
+# The marker is on line 2, not line 1. Scan the first 20 lines so we're
+# robust to future pg_dump tweaks. Disable pipefail locally so zcat getting
+# SIGPIPE when head/grep exit early doesn't falsely fail the check — we
+# only care about grep's decision.
+set +o pipefail
+if ! zcat "${DB_OUTFILE}" 2>/dev/null | head -20 | grep -q "PostgreSQL database dump"; then
+    set -o pipefail
+    err "Database backup header check failed for ${DB_OUTFILE}"
+    exit 1
 fi
+set -o pipefail
 
 TABLE_COUNT=$(zcat "${DB_OUTFILE}" 2>/dev/null | grep -c "^CREATE TABLE" || true)
 if [ "${TABLE_COUNT:-0}" -eq 0 ]; then
