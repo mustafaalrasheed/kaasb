@@ -90,7 +90,7 @@ async def active_service_with_package(
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_place_order_creates_pending_order_and_returns_payment_url(
     db_session: AsyncSession,
     sample_client_user: User,
@@ -140,7 +140,7 @@ async def test_place_order_creates_pending_order_and_returns_payment_url(
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_place_order_rejects_self_ordering(
     db_session: AsyncSession,
     sample_freelancer_user: User,
@@ -163,7 +163,7 @@ async def test_place_order_rejects_self_ordering(
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_place_order_rejects_inactive_service(
     db_session: AsyncSession,
     sample_client_user: User,
