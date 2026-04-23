@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.service import (
-    Category,
+    ServiceCategory,
     Service,
     ServicePackage,
     ServicePackageTier,
@@ -33,9 +33,9 @@ from app.services.catalog_service import CatalogService
 
 
 @pytest_asyncio.fixture
-async def sample_category(db_session: AsyncSession) -> Category:
+async def sample_category(db_session: AsyncSession) -> ServiceCategory:
     """Create a service category — required by Service foreign key."""
-    cat = Category(
+    cat = ServiceCategory(
         id=uuid.uuid4(),
         name_en="Programming",
         name_ar="برمجة",
@@ -53,7 +53,7 @@ async def sample_category(db_session: AsyncSession) -> Category:
 async def active_service_with_package(
     db_session: AsyncSession,
     sample_freelancer_user: User,
-    sample_category: Category,
+    sample_category: ServiceCategory,
 ) -> tuple[Service, ServicePackage]:
     """A published ACTIVE service with one Basic package at 200,000 IQD."""
     service = Service(
