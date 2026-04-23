@@ -56,11 +56,12 @@ Maintainer: Mustafa Alrasheed. Last revised: 2026-04-23.
 
 ## Admin operations
 
-- [ ] `docs/admin/payout-runbook.md` committed and read by all 3 admins
-- [ ] `docs/admin/refund-runbook.md` committed and read by all 3 admins
-- [ ] `docs/admin/dispute-runbook.md` committed and read by all 3 admins
-- [ ] `docs/admin/support-runbook.md` committed and read by all 3 admins
-- [ ] QiCard merchant portal credentials stored in shared password manager (NOT in repo or `.env`)
+- [x] `docs/admin/dispute-runbook.md` committed (2026-04-23)
+- [x] `docs/admin/support-runbook.md` committed (2026-04-23)
+- [ ] `docs/admin/payout-runbook.md` — committed with placeholder, awaiting QiCard portal walkthrough (see decision log 2026-04-23)
+- [ ] `docs/admin/refund-runbook.md` — committed with placeholder, awaiting QiCard portal walkthrough
+- [ ] QiCard merchant portal credentials stored in shared password manager (NOT in repo or `.env`), vault reference in decision log
+- [ ] All 4 runbooks read by all 3 admins (Mustafa, Rasheed, `admin@kaasb.com`)
 - [ ] Each admin has logged into Kaasb admin panel + QiCard merchant portal successfully
 
 ## Legal

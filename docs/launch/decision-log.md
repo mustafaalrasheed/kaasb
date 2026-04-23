@@ -6,6 +6,24 @@ Add new rows at the top. Keep each entry short: what was decided, why, who decid
 
 ---
 
+## 2026-04-23 — Phase 3 runbooks shipped with placeholders pending QiCard portal walkthrough
+
+**Decision:** Ship `payout-runbook.md` and `refund-runbook.md` with clearly-marked `[PENDING QICARD PORTAL WALKTHROUGH]` sections rather than wait for the walkthrough before publishing anything.
+
+**Why:** Three of the four Phase 3 runbooks (dispute, support, payout-Kaasb-side, refund-Kaasb-side) are fully actionable right now. Waiting to publish them until the portal walkthrough is done would block Phase 3 close-out on an external dependency (user availability). The placeholder approach lets admins act on 80% of real cases immediately — only the manual QiCard portal click-path is stubbed, and during that window admins can fall back to calling QiCard merchant support (`qicard@qi.iq` / `+964 771 640 4444`) for portal help.
+
+**How to apply:**
+
+1. On 2026-04-24 (or later, whenever user returns), do the walkthrough — see `project_pending_qicard_walkthrough.md` in memory for the exact question list.
+2. Fill in the placeholder blocks in both runbook files.
+3. Remove the ⚠️ status banner from the top of each file.
+4. Commit as `docs(ops): fill QiCard portal sections in payout + refund runbooks`.
+5. Delete `project_pending_qicard_walkthrough.md` memory + its index line.
+
+**Go/no-go impact:** The checklist line "Each admin has logged into Kaasb admin panel + QiCard merchant portal successfully" cannot be checked until the walkthrough is done and the runbooks are complete. This is therefore a Phase 10 (soft public launch) blocker. Not blocking intermediate phases (4-9).
+
+---
+
 ## 2026-04-23 — Don't wire monitor-backups.sh's own alert channels
 
 **Decision:** Leave `ALERT_WEBHOOK`, `ALERT_EMAIL`, and related vars used by `scripts/monitor-backups.sh` unset in `.env.production`. Primary alerting path (Prometheus `BackupTooOld` rule → Alertmanager → Discord) covers backup staleness; setting the secondary path would duplicate every backup alert.
