@@ -48,9 +48,15 @@ test.describe("Help / FAQ / How-it-works pages smoke", () => {
         await expect(page.locator("#freelancers")).toBeVisible();
     });
 
-    // NOTE: The homepage-footer-link test lives in a follow-up commit that
-    // lands AFTER the corresponding footer edit deploys to kaasb.com.
-    // Playwright runs against live prod, so asserting on a footer edit
-    // before its own deploy has shipped would fail the very push that
-    // introduces it.
+    test("homepage footer links to all three content pages", async ({ page }) => {
+        await page.goto("/");
+
+        // These are the links wired in db14e1f's layout.tsx footer update.
+        // Using `.first()` because the header nav may also link to /help
+        // on mobile screens, and we only need to assert the footer link
+        // exists somewhere visible.
+        await expect(page.locator('a[href="/help"]').first()).toBeVisible();
+        await expect(page.locator('a[href="/faq"]').first()).toBeVisible();
+        await expect(page.locator('a[href="/how-it-works"]').first()).toBeVisible();
+    });
 });
