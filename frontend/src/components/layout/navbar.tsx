@@ -215,6 +215,9 @@ export function Navbar() {
                   {isRTL ? "نشر وظيفة" : "Post a Job"}
                 </Link>
               )}
+              <Link href="/help" className="block py-2.5 px-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                {isRTL ? "مركز المساعدة" : "Help Center"}
+              </Link>
             </>
           )}
           {isAuthenticated ? (

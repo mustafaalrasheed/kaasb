@@ -197,6 +197,15 @@ export default async function RootLayout({
                   <Link href="/services" className="hover:text-gray-800 transition-colors">
                     {locale === "ar" ? "الخدمات" : "Services"}
                   </Link>
+                  <Link href="/how-it-works" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "كيف يعمل كاسب" : "How It Works"}
+                  </Link>
+                  <Link href="/faq" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "الأسئلة الشائعة" : "FAQ"}
+                  </Link>
+                  <Link href="/help" className="hover:text-gray-800 transition-colors">
+                    {locale === "ar" ? "مركز المساعدة" : "Help Center"}
+                  </Link>
                   <Link href="/privacy" className="hover:text-gray-800 transition-colors">
                     {locale === "ar" ? "سياسة الخصوصية" : "Privacy Policy"}
                   </Link>
