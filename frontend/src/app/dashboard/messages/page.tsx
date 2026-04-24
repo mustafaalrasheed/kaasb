@@ -188,10 +188,16 @@ function MessagesContent() {
     if (!withUserId || loading) return;
     const existing = conversations.find((c) => c.other_user.id === withUserId);
     if (existing) {
-      selectConversation(existing);
+      selectConversation(existing); // also opens mobileChatOpen
       setComposeRecipient(null);
     } else {
       setComposeRecipient(withUserId);
+      // On mobile the chat pane is hidden until mobileChatOpen is true.
+      // When we arrive via ?with=<user_id> to start a NEW conversation,
+      // the user expects to see the compose form immediately — otherwise
+      // they see the conversation list and think "Contact freelancer"
+      // didn't work. Mirror selectConversation's behaviour for parity.
+      setMobileChatOpen(true);
     }
   }, [withUserId, conversations, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
