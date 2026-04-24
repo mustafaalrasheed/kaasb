@@ -17,6 +17,7 @@ interface AdminEscrow {
     phone: string | null;
     qi_card_phone: string | null;
     qi_card_holder_name: string | null;
+    qi_card_account_number: string | null;
   };
 }
 
@@ -245,7 +246,11 @@ export function PayoutsTab({
                 const isBusy = actionLoading === escrow.escrow_id;
                 const qiPhone = escrow.freelancer.qi_card_phone || escrow.freelancer.phone;
                 const holderName = escrow.freelancer.qi_card_holder_name;
-                const payoutReady = Boolean(escrow.freelancer.qi_card_phone && holderName);
+                const accountNumber = escrow.freelancer.qi_card_account_number;
+                // Backend release_escrow_by_id guard now requires ALL THREE.
+                const payoutReady = Boolean(
+                  escrow.freelancer.qi_card_phone && holderName && accountNumber
+                );
                 return (
                   <tr key={escrow.escrow_id} className="hover:bg-gray-50">
                     <td className="p-3">
@@ -255,7 +260,16 @@ export function PayoutsTab({
                     <td className="p-3">
                       {qiPhone ? (
                         <div className="space-y-1">
-                          <span className="font-mono text-gray-900 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded text-xs inline-block" dir="ltr">
+                          {accountNumber ? (
+                            <span className="font-mono text-gray-900 bg-yellow-100 border border-yellow-300 px-2 py-0.5 rounded text-xs inline-block font-semibold" dir="ltr" title={ar ? "رقم حساب Qi Card (استخدمه في التطبيق)" : "Qi Card account number — use in the app"}>
+                              {accountNumber}
+                            </span>
+                          ) : (
+                            <div className="text-xs text-red-600 font-medium">
+                              {ar ? "رقم الحساب غير محدد" : "Account number missing"}
+                            </div>
+                          )}
+                          <span className="font-mono text-gray-700 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded text-xs inline-block" dir="ltr">
                             {qiPhone}
                           </span>
                           {holderName ? (

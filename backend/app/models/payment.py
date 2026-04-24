@@ -76,10 +76,16 @@ class PaymentAccount(BaseModel):
 
     # Qi Card-specific fields
     qi_card_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    # Cardholder name on the QiCard — required to reconcile manual payouts
-    # against the merchant-portal payee list. QiCard has no payout API, so the
-    # admin pays each freelancer by hand and matches on phone + holder name.
+    # Cardholder name on the QiCard — shown in the app's Transfer screen as
+    # the name resolved from the phone/account number; admin uses it to
+    # double-check they're paying the right person.
     qi_card_holder_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Unique per-card identifier. One Iraqi can hold multiple QiCards on the
+    # same phone number, so phone alone does not disambiguate the destination
+    # in a manual transfer. Migration a3w4x5y6z7a8 added this column; the
+    # release guard in PaymentService.release_escrow_by_id requires all three
+    # of phone + holder_name + account_number to be populated.
+    qi_card_account_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     qi_card_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Pending payment reference
 
     # Metadata (provider-specific data)

@@ -145,9 +145,13 @@ class PaymentService(BaseService):
         account = existing.scalar_one_or_none()
 
         if account is not None:
-            # Upsert: update holder name when provided; ignore phone changes.
+            # Upsert: update holder name + account number when provided;
+            # ignore phone changes (phone stays immutable post-creation to
+            # avoid accidentally re-pointing an existing payout target).
             if data.qi_card_holder_name is not None:
                 account.qi_card_holder_name = data.qi_card_holder_name
+            if data.qi_card_account_number is not None:
+                account.qi_card_account_number = data.qi_card_account_number
             await self.db.flush()
             await self.db.refresh(account)
             logger.info("Payment account updated: user=%s provider=%s", user.id, provider.value)
@@ -161,6 +165,7 @@ class PaymentService(BaseService):
             external_account_id=external_id,
             qi_card_phone=data.qi_card_phone,
             qi_card_holder_name=data.qi_card_holder_name,
+            qi_card_account_number=data.qi_card_account_number,
             is_default=True,
             verified_at=datetime.now(UTC),
         )
@@ -629,17 +634,25 @@ class PaymentService(BaseService):
             return None
 
         acct_result = await self.db.execute(
-            select(PaymentAccount.qi_card_phone, PaymentAccount.qi_card_holder_name).where(
+            select(
+                PaymentAccount.qi_card_phone,
+                PaymentAccount.qi_card_holder_name,
+                PaymentAccount.qi_card_account_number,
+            ).where(
                 PaymentAccount.user_id == escrow.freelancer_id,
                 PaymentAccount.provider == PaymentProvider.QI_CARD,
                 PaymentAccount.status == PaymentAccountStatus.VERIFIED,
             )
         )
         acct_row = acct_result.first()
-        if not acct_row or not acct_row[0] or not acct_row[1]:
+        if not acct_row or not acct_row[0] or not acct_row[1] or not acct_row[2]:
+            # Phone alone isn't enough — one Iraqi can hold multiple QiCards
+            # on the same phone, so without account_number the admin can't
+            # disambiguate the destination in the QiCard app.
             raise BadRequestError(
                 "Freelancer's QiCard payout details are incomplete (phone + cardholder "
-                "name required). Ask them to finish payment-account setup before release."
+                "name + account number all required). Ask them to finish payment-account "
+                "setup before release."
             )
 
         return await self._release_locked_escrow(escrow)

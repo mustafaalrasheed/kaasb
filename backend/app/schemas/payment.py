@@ -14,11 +14,22 @@ from app.utils.phone import normalize_iraqi_phone
 class PaymentAccountSetup(BaseModel):
     """Setup or update a Qi Card payment account."""
     provider: str = Field(pattern=r"^qi_card$")
-    # Qi Card-specific (optional on create — required before payout is released)
+    # Qi Card-specific (optional on create — all three are required before
+    # payout is released). One Iraqi can have multiple QiCards on the same
+    # phone number, so phone alone doesn't disambiguate the payout target —
+    # account_number is the unique per-card identifier that does.
     qi_card_phone: str | None = Field(None, max_length=20, description="Iraqi phone number linked to Qi Card")
     qi_card_holder_name: str | None = Field(
         None, min_length=2, max_length=128,
         description="Cardholder name exactly as printed on the Qi Card — used to match payouts",
+    )
+    qi_card_account_number: str | None = Field(
+        None, min_length=4, max_length=64,
+        description=(
+            "Unique QiCard account number. Phone alone is not unique (one Iraqi "
+            "can hold multiple QiCards on the same phone); this field tells the "
+            "admin which specific card to send a payout to."
+        ),
     )
 
     @field_validator("qi_card_phone")
@@ -34,6 +45,16 @@ class PaymentAccountSetup(BaseModel):
         v = " ".join(v.split())
         return v or None
 
+    @field_validator("qi_card_account_number")
+    @classmethod
+    def _strip_account_number(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        # Collapse internal whitespace (users sometimes paste card numbers
+        # with spaces like "1234 5678 9012") and strip leading/trailing.
+        v = "".join(v.split())
+        return v or None
+
 
 class PaymentAccountResponse(BaseModel):
     id: uuid.UUID
@@ -42,6 +63,7 @@ class PaymentAccountResponse(BaseModel):
     external_account_id: str | None = None
     qi_card_phone: str | None = None
     qi_card_holder_name: str | None = None
+    qi_card_account_number: str | None = None
     is_default: bool = True
     verified_at: datetime | None = None
     created_at: datetime

@@ -32,6 +32,7 @@ export default function PaymentsPage() {
   const [showSetup, setShowSetup] = useState(false);
   const [qiCardPhone, setQiCardPhone] = useState("");
   const [qiCardHolderName, setQiCardHolderName] = useState("");
+  const [qiCardAccountNumber, setQiCardAccountNumber] = useState("");
 
   const [showPayout, setShowPayout] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
@@ -66,11 +67,13 @@ export default function PaymentsPage() {
         provider: "qi_card",
         ...(qiCardPhone ? { qi_card_phone: qiCardPhone } : {}),
         ...(qiCardHolderName.trim() ? { qi_card_holder_name: qiCardHolderName.trim() } : {}),
+        ...(qiCardAccountNumber.trim() ? { qi_card_account_number: qiCardAccountNumber.trim() } : {}),
       });
       toast.success(ar ? "تم حفظ تفاصيل حساب Qi Card" : "Qi Card account saved");
       setShowSetup(false);
       setQiCardPhone("");
       setQiCardHolderName("");
+      setQiCardAccountNumber("");
       fetchData();
     } catch (err: unknown) {
       toast.error(getApiError(err, ar ? "تعذّر حفظ الحساب" : "Failed to save account"));
@@ -178,10 +181,24 @@ export default function PaymentsPage() {
           </h3>
           <p className="text-sm text-gray-500">
             {ar
-              ? "الدفع من العملاء يتم عبر بوابة Qi Card تلقائياً. للاستلام منكم، يحوّل الأدمن المبلغ يدوياً عبر تطبيق Qi Card إلى نفس الرقم والاسم الموجود على البطاقة — تأكد من تطابق الاسم والرقم مع ما هو مسجّل لدى Qi Card."
-              : "Client payments go through Qi Card automatically. For payouts, the admin transfers the amount manually via the Qi Card app to the phone + cardholder name below — both must match what's registered with Qi Card exactly."}
+              ? "الدفع من العملاء يتم عبر بوابة Qi Card تلقائياً. للاستلام منكم، يحوّل الأدمن المبلغ يدوياً عبر تطبيق Qi Card إلى حسابك — يجب تعبئة الحقول الثلاثة بالضبط كما هي على بطاقة Qi Card (رقم الحساب هو المعرّف الوحيد الذي يميّز بطاقتك عن أي بطاقة أخرى بنفس رقم الهاتف)."
+              : "Client payments go through Qi Card automatically. For payouts the admin transfers manually via the Qi Card app — fill all three fields exactly as registered on your Qi Card. The account number is the unique identifier (phone alone isn't unique — one person can hold multiple Qi Cards on the same phone)."}
           </p>
           <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                {ar ? "رقم حساب Qi Card (فريد لكل بطاقة)" : "Qi Card account number (unique per card)"}
+              </label>
+              <input
+                type="text"
+                value={qiCardAccountNumber}
+                onChange={(e) => setQiCardAccountNumber(e.target.value)}
+                placeholder={ar ? "١٢٣٤٥٦٧٨" : "12345678"}
+                dir="ltr"
+                maxLength={64}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"
+              />
+            </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">
                 {ar ? "رقم هاتف Qi Card" : "Qi Card phone number"}
@@ -195,7 +212,7 @@ export default function PaymentsPage() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
             </div>
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm text-gray-600 mb-1">
                 {ar ? "اسم صاحب البطاقة (كما هو مسجّل)" : "Cardholder name (as registered)"}
               </label>
@@ -278,7 +295,14 @@ export default function PaymentsPage() {
           </h3>
           <div className="space-y-2">
             {summary.payment_accounts.map((acc) => {
-              const payoutReady = Boolean(acc.qi_card_phone && acc.qi_card_holder_name);
+              // All three fields required before the backend release guard lets
+              // a payout through. Phone alone isn't unique — one Iraqi can hold
+              // multiple Qi Cards on the same phone.
+              const payoutReady = Boolean(
+                acc.qi_card_phone &&
+                acc.qi_card_holder_name &&
+                acc.qi_card_account_number
+              );
               return (
                 <div key={acc.id} className="p-3 bg-gray-50 rounded-lg space-y-2">
                   <div className="flex items-center justify-between gap-3">
@@ -288,6 +312,11 @@ export default function PaymentsPage() {
                         <div className="font-medium text-gray-900">
                           {PROVIDER_LABELS[acc.provider] || acc.provider}
                         </div>
+                        {acc.qi_card_account_number && (
+                          <div className="text-xs text-gray-500 font-mono" dir="ltr">
+                            {ar ? "الحساب" : "Acct"}: {acc.qi_card_account_number}
+                          </div>
+                        )}
                         {acc.qi_card_phone && (
                           <div className="text-xs text-gray-500" dir="ltr">{acc.qi_card_phone}</div>
                         )}

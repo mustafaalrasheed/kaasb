@@ -110,6 +110,10 @@ class AdminEscrowFreelancerInfo(BaseModel):
     email: str
     phone: str | None = None
     qi_card_phone: str | None = None
+    qi_card_holder_name: str | None = None
+    # Unique per-Qi-Card destination id. Required before release_escrow_by_id
+    # lets the admin mark a payout; the admin types it into the Qi Card app.
+    qi_card_account_number: str | None = None
 
 
 class AdminEscrowInfo(BaseModel):

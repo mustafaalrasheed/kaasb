@@ -376,20 +376,26 @@ class AdminService(BaseService):
 
         # Batch-load Qi Card phones for all freelancers
         freelancer_ids = [r[1].id for r in rows]
-        qi_phones: dict[uuid.UUID, str | None] = {}
+        qi_accounts: dict[uuid.UUID, tuple[str | None, str | None, str | None]] = {}
         if freelancer_ids:
             accounts_result = await self.db.execute(
-                select(PaymentAccount.user_id, PaymentAccount.qi_card_phone).where(
+                select(
+                    PaymentAccount.user_id,
+                    PaymentAccount.qi_card_phone,
+                    PaymentAccount.qi_card_holder_name,
+                    PaymentAccount.qi_card_account_number,
+                ).where(
                     PaymentAccount.user_id.in_(freelancer_ids),
                     PaymentAccount.provider == PaymentProvider.QI_CARD,
                 )
             )
-            for user_id, phone in accounts_result.all():
-                qi_phones[user_id] = phone
+            for user_id, phone, holder, account_number in accounts_result.all():
+                qi_accounts[user_id] = (phone, holder, account_number)
 
         escrows = []
         for escrow, freelancer in rows:
             milestone = milestone_map.get(escrow.milestone_id) if escrow.milestone_id else None
+            phone, holder, account_number = qi_accounts.get(freelancer.id, (None, None, None))
             escrows.append({
                 "escrow_id": escrow.id,
                 "contract_id": escrow.contract_id,
@@ -406,7 +412,9 @@ class AdminService(BaseService):
                     "username": freelancer.username,
                     "email": freelancer.email,
                     "phone": freelancer.phone,
-                    "qi_card_phone": qi_phones.get(freelancer.id),
+                    "qi_card_phone": phone,
+                    "qi_card_holder_name": holder,
+                    "qi_card_account_number": account_number,
                 },
             })
         return escrows
