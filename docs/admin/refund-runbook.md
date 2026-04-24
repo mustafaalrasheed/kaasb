@@ -4,7 +4,7 @@ How a Kaasb admin returns IQD to a client. **Every refund is manual today** — 
 
 Last updated: 2026-04-23. Maintainer: Mustafa Alrasheed.
 
-> ⚠️ **Status: QiCard portal sections are placeholders.** The Kaasb-side triggers and audit flow are fully documented. The QiCard portal click-path for actually moving IQD back is marked `[PENDING QICARD PORTAL WALKTHROUGH]`. A 10-minute walkthrough from the user on 2026-04-24 will fill these in. Until then, follow the Kaasb-side steps exactly and extrapolate the portal part.
+> ⚠️ **Operational reality (2026-04-24):** QiCard has no merchant portal we can access, and v0 QiCard API has no refund endpoint. Every refund is a manual IQD transfer from the admin's QiCard app back to the client's `qi_card_phone`. Phase 4 of the launch plan will wire the v1 3DS API's `POST /api/v1/payment/{paymentId}/refund` for automated refunds — until then, this runbook IS the process.
 
 ---
 
@@ -39,7 +39,7 @@ This runbook does **not** cover:
 ## Prerequisites
 
 - Admin logged into https://kaasb.com/admin
-- Admin logged into the QiCard merchant portal
+- QiCard mobile app installed on the admin phone, signed in to the Kaasb merchant account
 - The underlying order/escrow clearly identified — you need the order ID and the original Qi Card `paymentId` (stored in `transactions.qi_card_payment_id` once Phase 4 migration adds the column; currently stored in the transaction's provider ref)
 - For post-completion refunds: written approval from Mustafa in the admin Discord, documented in the refund's Admin Notes
 
@@ -81,30 +81,38 @@ This sets:
 
 **Why record first, then transfer?** If the QiCard transfer succeeds but Kaasb crashes before Step 5's Confirm, you have proof of intent. If the transfer fails, the pending record is easy to cancel. Doing it the other way (transfer first, record second) risks real money moved with no Kaasb trace.
 
-## Step 4: Execute refund in QiCard merchant portal
+## Step 4: Execute refund via the QiCard mobile app
 
-**Every refund today is a manual portal action.** `qi_card_client.refund_payment()` in the backend raises `QiCardError("no refund API available in v0")` intentionally — this is working as designed until Phase 4.
+**Every refund is a manual transfer from the Kaasb merchant QiCard back to the client's QiCard.** Not a "reversal" on the original charge — it's a new outgoing transfer. The client will see it as an incoming deposit on their QiCard statement, not as a reversal of the original payment. **Tell them this** when they ask why their original charge still appears.
 
-> `[PENDING QICARD PORTAL WALKTHROUGH — to be filled on 2026-04-24]`
->
-> Needs answers to:
->
-> - Is there a "Refund" action per-transaction in the portal, or is it done as a reverse transfer via the client's phone/identifier?
-> - If per-transaction: where in the UI? (Transaction history → select → "Refund"?)
-> - If reverse transfer: what identifier? (Client's `qi_card_phone`? Original payment's `paymentId`? Client's name on card?)
-> - What fields does the form require?
-> - Can we do partial refunds, or is it all-or-nothing?
-> - Does the refund appear on the client's QiCard as a reversal (negative on original charge) or as a new incoming transfer? **Big deal** — affects what the client sees on their statement + what we tell them in communications.
-> - What reference does the portal give us (refund transaction ID)?
-> - Timing: is it immediate, minutes, hours?
-> - Fees charged to merchant on refunds?
+`qi_card_client.refund_payment()` in the backend raises `QiCardError("no refund API available in v0")` intentionally — the automated refund path is Phase 4 (v1 3DS API migration).
 
-Until the walkthrough is complete: do **not** guess the path. If you need to issue a refund before 2026-04-24, contact QiCard merchant support directly at `qicard@qi.iq` / `+964 771 640 4444` — they can walk you through live.
+**Principles:**
 
-**When executing:**
-- Match the Kaasb refund amount exactly
-- Use the original payment's identifier as the basis (if the portal has a transaction-history-based refund)
-- Save the **refund transaction reference** immediately after confirming — you need it for Step 5
+- Match the Kaasb refund amount exactly (whole IQD).
+- The destination is the **client's** QiCard phone. If this is a dispute refund, that's the client who opened the order. If a duplicate-charge refund, the same client.
+- Use a reference that points back to the Kaasb order ID: `Kaasb refund order-{order_id}` or similar.
+- The Kaasb merchant QiCard pays the fees (if any) — the client gets the full refund amount. This is consistent with how the original charge included the 10% platform fee; on a full refund the client recovers 100% of what they paid.
+
+**Click path in the QiCard app:**
+
+1. Open QiCard app on the admin phone → log in
+2. Select the Kaasb merchant/admin account
+3. Tap **Transfer** (or local equivalent)
+4. **Destination phone**: the client's QiCard phone. You may need to look this up — go to Kaasb admin → Users → search by email → their profile shows `qi_card_phone` if they've set it. If they haven't: ask them over email before you transfer (refunds to an unverified phone are dangerous).
+5. **Amount**: the refund amount from Kaasb's "Issue Refund" modal (Step 3).
+6. **Note / reference**: `Kaasb refund {order_id}` — this shows on the client's statement so they know it's Kaasb.
+7. Confirm → copy the transaction reference.
+
+**Partial refunds**: the QiCard app has no concept of "partial reversal" — a partial refund is just a smaller transfer. If you're refunding half the order on a dispute split, transfer half the IQD, record in Admin Notes that "this is a 50% partial refund; the other 50% was retained by freelancer via dispute release on escrow `{escrow_id}`."
+
+**Failure modes to anticipate** (record the actual behaviour the first time you hit each):
+
+- Client's QiCard phone rejects the incoming transfer (rare, means their card is blocked)
+- Your merchant balance is too low to refund (fund the merchant account first)
+- App forces OTP at confirm — the admin phone must be reachable
+
+If any of these happen: Kaasb's pending-refund state from Step 3 stays OPEN until you resolve with QiCard. Don't click Confirm Refund in Kaasb until the IQD actually moved.
 
 ## Step 5: Confirm Refund in Kaasb
 

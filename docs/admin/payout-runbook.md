@@ -4,7 +4,7 @@ How a Kaasb admin gets IQD into a freelancer's QiCard after an order completes. 
 
 Last updated: 2026-04-23. Maintainer: Mustafa Alrasheed.
 
-> ⚠️ **Status: QiCard portal sections are placeholders.** Steps 5 and 6 describe the Kaasb-side flow, which is fully documented. The QiCard portal click-path is marked `[PENDING QICARD PORTAL WALKTHROUGH]` — a 10-minute walkthrough from the user on 2026-04-24 will fill these in. Until then, follow the Kaasb-side steps and extrapolate for the portal based on your own familiarity with it.
+> ⚠️ **Operational reality (2026-04-24):** QiCard does not currently have a merchant portal we can access. Payouts are executed through the **QiCard mobile app** using the freelancer's QiCard phone number (and optionally their holder name as a visible reference on the transfer). The Kaasb API key in `.env.production` is for the **client-side payment gateway** (`create_payment` v0 endpoint) — it does NOT perform payouts. The app transfer is always a manual admin action.
 
 ---
 
@@ -91,26 +91,40 @@ If the other admin **Rejects**, escrow goes back to `RELEASED` state but is flag
 
 For payouts under the threshold: click **Release** → confirm → escrow is ready for transfer. One click, no second admin. An audit log entry is written automatically.
 
-## Step 5: Transfer IQD via QiCard merchant portal
+## Step 5: Transfer IQD via the QiCard mobile app
 
-**This is the manual part. Every payout requires physical action in the QiCard portal — no API exists.**
+**This is the manual part.** Every payout is executed on the admin's phone using the QiCard app — there is no merchant portal available to Kaasb at this time, and the QiCard v0 API does not expose a payout endpoint. The app is the only transfer path.
 
-> `[PENDING QICARD PORTAL WALKTHROUGH — to be filled on 2026-04-24]`
->
-> The user will walk through the actual portal flow and we'll fill in:
->
-> - Portal URL
-> - Login flow (username + password + any 2FA/OTP)
-> - Menu path to reach "Transfer" or equivalent
-> - Identifier used for the destination (phone? account number? card number?)
-> - Transfer form fields (amount, note/memo, OTP confirmation)
-> - How the transaction reference is presented after confirmation
-> - Per-transaction / per-day transfer limits
-> - Fees charged to the merchant account vs. receiver
-> - Timing: does IQD land immediately or within X minutes?
-> - Failure modes: what the portal does if destination is invalid, limit exceeded, merchant balance low
+**Principles before you start:**
 
-Until the walkthrough is done, the principle is: **match the IQD amount Kaasb showed you exactly**, use the `qi_card_phone` + `qi_card_holder_name` from the Kaasb Payouts row as the destination, keep the transaction reference from the portal for Step 6, and never split one Kaasb escrow into multiple QiCard transfers (audit trail becomes ambiguous).
+- Match the IQD amount Kaasb showed you **exactly** — to the whole Dinar.
+- Use the `qi_card_phone` from the Kaasb Payouts row as the transfer destination.
+- Paste the freelancer's `qi_card_holder_name` into the QiCard app's "note" / "reference" / "memo" field (whichever label it uses) so the transfer is auditable after the fact.
+- Keep the QiCard transaction reference the app gives you on confirmation — you'll paste it into Kaasb in Step 6.
+- **Never split one Kaasb escrow into multiple QiCard transfers** unless the per-transaction limit forces it. If it does, record every ref in Admin Notes.
+- Do **not** transfer from a personal QiCard account. Always use the dedicated Kaasb merchant/admin QiCard.
+
+**Click path in the QiCard app** (may evolve between QiCard releases — update this section when it does):
+
+1. Open the QiCard app on the admin phone → log in with PIN / biometric
+2. Select the Kaasb merchant/admin account (if the app presents multiple accounts)
+3. Tap **Transfer** (or the local-language equivalent)
+4. Enter destination:
+   - **Mobile number** field: paste `qi_card_phone` from the Kaasb row (include the `+964` prefix if the app expects international format)
+   - The app usually resolves the destination account and shows the cardholder's name. **Verify it matches** `qi_card_holder_name`. If it doesn't, STOP — the freelancer may have typed a wrong phone. Don't transfer.
+5. **Amount** field: enter the IQD amount exactly as shown in Kaasb Payouts (the `freelancer_amount` column, which is 90% of the escrow after the 10% platform fee).
+6. **Note/Reference/Memo** field: enter something traceable, e.g. `Kaasb payout escrow-<id>` or just `Kaasb payout <freelancer first name>`. This appears on the freelancer's QiCard statement.
+7. Confirm the transfer (the app may require an OTP / PIN / biometric re-auth).
+8. On the confirmation screen, copy the **Transaction reference** (usually a 10-14 digit number or alphanumeric ID). You can screenshot the receipt too — save it to the shared admin drive.
+
+**Known unknowns** to verify during the first few real payouts and then record here:
+
+- Per-transaction / per-day limit on the merchant account (app usually displays this before confirm)
+- Fees charged to the sender vs. receiver
+- Timing: seconds or up to a few minutes for the receiver's balance to reflect
+- What the app shows if the destination phone is invalid or card is blocked
+
+If you hit any of the unknowns, record the actual behaviour in Admin Notes and in a follow-up PR to this runbook.
 
 ## Step 6: Confirm Payout in Kaasb admin
 
