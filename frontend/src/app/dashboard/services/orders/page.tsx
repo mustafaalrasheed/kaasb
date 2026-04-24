@@ -105,6 +105,7 @@ export default function ServiceOrdersPage() {
   const [deliverOrder, setDeliverOrder] = useState<ServiceOrderItem | null>(null);
   const [viewOrder, setViewOrder] = useState<ServiceOrderItem | null>(null);
   const [reviewOrder, setReviewOrder] = useState<ServiceOrderItem | null>(null);
+  const [disputeOrder, setDisputeOrder] = useState<ServiceOrderItem | null>(null);
 
   const isFreelancer = user?.primary_role === "freelancer";
   const statusLabels = ar ? STATUS_LABELS_AR : STATUS_LABELS_EN;
@@ -207,6 +208,20 @@ export default function ServiceOrdersPage() {
     }
   };
 
+  const handleRaiseDispute = async (orderId: string, reason: string) => {
+    setActionLoading(orderId);
+    try {
+      await servicesApi.raiseDispute(orderId, reason);
+      toast.success(ar ? "تم فتح النزاع — سيتابعه المشرفون" : "Dispute opened — admins will review");
+      setDisputeOrder(null);
+      fetchOrders();
+    } catch {
+      toast.error(ar ? "تعذّر فتح النزاع" : "Failed to open dispute");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -267,6 +282,7 @@ export default function ServiceOrdersPage() {
               onOpenDeliver={() => setDeliverOrder(order)}
               onViewDelivery={() => setViewOrder(order)}
               onOpenReview={() => setReviewOrder(order)}
+              onOpenDispute={() => setDisputeOrder(order)}
             />
           ))}
         </div>
@@ -309,6 +325,16 @@ export default function ServiceOrdersPage() {
           onSubmit={(data) => handleSubmitReview(reviewOrder.id, data)}
         />
       )}
+
+      {disputeOrder && (
+        <DisputeModal
+          order={disputeOrder}
+          ar={ar}
+          isBusy={actionLoading === disputeOrder.id}
+          onClose={() => setDisputeOrder(null)}
+          onSubmit={(reason) => handleRaiseDispute(disputeOrder.id, reason)}
+        />
+      )}
     </div>
   );
 }
@@ -325,6 +351,7 @@ function OrderCard({
   onOpenDeliver,
   onViewDelivery,
   onOpenReview,
+  onOpenDispute,
 }: {
   order: ServiceOrderItem;
   view: "selling" | "buying";
@@ -337,12 +364,19 @@ function OrderCard({
   onOpenDeliver: () => void;
   onViewDelivery: () => void;
   onOpenReview: () => void;
+  onOpenDispute: () => void;
 }) {
   const isBusy = actionLoading === order.id;
   const canViewDelivery =
     order.status === "delivered" ||
     order.status === "revision_requested" ||
     order.status === "completed";
+  const canDispute =
+    view === "buying" &&
+    (order.status === "pending_requirements" ||
+      order.status === "in_progress" ||
+      order.status === "delivered" ||
+      order.status === "revision_requested");
   const svc = getServiceRef(order);
 
   return (
@@ -454,6 +488,15 @@ function OrderCard({
             <span className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full">
               {ar ? "تم التقييم ✓" : "Reviewed ✓"}
             </span>
+          )}
+          {canDispute && (
+            <button
+              onClick={onOpenDispute}
+              disabled={isBusy}
+              className="py-1.5 px-4 text-sm font-medium text-red-700 border border-red-200 bg-red-50 hover:bg-red-100 rounded-lg disabled:opacity-50"
+            >
+              {ar ? "الإبلاغ عن مشكلة" : "Report a Problem"}
+            </button>
           )}
         </div>
       </div>
@@ -1048,6 +1091,97 @@ function StarField({
             ★
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function DisputeModal({
+  order,
+  ar,
+  isBusy,
+  onClose,
+  onSubmit,
+}: {
+  order: ServiceOrderItem;
+  ar: boolean;
+  isBusy: boolean;
+  onClose: () => void;
+  onSubmit: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const svc = getServiceRef(order);
+  const tooShort = reason.trim().length < 20;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (tooShort) return;
+    onSubmit(reason.trim());
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div className="p-5 border-b">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {ar ? "الإبلاغ عن مشكلة" : "Report a Problem"}
+          </h2>
+          <p className="mt-1 text-sm text-gray-500 truncate">
+            {svc?.title ?? (ar ? "خدمة" : "Service")}
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-900">
+            {ar
+              ? "فتح نزاع يُجمّد الدفعة ويُحيل الطلب إلى فريق الإشراف للمراجعة. يُرجى وصف المشكلة بوضوح."
+              : "Opening a dispute freezes the payment and sends the order to our admin team for review. Please describe the issue clearly."}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {ar ? "سبب النزاع" : "Reason for dispute"} <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              minLength={20}
+              maxLength={2000}
+              rows={5}
+              required
+              placeholder={ar
+                ? "مثال: لم يتم تسليم العمل حسب المتطلبات..."
+                : "E.g. The work delivered does not match the requirements..."}
+              className="input-field"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              {reason.trim().length}/2000{" "}
+              {tooShort && (
+                <span className="text-amber-700">
+                  {ar ? "(20 حرفاً على الأقل)" : "(at least 20 characters)"}
+                </span>
+              )}
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isBusy}
+              className="btn-secondary py-2 px-4 text-sm"
+            >
+              {ar ? "إلغاء" : "Cancel"}
+            </button>
+            <button
+              type="submit"
+              disabled={isBusy || tooShort}
+              className="py-2 px-4 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isBusy ? "..." : (ar ? "فتح النزاع" : "Open Dispute")}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
