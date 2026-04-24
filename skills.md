@@ -138,6 +138,27 @@ alembic upgrade head
 alembic check   # must return "No new upgrade operations detected"
 ```
 
+**Picking a revision ID manually when alembic isn't installed locally** (Windows dev without a venv):
+
+```python
+# /c/ProgramData/Anaconda3/python.exe -c "..."
+import re, os
+revs, downs = {}, set()
+d = 'backend/alembic/versions'
+for name in sorted(os.listdir(d)):
+    if not name.endswith('.py') or name.startswith('__'): continue
+    txt = open(os.path.join(d, name), encoding='utf-8').read()
+    # Two patterns in this repo: `revision = "..."` AND `revision: str = "..."`
+    r = re.search(r'^revision[^=]*=\s*[\"\'](.+?)[\"\']', txt, re.MULTILINE)
+    dr = re.search(r'^down_revision[^=]*=\s*[\"\'](.+?)[\"\']', txt, re.MULTILINE)
+    if r: revs[name] = r.group(1)
+    if dr: downs.add(dr.group(1))
+# HEADS = revs that nobody else points at
+print('Heads:', [f'{r} <- {f}' for f, r in revs.items() if r not in downs])
+```
+
+Chain your new migration behind the single head returned. Do NOT reuse a revision ID that already exists elsewhere in the chain — a simple `revision=` grep catches the `revision = "..."` style but misses `revision: str = "..."`, which is how the 2026-04-25 collision happened.
+
 **Enum pattern** (idempotent — always use this for new enums):
 ```python
 from alembic import op
