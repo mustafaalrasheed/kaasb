@@ -9,6 +9,7 @@ import { NotificationBell } from "@/components/ui/notification-bell";
 import { useLocale } from "@/providers/locale-provider";
 import { usePathname } from "next/navigation";
 import { backendUrl } from "@/lib/utils";
+import { useActiveMode } from "@/lib/use-active-mode";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
@@ -43,11 +44,30 @@ export function Navbar() {
 
   const isRTL = locale === "ar";
 
-  const role = user?.primary_role; // "client" | "freelancer" | undefined (guest)
-  const showFindWork = !isAuthenticated || role === "freelancer";
-  const showFindFreelancers = !isAuthenticated || role === "client";
-  const showPostJob = isAuthenticated && role === "client";
-  const showRequests = !isAuthenticated || role === "freelancer";
+  const role = user?.primary_role; // "client" | "freelancer" | "admin" | undefined (guest)
+
+  // Active marketplace mode — independent from primary_role so dual-role
+  // users can flip between buying + selling views without edit their
+  // profile. Guests and admins are not allowed to toggle; show strictly
+  // per role (or a neutral guest view).
+  const defaultMode = role === "freelancer" ? "freelancer" : "client";
+  const { mode: activeMode, setMode: setActiveMode } = useActiveMode(defaultMode);
+  const canToggleMode = isAuthenticated && role !== "admin";
+  const effectiveMode = canToggleMode ? activeMode : role;
+
+  const showFindWork = !isAuthenticated || effectiveMode === "freelancer";
+  const showFindFreelancers = !isAuthenticated || effectiveMode === "client";
+  const showPostJob = isAuthenticated && effectiveMode === "client";
+  const showRequests = !isAuthenticated || effectiveMode === "freelancer";
+
+  const modeToggleLabel = activeMode === "freelancer"
+    ? (isRTL ? "التبديل إلى الشراء" : "Switch to Buying")
+    : (isRTL ? "التبديل إلى البيع" : "Switch to Selling");
+  const modeToggleTooltip = activeMode === "freelancer"
+    ? (isRTL ? "عرض قائمة العميل (شراء الخدمات)" : "View the client navigation (buying services)")
+    : (isRTL ? "عرض قائمة المستقل (تقديم الخدمات)" : "View the freelancer navigation (selling services)");
+
+  const flipMode = () => setActiveMode(activeMode === "freelancer" ? "client" : "freelancer");
 
   return (
     <nav className="fixed top-0 inset-x-0 z-50 bg-white border-b border-gray-200">
@@ -127,6 +147,16 @@ export function Navbar() {
                   <Link href="/admin" className="text-red-600 hover:text-red-800 font-medium text-sm">
                     {t.admin}
                   </Link>
+                )}
+                {canToggleMode && !isAdminPage && (
+                  <button
+                    type="button"
+                    onClick={flipMode}
+                    title={modeToggleTooltip}
+                    className="text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors"
+                  >
+                    {modeToggleLabel}
+                  </button>
                 )}
                 <NotificationBell />
                 <div className={`flex items-center gap-2 ${isRTL ? "pe-4 border-e" : "ps-4 border-s"} border-gray-200 ${isRTL ? "flex-row-reverse" : "flex-row"}`}>
@@ -239,6 +269,18 @@ export function Navbar() {
                 <Link href="/admin" className="block py-2.5 px-3 rounded-lg text-red-600 font-medium hover:bg-red-50">
                   {t.admin}
                 </Link>
+              )}
+              {canToggleMode && !isAdminPage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    flipMode();
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-lg text-brand-600 font-medium hover:bg-brand-50 ${isRTL ? "text-right" : "text-left"}`}
+                >
+                  {modeToggleLabel}
+                </button>
               )}
               <div className="border-t border-gray-100 mt-2 pt-2">
                 <div className={`flex items-center gap-3 px-3 py-2 ${isRTL ? "flex-row-reverse" : "flex-row"}`}>
