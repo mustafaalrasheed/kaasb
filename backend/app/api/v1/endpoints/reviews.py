@@ -83,3 +83,35 @@ async def submit_review(
     """Submit a review for the other party on a completed contract."""
     service = ReviewService(db)
     return await service.submit_review(current_user, contract_id, data)
+
+
+@router.get(
+    "/order/{service_order_id}",
+    response_model=list[ReviewDetail],
+    summary="Get reviews for a service order",
+)
+async def get_order_reviews(
+    service_order_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all reviews on a service order (both parties)."""
+    service = ReviewService(db)
+    return await service.get_order_reviews(current_user, service_order_id)
+
+
+@router.post(
+    "/order/{service_order_id}",
+    response_model=ReviewDetail,
+    summary="Submit a review on a service order",
+    status_code=201,
+)
+async def submit_order_review(
+    service_order_id: uuid.UUID,
+    data: ReviewCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Submit a review for the other party on a completed service order."""
+    service = ReviewService(db)
+    return await service.submit_order_review(current_user, service_order_id, data)

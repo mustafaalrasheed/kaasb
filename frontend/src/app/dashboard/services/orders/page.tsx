@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { servicesApi } from "@/lib/api";
+import { reviewsApi, servicesApi } from "@/lib/api";
+import type { ReviewSubmitBody } from "@/lib/api/reviews";
 import { useAuthStore } from "@/lib/auth-store";
 import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
@@ -44,6 +45,9 @@ interface ServiceOrderItem {
   created_at: string;
   service?: ServiceRef;
   gig?: ServiceRef;
+  // Populated on list endpoints so the UI can hide the "Leave review" CTA
+  // once the calling user has already reviewed this order.
+  has_reviewed?: boolean | null;
 }
 
 const STATUS_LABELS_AR: Record<string, string> = {
@@ -100,6 +104,7 @@ export default function ServiceOrdersPage() {
   const [requirementsOrder, setRequirementsOrder] = useState<ServiceOrderItem | null>(null);
   const [deliverOrder, setDeliverOrder] = useState<ServiceOrderItem | null>(null);
   const [viewOrder, setViewOrder] = useState<ServiceOrderItem | null>(null);
+  const [reviewOrder, setReviewOrder] = useState<ServiceOrderItem | null>(null);
 
   const isFreelancer = user?.primary_role === "freelancer";
   const statusLabels = ar ? STATUS_LABELS_AR : STATUS_LABELS_EN;
@@ -188,6 +193,20 @@ export default function ServiceOrdersPage() {
     }
   };
 
+  const handleSubmitReview = async (orderId: string, data: ReviewSubmitBody) => {
+    setActionLoading(orderId);
+    try {
+      await reviewsApi.submitOrderReview(orderId, data);
+      toast.success(ar ? "تم إرسال التقييم" : "Review submitted");
+      setReviewOrder(null);
+      fetchOrders();
+    } catch {
+      toast.error(ar ? "تعذّر إرسال التقييم" : "Failed to submit review");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -247,6 +266,7 @@ export default function ServiceOrdersPage() {
               onOpenRequirements={() => setRequirementsOrder(order)}
               onOpenDeliver={() => setDeliverOrder(order)}
               onViewDelivery={() => setViewOrder(order)}
+              onOpenReview={() => setReviewOrder(order)}
             />
           ))}
         </div>
@@ -279,6 +299,16 @@ export default function ServiceOrdersPage() {
           onClose={() => setViewOrder(null)}
         />
       )}
+
+      {reviewOrder && (
+        <ReviewModal
+          order={reviewOrder}
+          ar={ar}
+          isBusy={actionLoading === reviewOrder.id}
+          onClose={() => setReviewOrder(null)}
+          onSubmit={(data) => handleSubmitReview(reviewOrder.id, data)}
+        />
+      )}
     </div>
   );
 }
@@ -294,6 +324,7 @@ function OrderCard({
   onOpenRequirements,
   onOpenDeliver,
   onViewDelivery,
+  onOpenReview,
 }: {
   order: ServiceOrderItem;
   view: "selling" | "buying";
@@ -305,6 +336,7 @@ function OrderCard({
   onOpenRequirements: () => void;
   onOpenDeliver: () => void;
   onViewDelivery: () => void;
+  onOpenReview: () => void;
 }) {
   const isBusy = actionLoading === order.id;
   const canViewDelivery =
@@ -408,6 +440,20 @@ function OrderCard({
                 </button>
               )}
             </>
+          )}
+          {order.status === "completed" && order.has_reviewed === false && (
+            <button
+              onClick={onOpenReview}
+              disabled={isBusy}
+              className="btn-primary py-1.5 px-4 text-sm disabled:opacity-50"
+            >
+              {isBusy ? "..." : (ar ? "اترك تقييماً" : "Leave Review")}
+            </button>
+          )}
+          {order.status === "completed" && order.has_reviewed === true && (
+            <span className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full">
+              {ar ? "تم التقييم ✓" : "Reviewed ✓"}
+            </span>
           )}
         </div>
       </div>
@@ -847,6 +893,161 @@ function DeliveryView({
             {ar ? "إغلاق" : "Close"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewModal({
+  order,
+  ar,
+  isBusy,
+  onClose,
+  onSubmit,
+}: {
+  order: ServiceOrderItem;
+  ar: boolean;
+  isBusy: boolean;
+  onClose: () => void;
+  onSubmit: (data: ReviewSubmitBody) => void;
+}) {
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+  const [communication, setCommunication] = useState(5);
+  const [quality, setQuality] = useState(5);
+  const [professionalism, setProfessionalism] = useState(5);
+  const [timeliness, setTimeliness] = useState(5);
+  const svc = getServiceRef(order);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({
+      rating,
+      comment: comment.trim() || undefined,
+      communication_rating: communication,
+      quality_rating: quality,
+      professionalism_rating: professionalism,
+      timeliness_rating: timeliness,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-5 border-b">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {ar ? "اترك تقييمك" : "Leave a review"}
+          </h2>
+          <p className="mt-1 text-sm text-gray-500 truncate">
+            {svc?.title ?? (ar ? "خدمة" : "Service")}
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-5">
+          <StarField
+            label={ar ? "التقييم العام" : "Overall rating"}
+            value={rating}
+            onChange={setRating}
+            ar={ar}
+            required
+          />
+          <StarField
+            label={ar ? "التواصل" : "Communication"}
+            value={communication}
+            onChange={setCommunication}
+            ar={ar}
+          />
+          <StarField
+            label={ar ? "الجودة" : "Quality"}
+            value={quality}
+            onChange={setQuality}
+            ar={ar}
+          />
+          <StarField
+            label={ar ? "الاحترافية" : "Professionalism"}
+            value={professionalism}
+            onChange={setProfessionalism}
+            ar={ar}
+          />
+          <StarField
+            label={ar ? "الالتزام بالوقت" : "Timeliness"}
+            value={timeliness}
+            onChange={setTimeliness}
+            ar={ar}
+          />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {ar ? "تعليقك (اختياري)" : "Your comment (optional)"}
+            </label>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              maxLength={2000}
+              rows={4}
+              placeholder={ar ? "شارك تجربتك..." : "Share your experience..."}
+              className="input-field"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              {comment.length}/2000
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isBusy}
+              className="btn-secondary py-2 px-4 text-sm"
+            >
+              {ar ? "إلغاء" : "Cancel"}
+            </button>
+            <button
+              type="submit"
+              disabled={isBusy}
+              className="btn-primary py-2 px-4 text-sm disabled:opacity-50"
+            >
+              {isBusy ? "..." : (ar ? "إرسال التقييم" : "Submit Review")}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function StarField({
+  label,
+  value,
+  onChange,
+  ar,
+  required = false,
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+  ar: boolean;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <div className={`flex gap-1 ${ar ? "flex-row-reverse justify-end" : ""}`} dir="ltr">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onChange(n)}
+            aria-label={`${n} star${n !== 1 ? "s" : ""}`}
+            className={`text-2xl transition-colors ${
+              n <= value ? "text-yellow-400" : "text-gray-300 hover:text-yellow-300"
+            }`}
+          >
+            ★
+          </button>
+        ))}
       </div>
     </div>
   );

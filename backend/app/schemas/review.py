@@ -35,6 +35,14 @@ class ReviewContractInfo(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ReviewOrderInfo(BaseModel):
+    """Service-order summary attached to a review (gig-style path)."""
+    id: uuid.UUID
+    service_id: uuid.UUID
+
+    model_config = {"from_attributes": True}
+
+
 class ReviewDetail(BaseModel):
     id: uuid.UUID
     rating: int
@@ -45,7 +53,10 @@ class ReviewDetail(BaseModel):
     timeliness_rating: int | None = None
     reviewer: ReviewUserInfo
     reviewee: ReviewUserInfo
-    contract: ReviewContractInfo
+    # Exactly one of the two is populated on any given review, enforced by
+    # the `ck_reviews_exactly_one_target` DB CHECK (migration e7z8a9b0c1d2).
+    contract: ReviewContractInfo | None = None
+    service_order: ReviewOrderInfo | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

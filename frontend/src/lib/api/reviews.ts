@@ -1,5 +1,14 @@
 import { api } from "./client";
 
+export interface ReviewSubmitBody {
+  rating: number;
+  comment?: string;
+  communication_rating?: number;
+  quality_rating?: number;
+  professionalism_rating?: number;
+  timeliness_rating?: number;
+}
+
 export const reviewsApi = {
   getUserReviews: (userId: string, params?: { page?: number; page_size?: number }) =>
     api.get(`/reviews/user/${userId}`, { params }),
@@ -10,12 +19,12 @@ export const reviewsApi = {
   getContractReviews: (contractId: string) =>
     api.get(`/reviews/contract/${contractId}`),
 
-  submitReview: (contractId: string, data: {
-    rating: number;
-    comment?: string;
-    communication_rating?: number;
-    quality_rating?: number;
-    professionalism_rating?: number;
-    timeliness_rating?: number;
-  }) => api.post(`/reviews/contract/${contractId}`, data),
+  submitReview: (contractId: string, data: ReviewSubmitBody) =>
+    api.post(`/reviews/contract/${contractId}`, data),
+
+  getOrderReviews: (serviceOrderId: string) =>
+    api.get(`/reviews/order/${serviceOrderId}`),
+
+  submitOrderReview: (serviceOrderId: string, data: ReviewSubmitBody) =>
+    api.post(`/reviews/order/${serviceOrderId}`, data),
 };

@@ -242,6 +242,10 @@ class ServiceOrderOut(BaseModel):
     service: Optional[ServiceOut] = None
     # Populated only on initial order placement when Qi Card payment is needed
     payment_url: Optional[str] = None
+    # Populated on list endpoints — whether the calling user has already
+    # submitted a review on this completed order. Null on detail endpoints
+    # (stays None when not computed). Drives the "Leave review" CTA visibility.
+    has_reviewed: Optional[bool] = None
 
     model_config = {"from_attributes": True}
 

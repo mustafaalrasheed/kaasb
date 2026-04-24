@@ -43,6 +43,7 @@ from app.models.service import (
     ServicePackage,
     ServiceStatus,
 )
+from app.models.review import Review
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.service import (
     ServiceCreate,
@@ -597,7 +598,9 @@ class CatalogService(BaseService):
             .options(selectinload(ServiceOrder.service))
             .order_by(ServiceOrder.created_at.desc())
         )
-        return list(result.scalars().all())
+        orders = list(result.scalars().all())
+        await self._annotate_has_reviewed(orders, client)
+        return orders
 
     async def get_my_orders_as_freelancer(self, freelancer: User) -> list[ServiceOrder]:
         result = await self.db.execute(
@@ -606,7 +609,33 @@ class CatalogService(BaseService):
             .options(selectinload(ServiceOrder.service))
             .order_by(ServiceOrder.created_at.desc())
         )
-        return list(result.scalars().all())
+        orders = list(result.scalars().all())
+        await self._annotate_has_reviewed(orders, freelancer)
+        return orders
+
+    async def _annotate_has_reviewed(
+        self, orders: list[ServiceOrder], user: User
+    ) -> None:
+        """Set ``order.has_reviewed`` for each order, based on whether ``user``
+        has already written a review on it. Uses a single batch query so the
+        list endpoint doesn't turn into N+1. ``has_reviewed`` is a transient
+        attribute — Pydantic picks it up via ``from_attributes=True``.
+        """
+        for order in orders:
+            order.has_reviewed = False
+        if not orders:
+            return
+        order_ids = [o.id for o in orders]
+        reviewed_result = await self.db.execute(
+            select(Review.service_order_id).where(
+                Review.reviewer_id == user.id,
+                Review.service_order_id.in_(order_ids),
+            )
+        )
+        reviewed_ids = {row[0] for row in reviewed_result.all()}
+        for order in orders:
+            if order.id in reviewed_ids:
+                order.has_reviewed = True
 
     async def submit_requirements(
         self,
