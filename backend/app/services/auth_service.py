@@ -572,6 +572,35 @@ class AuthService(BaseService):
         )
         return list(result.scalars().all())
 
+    async def revoke_other_sessions(
+        self, user: User, keep_token_hash: str | None
+    ) -> int:
+        """Revoke all active sessions for the user EXCEPT the one identified
+        by ``keep_token_hash``. Returns how many were revoked.
+
+        Used by the "Log out of other devices" button in /dashboard/settings:
+        users who travel + login on multiple phones accumulate many active
+        refresh tokens (7-day expiry), and pruning them one-by-one is tedious.
+        Current device stays signed-in; all others are invalidated.
+        """
+        now = datetime.now(UTC)
+        result = await self.db.execute(
+            select(RefreshToken).where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.revoked.is_(False),
+                RefreshToken.expires_at > now,
+            )
+        )
+        all_active = list(result.scalars().all())
+        revoked = 0
+        for rt in all_active:
+            if keep_token_hash is not None and rt.token_hash == keep_token_hash:
+                continue
+            rt.revoked = True
+            revoked += 1
+        await self.db.commit()
+        return revoked
+
     async def revoke_session(self, user: User, session_id: uuid.UUID) -> None:
         """Revoke a single refresh token owned by the user."""
         result = await self.db.execute(

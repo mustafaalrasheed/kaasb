@@ -53,6 +53,9 @@ export const authApi = {
 
   revokeSession: (id: string) =>
     api.delete(`/auth/sessions/${id}`),
+
+  revokeOtherSessions: () =>
+    api.post<{ revoked: number }>("/auth/sessions/revoke-others"),
 };
 
 export interface Session {

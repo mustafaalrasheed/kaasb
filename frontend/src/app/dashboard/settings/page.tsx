@@ -77,6 +77,29 @@ export default function SettingsPage() {
     }
   };
 
+  const [revokingOthers, setRevokingOthers] = useState(false);
+  const handleRevokeOtherSessions = async () => {
+    const confirmMsg = ar
+      ? "سيتم تسجيل خروجك من جميع الأجهزة الأخرى. الجهاز الحالي سيبقى مسجّلاً. هل أنت متأكد؟"
+      : "All other devices will be signed out. This device stays signed in. Continue?";
+    if (!window.confirm(confirmMsg)) return;
+    setRevokingOthers(true);
+    try {
+      const res = await authApi.revokeOtherSessions();
+      const count = (res.data as { revoked?: number })?.revoked ?? 0;
+      setSessions((prev) => prev.filter((s) => s.is_current));
+      toast.success(
+        ar
+          ? `تم إنهاء ${count} جلسة`
+          : `${count} session${count === 1 ? "" : "s"} revoked`
+      );
+    } catch (err: unknown) {
+      toast.error(getApiError(err, ar ? "تعذّر إنهاء الجلسات" : "Failed to revoke sessions"));
+    } finally {
+      setRevokingOthers(false);
+    }
+  };
+
   const describeDevice = (ua: string | null) => {
     if (!ua) return ar ? "جهاز غير معروف" : "Unknown device";
     const u = ua.toLowerCase();
@@ -234,8 +257,8 @@ export default function SettingsPage() {
 
       {/* Active Sessions */}
       <div className="card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
+        <div className="flex items-start justify-between mb-4 gap-4">
+          <div className="flex-1 min-w-0">
             <h2 className="text-lg font-semibold text-gray-900">
               {ar ? "الجلسات النشطة" : "Active Sessions"}
             </h2>
@@ -245,6 +268,17 @@ export default function SettingsPage() {
                 : "Devices currently signed in to your account. Revoke any you don't recognize."}
             </p>
           </div>
+          {sessions.length > 1 && (
+            <button
+              onClick={handleRevokeOtherSessions}
+              disabled={revokingOthers}
+              className="text-sm font-medium text-danger-600 hover:text-danger-700 whitespace-nowrap"
+            >
+              {revokingOthers
+                ? (ar ? "جاري..." : "Revoking...")
+                : (ar ? "إنهاء جميع الجلسات الأخرى" : "Sign out of all other devices")}
+            </button>
+          )}
         </div>
 
         {sessionsLoading ? (

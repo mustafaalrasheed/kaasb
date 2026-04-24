@@ -355,6 +355,23 @@ async def list_sessions(
     ]
 
 
+@router.post(
+    "/sessions/revoke-others",
+    summary="Revoke all active sessions except the current one",
+)
+async def revoke_other_sessions(
+    current_user: User = Depends(get_current_user),
+    refresh_token_cookie: str | None = Cookie(default=None, alias="refresh_token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Keep the current session, revoke all other active refresh tokens.
+    Returns how many were revoked."""
+    service = AuthService(db)
+    current_hash = AuthService._hash_token(refresh_token_cookie) if refresh_token_cookie else None
+    revoked = await service.revoke_other_sessions(current_user, current_hash)
+    return {"revoked": revoked}
+
+
 @router.delete(
     "/sessions/{session_id}",
     status_code=status.HTTP_204_NO_CONTENT,
