@@ -614,23 +614,135 @@ async def test_get_thing_not_found():
 ```
 
 **Integration test** — `backend/tests/integration/test_<feature>.py`:
+
+Service-level integration tests that hit real Postgres. Three non-obvious requirements (from the Phase 5b 4-commit debugging tour, 2026-04-23):
+
+1. **Always mark with `loop_scope="session"`** — conftest's `asyncio_default_fixture_loop_scope = "session"` but tests default to function loop. Without this, asyncpg connections are bound to one loop and awaited on another → `RuntimeError: got Future attached to a different loop`.
+
+2. **Patch `QiCardClient` at the IMPORT site, not the module**. `catalog_service.py` does `qi_card = QiCardClient()` inline; patching `app.services.qi_card_client.QiCardClient` misses it.
+
+3. **`await db_session.refresh(obj)` after any service call that used `synchronize_session=False`** (e.g., `place_order` does a bulk UPDATE on `Service.orders_count` — the in-memory instance stays stale).
+
+Template — reference `backend/tests/integration/test_service_order_placement.py`:
+
 ```python
 import pytest
-from httpx import AsyncClient
+import pytest_asyncio
+from unittest.mock import AsyncMock, patch
+from sqlalchemy.ext.asyncio import AsyncSession
 
-@pytest.mark.asyncio
-async def test_create_thing(client: AsyncClient, auth_headers: dict):
-    response = await client.post(
-        "/api/v1/things",
-        json={"name": "Test", "amount": 5000},
-        headers=auth_headers,
+from app.models.service import Service, ServiceCategory, ServicePackage, ServicePackageTier, ServiceStatus
+from app.models.user import User
+from app.schemas.service import ServiceOrderCreate
+from app.services.catalog_service import CatalogService
+
+
+@pytest_asyncio.fixture
+async def active_service(db_session: AsyncSession, sample_freelancer_user: User) -> Service:
+    cat = ServiceCategory(
+        id=uuid.uuid4(), name_en="X", name_ar="X",
+        slug=f"x-{uuid.uuid4().hex[:6]}", is_active=True,
     )
-    assert response.status_code == 201
-    assert response.json()["name"] == "Test"
+    db_session.add(cat)
+    await db_session.flush()
+    svc = Service(
+        id=uuid.uuid4(),
+        freelancer_id=sample_freelancer_user.id,
+        category_id=cat.id,
+        title="...", description="...",
+        slug=f"test-{uuid.uuid4().hex[:6]}",
+        status=ServiceStatus.ACTIVE,
+    )
+    db_session.add(svc)
+    await db_session.flush()
+    return svc
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")   # ← MANDATORY
+async def test_something(db_session, sample_client_user, active_service):
+    with patch("app.services.catalog_service.QiCardClient") as MockQi:  # ← import site
+        MockQi.return_value.create_payment = AsyncMock(return_value={"link": "..."})
+        result = await CatalogService(db_session).some_method(...)
+    await db_session.refresh(active_service)   # ← if bulk UPDATE happened
+    assert active_service.orders_count == 1
 ```
 
 Run: `cd backend && pytest tests/unit/ -v` (fast, no DB)
-Run: `cd backend && pytest tests/integration/ -v` (requires DB + Redis)
+Run: `cd backend && pytest tests/integration/ -v` (requires DB + Redis from CI services / docker compose)
+
+---
+
+### Frontend smoke test (Playwright)
+
+Read-only page-load checks against live production. Lives in `frontend/tests/e2e/*.spec.ts`. Runs locally in ~12s; in CI on every push to main.
+
+```typescript
+import { expect, test } from "@playwright/test";
+
+test.describe("My page smoke", () => {
+    test("returns 200 and has expected content", async ({ page }) => {
+        const response = await page.goto("/my-page");
+        expect(response?.status()).toBe(200);
+
+        // BODY-level text search — avoid `locator('main')` because
+        // layout.tsx wraps children in its own <main>, strict mode
+        // rejects ambiguous selectors.
+        await expect(page.locator("body")).toContainText("expected copy");
+    });
+});
+```
+
+Non-obvious rules (from 2026-04-24 CI debugging):
+
+- **Use `body` selectors for text, not `main`** — nested `<main>` elements (layout's + page's) trip strict mode.
+- **JSON-LD tolerance** — pages can have multiple `ld+json` script tags (Organization, Website, FAQPage). Scan all with `allTextContents()` and match on `"@type":"FaqPage"` pattern, don't assume there's only one.
+- **Don't assert on a page behaviour that your current commit hasn't deployed yet** — Playwright runs against live `kaasb.com`, so a new-footer-link assertion fails on the very push that introduces the footer link. Add the assertion in a follow-up commit after the deploy lands.
+
+Run locally: `cd frontend && npm run test:smoke` (12s)  
+Run with UI: `cd frontend && npm run test:smoke:ui` (step through each test visually)
+
+---
+
+### Regenerating frontend lockfile (when package.json changed)
+
+When adding or bumping a frontend dep without Node locally (or when it's easier to let CI do it):
+
+```bash
+gh workflow run regenerate-lockfile.yml --ref main
+# Wait ~90s
+gh run list --workflow=regenerate-lockfile.yml --limit 1
+# If the workflow pushed a branch but couldn't open its own PR (Actions
+# isn't allowed to create PRs by default — the repo setting is at
+# Settings → Actions → General → "Allow GitHub Actions to create and
+# approve pull requests"; once flipped, future runs open PRs themselves):
+gh pr create --title "chore(deps): regenerate frontend/package-lock.json" \
+  --body "Auto-regenerated" --base main \
+  --head "$(git ls-remote --heads origin 'chore/regenerate-lockfile-*' | tail -1 | sed 's|.*refs/heads/||')"
+gh pr merge <number> --squash --delete-branch --admin
+```
+
+---
+
+### Watching CI + retrying failed jobs
+
+```bash
+# Latest run on main
+gh run list --workflow=ci.yml --branch=main --limit 1
+
+# Watch until done
+gh run watch <id> --exit-status --interval 10
+
+# Show per-job status
+gh run view <id> --json conclusion,jobs -q '{c: .conclusion, j: [.jobs[] | {n: .name, c: .conclusion}]}'
+
+# Retry ONLY the failed jobs (don't re-spend compute on green ones — common
+# after transient GHCR 502s on "Build & Push Docker Images")
+gh run rerun <id> --failed
+
+# Tail failed logs (greps for the actionable lines)
+gh run view <id> --log-failed 2>&1 | grep -E "FAILED|ERROR|AssertionError|TypeError|ImportError" | head -40
+```
 
 ---
 

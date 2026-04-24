@@ -5,7 +5,8 @@
 
 **Production:** https://kaasb.com  
 **Server:** Hetzner CPX22 · 116.203.140.27  
-**Stack:** FastAPI 0.115 · Next.js 15 · PostgreSQL 16 · Redis 7 · Docker
+**Stack:** FastAPI 0.136 · Next.js 15.5 · Python 3.12 · PostgreSQL 16 · Redis 7 · Docker  
+**Status:** Live beta — pushing toward public launch (see `docs/launch/`)
 
 ---
 
@@ -13,19 +14,22 @@
 
 | Module | Description |
 |--------|-------------|
-| **Auth** | JWT + refresh tokens · Google OAuth · Facebook Login · Iraqi phone OTP (+964) · email verification · password reset |
-| **Job Marketplace** | Post jobs · submit proposals · milestone contracts · fixed & hourly pricing |
-| **Gig Marketplace** | Fiverr-style gigs · 3-tier packages (basic/standard/premium) · admin moderation · order flow |
-| **Payments** | QiCard only (IQD) · escrow holds · 10% platform fee · manual payout queue |
-| **Real-time Chat** | WebSocket per conversation · file/image sharing · unread badges · 5s polling fallback |
-| **Notifications** | 15 event types · in-app · email (Resend) · bell dropdown · full history page |
-| **Profiles** | Public freelancer profiles · skills · portfolio · ratings · hourly rate |
-| **Admin Dashboard** | Platform stats · user management · gig moderation · transaction ledger · payout queue |
-| **Dashboards** | Freelancer earnings/gigs/orders · Client orders/saved gigs |
-| **Security** | CSRF · rate limiting · security headers · input sanitization · bcrypt |
-| **SEO** | SSR public pages · JSON-LD · sitemap · Open Graph · hreflang |
-| **i18n** | Arabic primary (RTL) · English secondary · next-intl |
-| **Monitoring** | Prometheus · Grafana · Alertmanager · Sentry · UptimeRobot |
+| **Auth** | JWT + refresh tokens · Google OAuth · Facebook Login · Iraqi phone OTP (WhatsApp → SMS → email fallback) · email verification · password reset · active-session management with "sign out of all other devices" |
+| **Job Marketplace** | Client posts a job · freelancers submit proposals · milestone contracts · fixed-price only (IQD) |
+| **Service Marketplace** (was "Gigs", renamed 2026-04-21) | Freelancer-published services with 3-tier packages (Basic / Standard / Premium) · admin moderation · structured delivery + revision flow · 3-day auto-complete · seller levels (F2) · ranking (F7) |
+| **Buyer Requests** (F1) | Clients post short briefs; freelancers send offers · bridges Jobs + Services |
+| **Disputes** (F5) | Open on active orders · admin resolves release-to-freelancer or refund-to-client · system messages in order chat |
+| **Payments** | QiCard only (IQD) · escrow holds with optimistic-lock versioning · 10% platform fee · manual payout queue · dual-control approvals above 500k IQD · admin audit log |
+| **Chat & moderation** (F6) | WebSocket (Redis pub/sub cross-worker) · typing indicators · read receipts (double-tick) · presence · file attachments · off-platform-contact filter with escalation (warn → block → 24h suspend) |
+| **Notifications** | 20+ event types · in-app + email (Resend, CID-embedded logo) · locale-aware templating (bilingual AR/EN) · per-user opt-out · WS push + bell badge |
+| **Profiles** | Public freelancer profiles · skills · portfolio · ratings (mirrored onto services) · seller level badges |
+| **Admin** | Stats · users · service moderation · transactions · payout queue · disputes tab · audit log · support inbox · support staff role |
+| **Security** | CSRF · rate limiting (Redis) · HSTS · CSP · JWT token rotation on password change · bcrypt · input sanitization · Sentry PII scrubbing · HMAC-signed QiCard redirects |
+| **SEO** | SSR + ISR public pages · per-page `generateMetadata` · JSON-LD (Organization, Website, Service, FAQPage) · sitemap · OG images · robots.txt |
+| **i18n** | Arabic primary (RTL) · English secondary · cookie-based locale (no next-intl) · inline `ar ?` ternaries with server-set `<html dir/lang>` |
+| **Observability** | Prometheus (41 alert rules) · Grafana dashboards · Alertmanager → Discord (critical/high) + email (medium/low) · Sentry · structured JSON logs with correlation IDs · `kaasb_last_backup_timestamp_seconds` textfile metric |
+| **Ops & DR** | Nightly 3-stage backup (DB + uploads + configs) · SHA-256 checksums · monthly restore verification · S3-compatible off-site + optional GPG · rolling deploy with auto-rollback on backend health-check failure |
+| **Testing** | Backend: ruff + mypy + alembic check + 290+ pytest cases (unit + integration hitting real Postgres) · Frontend: ESLint + tsc + Playwright smoke suite (17 tests) against live kaasb.com on every push-to-main |
 
 ---
 
@@ -40,8 +44,8 @@ kaasb/
 │   │   ├── models/          SQLAlchemy 2.0 ORM
 │   │   ├── schemas/         Pydantic v2 request/response
 │   │   └── core/            Config, DB, security, exceptions
-│   ├── alembic/             14 migrations (linear chain)
-│   └── tests/               unit/ + integration/
+│   ├── alembic/             27 migrations (linear chain)
+│   └── tests/               unit/ (20 files) + integration/ (6 files, real Postgres)
 ├── frontend/                Next.js 15 App Router
 │   ├── src/app/             Pages (SSR/CSR/ISR)
 │   ├── src/components/      Reusable components
