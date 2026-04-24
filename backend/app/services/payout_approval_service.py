@@ -21,14 +21,14 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
-from app.models.admin_audit import AdminAuditAction, PayoutApproval, PayoutApprovalStatus
+from app.models.admin_audit import AdminAuditAction, AdminAuditLog, PayoutApproval, PayoutApprovalStatus
 from app.models.payment import Escrow, EscrowStatus
 from app.models.user import User
 from app.services.audit_service import AuditService
@@ -36,6 +36,14 @@ from app.services.payment_service import PaymentService
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Rolling window used when deciding whether to trigger dual-control based on
+# cumulative payouts to a freelancer. Catches the "split a large release into
+# several below-threshold releases" bypass flagged in nightly-2026-04-25 P0 #2.
+# 24h is long enough to catch a deliberate split, short enough that a naturally
+# high-volume freelancer's legitimate weekly earnings don't keep hitting dual
+# control indefinitely.
+_FREELANCER_AGGREGATION_WINDOW = timedelta(hours=24)
 
 
 class PayoutApprovalService:
@@ -70,8 +78,22 @@ class PayoutApprovalService:
         amount_iqd = float(escrow.amount)
         threshold = float(settings.PAYOUT_APPROVAL_THRESHOLD_IQD)
 
-        # Below threshold — single admin, release immediately
-        if amount_iqd <= threshold:
+        # Aggregation-based threshold check (nightly-2026-04-25 P0 #2):
+        # the naive per-escrow check allowed an admin to split a single
+        # logical payout into N sub-threshold escrows for the same
+        # freelancer and release them all without a second signature. Sum
+        # up (a) recent releases in the last 24h to the same freelancer +
+        # (b) any pending approvals queued for the same freelancer +
+        # (c) this release's amount. If the total crosses the threshold,
+        # dual-control kicks in regardless of individual row size.
+        freelancer_total = await self._freelancer_recent_release_total(
+            escrow.freelancer_id
+        )
+        aggregate = freelancer_total + amount_iqd
+        requires_dual = amount_iqd > threshold or aggregate > threshold
+
+        # Below threshold AND cumulative under-threshold — release immediately
+        if not requires_dual:
             release = await PaymentService(self.db).release_escrow_by_id(escrow_id)
             if not release:
                 # Someone else released it between SELECT FOR UPDATE and now
@@ -125,19 +147,38 @@ class PayoutApprovalService:
             amount=amount_iqd,
             currency=escrow.currency,
             ip_address=ip_address,
-            details={"approval_id": str(approval.id), "note": note, "threshold": threshold},
+            details={
+                "approval_id": str(approval.id),
+                "note": note,
+                "threshold": threshold,
+                "freelancer_24h_total": freelancer_total,
+                "aggregate_including_this": aggregate,
+            },
         )
         await self.db.commit()
+        # Choose the wording based on WHY dual control triggered so the
+        # requesting admin understands whether it was this escrow alone or
+        # a cumulative rule — helps distinguish legitimate big payouts
+        # from "I was splitting on purpose and got caught".
+        if amount_iqd > threshold:
+            message = (
+                f"Amount {amount_iqd:,.0f} {escrow.currency} exceeds the dual-control "
+                f"threshold ({threshold:,.0f} {escrow.currency}). A second admin must approve."
+            )
+        else:
+            message = (
+                f"Releases to this freelancer in the last 24h total "
+                f"{aggregate:,.0f} {escrow.currency} (with this one), which exceeds the "
+                f"dual-control threshold ({threshold:,.0f} {escrow.currency}). "
+                f"A second admin must approve."
+            )
         return {
             "status": "pending_second_approval",
             "escrow_id": escrow_id,
             "amount": amount_iqd,
             "currency": escrow.currency,
             "approval_id": approval.id,
-            "message": (
-                f"Amount {amount_iqd:,.0f} {escrow.currency} exceeds the dual-control "
-                f"threshold ({threshold:,.0f} {escrow.currency}). A second admin must approve."
-            ),
+            "message": message,
         }
 
     # ── Approve / reject ─────────────────────────────────────────────────
@@ -306,6 +347,50 @@ class PayoutApprovalService:
         return rows
 
     # ── Helpers ──────────────────────────────────────────────────────────
+
+    async def _freelancer_recent_release_total(
+        self, freelancer_id: uuid.UUID
+    ) -> float:
+        """Total IQD released (or queued to release) to ``freelancer_id`` in the
+        rolling aggregation window, from ANY admin. Two sums added together:
+
+        1. Audited ``ESCROW_RELEASED`` actions targeting that freelancer's
+           escrows within the last ``_FREELANCER_AGGREGATION_WINDOW``.
+        2. Currently PENDING ``PayoutApproval`` rows for that freelancer,
+           regardless of age — if they get approved they add to today's
+           outbound, so they have to count now.
+
+        Filtering by ANY admin (not just the caller) ensures the rule
+        survives a two-admin collusion where each stays under threshold by
+        splitting escrows between them.
+        """
+        cutoff = datetime.now(UTC) - _FREELANCER_AGGREGATION_WINDOW
+
+        released_q = await self.db.execute(
+            select(func.coalesce(func.sum(AdminAuditLog.amount), 0.0))
+            .select_from(AdminAuditLog)
+            .join(Escrow, Escrow.id == AdminAuditLog.target_id)
+            .where(
+                AdminAuditLog.action == AdminAuditAction.ESCROW_RELEASED,
+                AdminAuditLog.target_type == "escrow",
+                AdminAuditLog.created_at >= cutoff,
+                Escrow.freelancer_id == freelancer_id,
+            )
+        )
+        released_sum = float(released_q.scalar_one() or 0.0)
+
+        pending_q = await self.db.execute(
+            select(func.coalesce(func.sum(PayoutApproval.amount), 0.0))
+            .select_from(PayoutApproval)
+            .join(Escrow, Escrow.id == PayoutApproval.escrow_id)
+            .where(
+                PayoutApproval.status == PayoutApprovalStatus.PENDING,
+                Escrow.freelancer_id == freelancer_id,
+            )
+        )
+        pending_sum = float(pending_q.scalar_one() or 0.0)
+
+        return released_sum + pending_sum
 
     async def _load_pending(self, approval_id: uuid.UUID) -> PayoutApproval:
         result = await self.db.execute(

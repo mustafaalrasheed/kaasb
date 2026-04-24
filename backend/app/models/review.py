@@ -77,7 +77,7 @@ class Review(BaseModel):
         nullable=True,
         index=True,
     )
-    contract: Mapped["Contract | None"] = relationship(
+    contract: Mapped[Contract | None] = relationship(
         "Contract", backref="reviews", lazy="raise"
     )
 
@@ -87,7 +87,7 @@ class Review(BaseModel):
         nullable=True,
         index=True,
     )
-    service_order: Mapped["ServiceOrder | None"] = relationship(
+    service_order: Mapped[ServiceOrder | None] = relationship(
         "ServiceOrder", backref="reviews", lazy="raise"
     )
 

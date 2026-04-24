@@ -34,6 +34,7 @@ from app.models.payment import (
     TransactionStatus,
     TransactionType,
 )
+from app.models.review import Review
 from app.models.service import (
     Service,
     ServiceCategory,
@@ -43,7 +44,6 @@ from app.models.service import (
     ServicePackage,
     ServiceStatus,
 )
-from app.models.review import Review
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.service import (
     ServiceCreate,
