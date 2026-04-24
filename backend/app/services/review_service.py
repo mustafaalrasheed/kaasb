@@ -113,12 +113,17 @@ class ReviewService(BaseService):
         instead of the default 0.0 (reviews are contract-scoped, so services
         have no per-listing review aggregate of their own — the whole-
         freelancer rating is what the UI ends up showing anyway).
+
+        Only counts public reviews. ``get_reviews_for_user`` + ``get_review_stats``
+        already filter by ``is_public``; if the aggregate here didn't, the
+        star bar (sourced from ``users.avg_rating``) would drift from the
+        paginated list the user actually sees.
         """
         result = await self.db.execute(
             select(
                 func.avg(Review.rating),
                 func.count(Review.id),
-            ).where(Review.reviewee_id == user_id)
+            ).where(Review.reviewee_id == user_id, Review.is_public.is_(True))
         )
         row = result.one()
         avg_rating = round(float(row[0]), 2) if row[0] else 0.0
