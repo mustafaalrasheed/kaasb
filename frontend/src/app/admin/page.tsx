@@ -59,6 +59,7 @@ interface AdminEscrow {
     phone: string | null;
     qi_card_phone: string | null;
     qi_card_holder_name: string | null;
+    qi_card_account_number: string | null;
   };
 }
 
