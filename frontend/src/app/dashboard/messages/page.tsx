@@ -106,8 +106,15 @@ function MessagesContent() {
     try {
       const res = await messagesApi.getConversations();
       setConversations(res.data.conversations);
-    } catch {
-      toast.error(ar ? "تعذّر تحميل المحادثات" : "Failed to load conversations");
+    } catch (err: unknown) {
+      // Surface backend detail when present. 401 during auth refresh is
+      // the most common cause; without the real message users saw only
+      // "Failed to load conversations" and guessed at the reason.
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      const detail = axiosErr?.response?.data?.detail;
+      toast.error(
+        detail || (ar ? "تعذّر تحميل المحادثات" : "Failed to load conversations")
+      );
     } finally {
       setLoading(false);
     }
@@ -126,7 +133,31 @@ function MessagesContent() {
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "CanceledError") return;
       if (controller.signal.aborted) return;
-      toast.error(ar ? "تعذّر تحميل الرسائل" : "Failed to load messages");
+
+      // Surface the backend's real reason instead of a generic toast.
+      // Backend raises ForbiddenError/NotFoundError with a specific
+      // detail — swallowing that made "Failed to load messages" the
+      // only feedback users saw, forcing them to guess at the cause.
+      const fallback = ar ? "تعذّر تحميل الرسائل" : "Failed to load messages";
+      const axiosErr = err as {
+        response?: { status?: number; data?: { detail?: string } };
+      };
+      const status = axiosErr?.response?.status;
+      const detail = axiosErr?.response?.data?.detail;
+      if (status === 403) {
+        toast.error(
+          detail ||
+            (ar
+              ? "لا يمكنك الوصول إلى هذه المحادثة"
+              : "You're not part of this conversation")
+        );
+      } else if (status === 404) {
+        toast.error(
+          ar ? "المحادثة غير موجودة أو تمّ حذفها" : "Conversation not found"
+        );
+      } else {
+        toast.error(detail || fallback);
+      }
     }
   }, [ar]);
 
