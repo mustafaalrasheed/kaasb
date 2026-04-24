@@ -497,8 +497,11 @@ function MessagesContent() {
   };
 
   const conversationTypeBadge = (c: ConversationSummary): string | null => {
-    if (c.conversation_type === "support") return ar ? "الدعم" : "Support";
-    if (c.conversation_type === "order") return ar ? "طلب" : "Order";
+    // Label describes the CONVERSATION type, not the other user's role.
+    // "Support" alone under an admin's name read as a role tag on that
+    // admin; "Support ticket" makes the context clear.
+    if (c.conversation_type === "support") return ar ? "تذكرة دعم" : "Support ticket";
+    if (c.conversation_type === "order") return ar ? "محادثة طلب" : "Order chat";
     return null;
   };
 
