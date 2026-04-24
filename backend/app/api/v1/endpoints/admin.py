@@ -246,12 +246,25 @@ async def list_jobs(
 async def update_job_status(
     job_id: uuid.UUID,
     data: AdminJobStatusUpdate,
+    request: Request,
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Admin updates job status (e.g., close a fraudulent listing)."""
     service = AdminService(db)
     job = await service.update_job_status(job_id, data.status)
+    # Audit row + atomic commit with the status change
+    # (nightly-2026-04-25 P1 — job moderation was silent on the trail).
+    await AuditService(db).log(
+        admin_id=admin.id,
+        action=AdminAuditAction.JOB_STATUS_CHANGED,
+        target_type="job",
+        target_id=job_id,
+        ip_address=_get_client_ip(request),
+        details={"new_status": data.status, "job_title": job.title},
+    )
+    await db.commit()
+    await db.refresh(job)
     return {"id": str(job.id), "status": job.status.value, "message": f"Job status updated to {data.status}"}
 
 
@@ -263,12 +276,16 @@ async def update_job_status(
     summary="List funded escrows awaiting payout",
 )
 async def list_funded_escrows(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
     _staff: User = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all FUNDED escrows with freelancer Qi Card details for manual payout."""
+    """Paginated list of FUNDED escrows with freelancer Qi Card details
+    for manual payout. Paginated because each row holds PII — see
+    nightly-2026-04-25 P2."""
     service = AdminService(db)
-    return await service.list_funded_escrows()
+    return await service.list_funded_escrows(page=page, page_size=page_size)
 
 
 @router.post(
@@ -383,7 +400,10 @@ async def mark_payout_paid(
     summary="List pending payout approvals",
 )
 async def list_pending_payout_approvals(
-    _staff: User = Depends(get_current_staff),
+    # Admin-only: the queue holds amounts, freelancer PII, and requester
+    # admin emails — all financial/identity detail that shouldn't be
+    # readable by support staff (nightly-2026-04-25 P2).
+    _admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """List all PayoutApprovals awaiting a second admin's decision."""
@@ -453,7 +473,10 @@ async def reject_payout_approval(
 async def list_audit_logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    _staff: User = Depends(get_current_staff),
+    # Admin-only: audit rows include escrow releases, payout approvals,
+    # admin promotions/demotions, and IP addresses. Support staff don't
+    # need this surface for their triage flow (nightly-2026-04-25 P2).
+    _admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Paginated admin action audit log, newest first."""

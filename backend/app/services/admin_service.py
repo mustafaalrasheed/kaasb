@@ -176,10 +176,26 @@ class AdminService(BaseService):
         page_size = self.clamp_page_size(page_size)
         stmt = select(User)
 
+        # Enum coercion guarded — a typo'd query string shouldn't 500 the
+        # admin panel (nightly-2026-04-25 P1).
         if role:
-            stmt = stmt.where(User.primary_role == UserRole(role))
+            try:
+                role_enum = UserRole(role)
+            except ValueError as exc:
+                raise BadRequestError(
+                    f"Unknown role '{role}'. Expected one of: "
+                    f"{', '.join(r.value for r in UserRole)}."
+                ) from exc
+            stmt = stmt.where(User.primary_role == role_enum)
         if status_filter:
-            stmt = stmt.where(User.status == UserStatus(status_filter))
+            try:
+                status_enum = UserStatus(status_filter)
+            except ValueError as exc:
+                raise BadRequestError(
+                    f"Unknown status '{status_filter}'. Expected one of: "
+                    f"{', '.join(s.value for s in UserStatus)}."
+                ) from exc
+            stmt = stmt.where(User.status == status_enum)
         if search:
             safe_search = escape_like(search[:200])
             stmt = stmt.where(
@@ -398,7 +414,12 @@ class AdminService(BaseService):
     async def update_job_status(
         self, job_id: uuid.UUID, new_status: str
     ) -> Job:
-        """Admin updates a job status (e.g., close a fraudulent listing)."""
+        """Admin updates a job status (e.g., close a fraudulent listing).
+
+        Does not commit — the calling endpoint commits after writing
+        the audit row so the status change and audit land together
+        (same atomicity pattern as update_user_status).
+        """
         result = await self.db.execute(
             select(Job).where(Job.id == job_id)
         )
@@ -406,23 +427,38 @@ class AdminService(BaseService):
         if not job:
             raise NotFoundError("Job")
 
-        job.status = JobStatus(new_status)
-        await self.db.commit()
-        await self.db.refresh(job)
+        try:
+            job.status = JobStatus(new_status)
+        except ValueError as exc:
+            raise BadRequestError(
+                f"Unknown job status '{new_status}'. Expected one of: "
+                f"{', '.join(s.value for s in JobStatus)}."
+            ) from exc
+        await self.db.flush()
         return job
 
     # === Escrow Payout Management ===
 
-    async def list_funded_escrows(self) -> list[dict]:
+    async def list_funded_escrows(
+        self, page: int = 1, page_size: int = 50
+    ) -> list[dict]:
         """
-        List all funded escrows awaiting admin manual payout via Qi Card.
+        List funded escrows awaiting admin manual payout via Qi Card.
         Includes both contract-milestone escrows and gig-order escrows.
+
+        Paginated because each row contains freelancer PII (email, phone,
+        QiCard holder + account number). Without a cap, a single request
+        on a stolen admin cookie scrapes every freelancer's payout data
+        (nightly-2026-04-25 P2). ``clamp_page_size`` enforces the max.
         """
+        page_size = self.clamp_page_size(page_size)
         stmt = (
             select(Escrow, User)
             .join(User, User.id == Escrow.freelancer_id)
             .where(Escrow.status == EscrowStatus.FUNDED)
             .order_by(Escrow.funded_at.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         result = await self.db.execute(stmt)
         rows = result.all()

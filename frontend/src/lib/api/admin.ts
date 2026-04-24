@@ -53,17 +53,20 @@ export const adminApi = {
   getAuditLogs: (params?: { page?: number; page_size?: number }) =>
     api.get("/admin/audit-logs", { params }),
 
+  // Canonical endpoints under /services/* (post-rename 2026-04-21). The old
+  // /gigs/admin/* alias router is scheduled for removal in Phase 2 — having
+  // this client call the new path keeps the admin UI working past that drop.
   getPendingGigs: () =>
-    api.get("/gigs/admin/pending"),
+    api.get("/services/admin/pending"),
 
   approveGig: (gigId: string) =>
-    api.post(`/gigs/admin/${gigId}/approve`),
+    api.post(`/services/admin/${gigId}/approve`),
 
   requestGigRevision: (gigId: string, note: string) =>
-    api.post(`/gigs/admin/${gigId}/request-revision`, null, { params: { note } }),
+    api.post(`/services/admin/${gigId}/request-revision`, null, { params: { note } }),
 
   rejectGig: (gigId: string, reason: string) =>
-    api.post(`/gigs/admin/${gigId}/reject`, null, { params: { reason } }),
+    api.post(`/services/admin/${gigId}/reject`, null, { params: { reason } }),
 
   getSupportConversations: (params?: {
     only_unread?: boolean;

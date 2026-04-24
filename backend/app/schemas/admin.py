@@ -4,7 +4,7 @@ Kaasb Platform - Admin Schemas
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -53,7 +53,10 @@ class AdminUserListResponse(BaseModel):
 
 
 class AdminUserStatusUpdate(BaseModel):
-    status: str  # active, suspended, deactivated
+    # Constrained at the schema boundary so an invalid value surfaces as
+    # 422 from Pydantic rather than as a raw 500 ValueError from
+    # UserStatus(new_status) inside the service (nightly-2026-04-25 P1).
+    status: Literal["active", "suspended", "deactivated"]
 
 
 class AdminJobInfo(BaseModel):
@@ -79,7 +82,12 @@ class AdminJobListResponse(BaseModel):
 
 
 class AdminJobStatusUpdate(BaseModel):
-    status: str  # open, closed, cancelled
+    # See AdminUserStatusUpdate — same rationale. JobStatus also has
+    # in_progress / completed / cancelled values; admin moderation only
+    # needs the three here (open is the default, closed shuts down a
+    # fraudulent listing, cancelled is reserved if we ever need a softer
+    # outcome than closed).
+    status: Literal["open", "closed", "cancelled"]
 
 
 class AdminTransactionInfo(BaseModel):

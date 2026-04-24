@@ -45,6 +45,7 @@ class AdminAuditAction(str, enum.Enum):
     PAYOUT_REJECTED = "payout_rejected"
     PAYOUT_MARKED_PAID = "payout_marked_paid"
     USER_STATUS_CHANGED = "user_status_changed"
+    JOB_STATUS_CHANGED = "job_status_changed"
     USER_PROMOTED_ADMIN = "user_promoted_admin"
     USER_DEMOTED_ADMIN = "user_demoted_admin"
     USER_PROMOTED_SUPPORT = "user_promoted_support"

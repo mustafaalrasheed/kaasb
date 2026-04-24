@@ -423,7 +423,9 @@ function AdminPageContent() {
     { value: "approvals", label: ar ? "✅ موافقات الدفع" : "✅ Payout Approvals", adminOnly: true },
     { value: "disputes", label: ar ? "⚠️ النزاعات" : "⚠️ Disputes" },
     { value: "support", label: ar ? "🛟 الدعم" : "🛟 Support" },
-    { value: "audit", label: ar ? "📜 سجل الإجراءات" : "📜 Audit Log" },
+    // Audit log is admin-only on the backend now (financial detail +
+    // IPs). Hide it for support to avoid a click-and-403 experience.
+    { value: "audit", label: ar ? "📜 سجل الإجراءات" : "📜 Audit Log", adminOnly: true },
   ];
   const TABS = ALL_TABS.filter((t) => isAdmin || !t.adminOnly);
 
