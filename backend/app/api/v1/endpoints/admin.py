@@ -103,7 +103,7 @@ async def update_user_status(
 ):
     """Suspend, activate, or deactivate a user."""
     service = AdminService(db)
-    user = await service.update_user_status(user_id, data.status)
+    user = await service.update_user_status(user_id, data.status, acting_admin=admin)
     await AuditService(db).log(
         admin_id=admin.id,
         action=AdminAuditAction.USER_STATUS_CHANGED,
@@ -112,7 +112,11 @@ async def update_user_status(
         ip_address=_get_client_ip(request),
         details={"new_status": data.status, "target_email": user.email},
     )
+    # Atomic: the service flushed but did NOT commit, so this commit
+    # lands the status change and the audit row together. If the audit
+    # write raised, the status change rolls back (nightly-2026-04-25 #4).
     await db.commit()
+    await db.refresh(user)
     return user
 
 
@@ -143,6 +147,7 @@ async def toggle_admin(
         details={"target_email": user.email},
     )
     await db.commit()
+    await db.refresh(user)
     return user
 
 
@@ -177,6 +182,7 @@ async def toggle_support(
         details={"target_email": user.email},
     )
     await db.commit()
+    await db.refresh(user)
     return user
 
 
@@ -209,6 +215,7 @@ async def unsuspend_chat(
         details={"action": "chat_unsuspended", "target_email": user.email},
     )
     await db.commit()
+    await db.refresh(user)
     return user
 
 

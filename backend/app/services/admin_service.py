@@ -7,7 +7,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -31,6 +31,15 @@ from app.services.base import BaseService
 from app.utils.sanitize import escape_like
 
 logger = logging.getLogger(__name__)
+
+# Transaction-scoped advisory lock key for admin-state mutations.
+# Postgres resolves hashtext() per transaction — any literal string works.
+# Serializes update_user_status + toggle_superuser across connections so
+# the last-admin invariant can't be violated by concurrent writes
+# (nightly-2026-04-25 P0 #3).
+_ADMIN_MUTATION_LOCK = (
+    "SELECT pg_advisory_xact_lock(hashtext('kaasb-admin-mutation'))"
+)
 
 
 class AdminService(BaseService):
@@ -192,25 +201,30 @@ class AdminService(BaseService):
         return self.paginated_response(items=users, total=total, page=page, page_size=page_size, key="users")
 
     async def update_user_status(
-        self, user_id: uuid.UUID, new_status: str
+        self, user_id: uuid.UUID, new_status: str, acting_admin: User
     ) -> User:
-        """Admin updates a user's status (active/suspended/deactivated)."""
-        result = await self.db.execute(
-            select(User).where(User.id == user_id)
-        )
-        user = result.scalar_one_or_none()
-        if not user:
-            raise NotFoundError("User")
+        """Admin updates a user's status (active/suspended/deactivated).
 
-        user.status = UserStatus(new_status)
-        await self.db.commit()
-        await self.db.refresh(user)
-        return user
+        Safety guards (nightly-2026-04-25 P0 #1):
+          * An admin cannot change their own account status — that would
+            let a single admin lock themselves out via the UI.
+          * Moving an active admin to a non-active status requires at least
+            one other active admin to remain, otherwise the platform ends
+            up with zero admins able to log in.
 
-    async def toggle_superuser(self, user_id: uuid.UUID, acting_admin: User) -> User:
-        """Grant or revoke admin privileges with safety checks."""
+        Does not commit — the calling endpoint commits once, after writing
+        the audit-log row, so the status change and audit row land in the
+        same transaction (nightly-2026-04-25 P0 #4, audit-loss race).
+        """
         if user_id == acting_admin.id:
-            raise BadRequestError("Cannot modify your own admin privileges")
+            raise BadRequestError(
+                "You can't change your own account status from the admin UI."
+            )
+
+        # Serialize against other admin-state mutations so the last-admin
+        # check can't race with a concurrent toggle_superuser / update on
+        # another admin account.
+        await self.db.execute(text(_ADMIN_MUTATION_LOCK))
 
         result = await self.db.execute(
             select(User).where(User.id == user_id)
@@ -219,16 +233,67 @@ class AdminService(BaseService):
         if not user:
             raise NotFoundError("User")
 
-        # If revoking, ensure at least one other admin remains
-        if user.is_superuser:
+        new_status_enum = UserStatus(new_status)
+        if (
+            user.is_superuser
+            and user.status == UserStatus.ACTIVE
+            and new_status_enum != UserStatus.ACTIVE
+        ):
+            # Count OTHER active admins — we're about to take this one out.
             admin_count_result = await self.db.execute(
                 select(func.count(User.id)).where(
+                    User.id != user_id,
                     User.is_superuser.is_(True),
                     User.status == UserStatus.ACTIVE,
                 )
             )
             admin_count = admin_count_result.scalar() or 0
-            if admin_count <= 1:
+            if admin_count < 1:
+                raise BadRequestError(
+                    "Can't suspend or deactivate the last remaining active admin."
+                )
+
+        user.status = new_status_enum
+        await self.db.flush()
+        return user
+
+    async def toggle_superuser(self, user_id: uuid.UUID, acting_admin: User) -> User:
+        """Grant or revoke admin privileges with safety checks.
+
+        Does not commit — the calling endpoint commits once after writing
+        the audit-log row (nightly-2026-04-25 P0 #4).
+        """
+        if user_id == acting_admin.id:
+            raise BadRequestError("Cannot modify your own admin privileges")
+
+        # Transaction-scoped advisory lock serializes all admin-state
+        # mutations. Without this, two admins concurrently revoking each
+        # other can both pass the "last-admin-remains" check and both
+        # commit, leaving zero admins (nightly-2026-04-25 P0 #3).
+        await self.db.execute(text(_ADMIN_MUTATION_LOCK))
+
+        result = await self.db.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            raise NotFoundError("User")
+
+        # If revoking, ensure at least one OTHER active admin remains.
+        # (The original check `<=1` implicitly counted the target if they
+        # were active, but missed the case where the target was already
+        # suspended/deactivated — e.g. an attacker already drained actives
+        # via update_user_status.)
+        if user.is_superuser:
+            admin_count_result = await self.db.execute(
+                select(func.count(User.id)).where(
+                    User.id != user_id,
+                    User.is_superuser.is_(True),
+                    User.status == UserStatus.ACTIVE,
+                )
+            )
+            admin_count = admin_count_result.scalar() or 0
+            if admin_count < 1:
                 raise BadRequestError("Cannot revoke the last remaining admin")
 
         user.is_superuser = not user.is_superuser
@@ -245,8 +310,7 @@ class AdminService(BaseService):
             "granted to" if user.is_superuser else "revoked from",
             user_id, acting_admin.id,
         )
-        await self.db.commit()
-        await self.db.refresh(user)
+        await self.db.flush()
         return user
 
     async def unsuspend_chat(self, user_id: uuid.UUID) -> User:
@@ -268,8 +332,7 @@ class AdminService(BaseService):
 
         user.chat_suspended_until = None
         logger.info("Chat suspension lifted for user=%s", user_id)
-        await self.db.commit()
-        await self.db.refresh(user)
+        await self.db.flush()
         return user
 
     async def toggle_support(self, user_id: uuid.UUID, acting_admin: User) -> User:
@@ -296,8 +359,7 @@ class AdminService(BaseService):
             "granted to" if user.is_support else "revoked from",
             user_id, acting_admin.id,
         )
-        await self.db.commit()
-        await self.db.refresh(user)
+        await self.db.flush()
         return user
 
     # === Job Moderation ===
