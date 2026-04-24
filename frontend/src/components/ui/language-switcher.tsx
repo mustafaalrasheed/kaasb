@@ -15,20 +15,20 @@ export function LanguageSwitcher() {
 
   const toggle = () => {
     const newLocale = locale === 'ar' ? 'en' : 'ar';
+
+    // Fire-and-forget the backend preference update. An auth refresh loop
+    // or slow backend would otherwise hang the whole toggle for axios's
+    // 30s timeout — the cookie-based UI doesn't depend on this succeeding,
+    // so we must not await it.
+    if (user) {
+      usersApi.updateLocale(newLocale).catch(() => {
+        // Silent — cookie-based UI still flips regardless.
+      });
+    }
+
     startTransition(async () => {
-      // Authenticated users: persist the preference to the backend first so
-      // server-emitted notifications (bell + email) pick the right locale.
-      // Fire-and-forget — a failed PUT shouldn't block the UI toggle because
-      // the cookie drives UI rendering regardless.
-      if (user) {
-        try {
-          await usersApi.updateLocale(newLocale);
-        } catch {
-          // Silent — the server action below still flips the UI.
-        }
-      }
-      // Server Action: sets cookie server-side → redirects → server re-renders layout
-      // with correct html[dir/lang], all text, all context — guaranteed correct
+      // Server Action: sets cookie server-side → redirects → server re-renders
+      // layout with correct html[dir/lang], all text, all context.
       await setLocaleCookie(newLocale, pathname);
     });
   };
