@@ -93,6 +93,7 @@ def test_02_auth():
         "email": TEST_CLIENT_EMAIL, "password": "TestPass123!",
         "first_name": "Test", "last_name": "Client",
         "username": TEST_CLIENT_USERNAME, "primary_role": "client",
+        "terms_accepted": True,
     })
     if r.status_code == 201 and "access_token" in r.json():
         tokens["client"] = r.json()["access_token"]
@@ -106,6 +107,7 @@ def test_02_auth():
         "email": TEST_FREELANCER_EMAIL, "password": "TestPass123!",
         "first_name": "Test", "last_name": "Freelancer",
         "username": TEST_FREELANCER_USERNAME, "primary_role": "freelancer",
+        "terms_accepted": True,
     })
     if r.status_code == 201:
         tokens["freelancer"] = r.json()["access_token"]
@@ -119,6 +121,7 @@ def test_02_auth():
         "email": TEST_CLIENT_EMAIL, "password": "TestPass123!",
         "first_name": "Dup", "last_name": "User",
         "username": f"dup{_UID}", "primary_role": "client",
+        "terms_accepted": True,
     })
     if r.status_code == 409:
         ok("Duplicate email rejected (409)")
@@ -130,6 +133,7 @@ def test_02_auth():
         "email": f"bad{_UID}@kaasb-ci.com", "password": "weak",
         "first_name": "Bad", "last_name": "Pass",
         "username": f"bad{_UID}", "primary_role": "client",
+        "terms_accepted": True,
     })
     if r.status_code == 422:
         ok("Weak password rejected (422)")
@@ -139,6 +143,7 @@ def test_02_auth():
         "email": f"space{_UID}@kaasb-ci.com", "password": "TestPass123!",
         "first_name": "Space", "last_name": "User",
         "username": "has spaces", "primary_role": "client",
+        "terms_accepted": True,
     })
     if r.status_code == 422:
         ok("Username with spaces rejected (422)")

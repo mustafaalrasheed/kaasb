@@ -57,7 +57,7 @@ export default function RegisterClient() {
     setError("");
     setIsLoading(true);
     try {
-      await register(formData);
+      await register({ ...formData, terms_accepted: true });
       router.push("/dashboard");
     } catch (err: unknown) {
       setError(getApiError(err, ar
@@ -87,9 +87,20 @@ export default function RegisterClient() {
             </div>
           )}
 
-          {/* Social login */}
+          {/* Social login — disabled until legal checkbox below the form is ticked */}
           <div className="mb-6">
-            <SocialLoginButtons role={formData.primary_role} onSuccess={() => router.push("/dashboard")} />
+            <SocialLoginButtons
+              role={formData.primary_role}
+              onSuccess={() => router.push("/dashboard")}
+              termsAccepted={legalAccepted}
+            />
+            {!legalAccepted && (
+              <p className="mt-2 text-xs text-gray-500 text-center">
+                {ar
+                  ? "وافق على الشروط أدناه لتفعيل تسجيل الدخول الاجتماعي."
+                  : "Accept the terms below to enable social sign-up."}
+              </p>
+            )}
             <div className="relative mt-5 mb-1">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-200" />

@@ -95,7 +95,12 @@ interface AuthState {
 
   // Actions
   login: (email: string, password: string) => Promise<void>;
-  socialLogin: (provider: "google" | "facebook", token: string, role?: string) => Promise<void>;
+  socialLogin: (
+    provider: "google" | "facebook",
+    token: string,
+    role?: string,
+    termsAccepted?: boolean,
+  ) => Promise<void>;
   register: (data: {
     email: string;
     username: string;
@@ -103,6 +108,7 @@ interface AuthState {
     first_name: string;
     last_name: string;
     primary_role: string;
+    terms_accepted: boolean;
   }) => Promise<void>;
   logout: () => Promise<void>;
   reset: () => void;
@@ -123,8 +129,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     setupVisibilityRefresh();
   },
 
-  socialLogin: async (provider, token, role = "freelancer") => {
-    await authApi.socialLogin({ provider, token, role });
+  socialLogin: async (provider, token, role = "freelancer", termsAccepted = false) => {
+    await authApi.socialLogin({
+      provider,
+      token,
+      role,
+      terms_accepted: termsAccepted,
+    });
     const userResponse = await authApi.getMe();
     set({ user: userResponse.data, isAuthenticated: true, isLoading: false });
     scheduleRefresh();

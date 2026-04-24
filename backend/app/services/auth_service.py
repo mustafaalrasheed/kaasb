@@ -104,6 +104,9 @@ class AuthService(BaseService):
             )
 
         # Create new user — async hash prevents blocking the event loop (~200ms)
+        # Legal acceptance: the Pydantic validator already rejected any body
+        # where ``terms_accepted`` isn't True, so reaching this line is
+        # sufficient proof we should stamp the timestamp.
         user = User(
             email=data.email,
             username=data.username,
@@ -113,6 +116,8 @@ class AuthService(BaseService):
             primary_role=UserRole(data.primary_role),
             status=UserStatus.ACTIVE,  # Skip email verification for MVP
             is_email_verified=True,  # Auto-verify for MVP
+            terms_accepted_at=datetime.now(UTC),
+            terms_version=settings.TERMS_VERSION,
         )
 
         self.db.add(user)
@@ -218,6 +223,7 @@ class AuthService(BaseService):
         provider: str,
         token: str,
         role: str = "freelancer",
+        terms_accepted: bool = False,
         email_service=None,
         user_agent: str | None = None,
         ip_address: str | None = None,
@@ -250,7 +256,18 @@ class AuthService(BaseService):
             user = result.scalar_one_or_none()
 
         if not user:
-            # Create new user from OAuth profile (no password needed)
+            # Create new user from OAuth profile (no password needed).
+            # Legal acceptance is mandatory for new accounts (signup-audit F1);
+            # the frontend only sends ``terms_accepted=true`` after the user
+            # has ticked the checkbox on the register page.
+            if not terms_accepted:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Accept the Terms of Service, Privacy Policy, and "
+                        "Acceptable Use Policy before creating an account."
+                    ),
+                )
             base_username = (first_name + "_" + last_name).lower()
             base_username = "".join(c for c in base_username if c.isalnum() or c == "_")[:20] or "user"
 
@@ -276,6 +293,8 @@ class AuthService(BaseService):
                 is_email_verified=True,
                 google_id=social_id if provider == "google" else None,
                 facebook_id=social_id if provider == "facebook" else None,
+                terms_accepted_at=datetime.now(UTC),
+                terms_version=settings.TERMS_VERSION,
             )
             self.db.add(user)
             await self.db.flush()

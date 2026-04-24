@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     # === Platform Settings ===
     PLATFORM_FEE_PERCENT: float = 10.0  # 10% platform fee
 
+    # Stamped onto ``users.terms_version`` when a user accepts the legal
+    # checkbox at signup. Bump this (and the /terms + /privacy page copy)
+    # together whenever the legal text materially changes; existing
+    # accounts will be forced to re-accept on next login.
+    TERMS_VERSION: str = "2026-04-25"
+
     # === Dual-Control on Payouts ===
     # Escrow releases above this IQD amount require a SECOND admin to approve
     # before the money actually moves. Releases at/below this amount go through

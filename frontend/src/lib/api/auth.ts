@@ -9,6 +9,7 @@ export const authApi = {
     first_name: string;
     last_name: string;
     primary_role: string;
+    terms_accepted: boolean;
   }) => api.post("/auth/register", data),
 
   login: (data: { email: string; password: string }) =>
@@ -33,8 +34,12 @@ export const authApi = {
   resetPassword: (token: string, new_password: string) =>
     api.post("/auth/reset-password", { token, new_password }),
 
-  socialLogin: (data: { provider: "google" | "facebook"; token: string; role?: string }) =>
-    api.post("/auth/social", data),
+  socialLogin: (data: {
+    provider: "google" | "facebook";
+    token: string;
+    role?: string;
+    terms_accepted?: boolean;
+  }) => api.post("/auth/social", data),
 
   sendPhoneOtp: (phone: string) =>
     api.post("/auth/phone/send-otp", { phone }),

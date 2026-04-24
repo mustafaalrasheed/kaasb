@@ -14,9 +14,11 @@ const FACEBOOK_APP_ID = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || "";
 function GoogleLoginButton({
   role,
   onSuccess,
+  termsAccepted,
 }: {
   role: "client" | "freelancer";
   onSuccess: () => void;
+  termsAccepted: boolean;
 }) {
   const { socialLogin } = useAuthStore();
   const [loading, setLoading] = useState(false);
@@ -26,7 +28,7 @@ function GoogleLoginButton({
       setLoading(true);
       try {
         // We pass the access_token; backend will call Google userinfo endpoint
-        await socialLogin("google", response.access_token, role);
+        await socialLogin("google", response.access_token, role, termsAccepted);
         onSuccess();
       } catch (err: unknown) {
         toast.error(getApiError(err, "Google login failed"));
@@ -44,7 +46,7 @@ function GoogleLoginButton({
     <button
       type="button"
       onClick={() => login()}
-      disabled={loading}
+      disabled={loading || !termsAccepted}
       className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50"
     >
       {loading ? (
@@ -92,9 +94,11 @@ declare global {
 function FacebookLoginButton({
   role,
   onSuccess,
+  termsAccepted,
 }: {
   role: "client" | "freelancer";
   onSuccess: () => void;
+  termsAccepted: boolean;
 }) {
   const { socialLogin } = useAuthStore();
   const [loading, setLoading] = useState(false);
@@ -128,7 +132,12 @@ function FacebookLoginButton({
       async (response) => {
         if (response.authResponse?.accessToken) {
           try {
-            await socialLogin("facebook", response.authResponse.accessToken, role);
+            await socialLogin(
+              "facebook",
+              response.authResponse.accessToken,
+              role,
+              termsAccepted,
+            );
             onSuccess();
           } catch (err: unknown) {
             toast.error(getApiError(err, "Facebook login failed"));
@@ -148,7 +157,7 @@ function FacebookLoginButton({
     <button
       type="button"
       onClick={handleFacebookLogin}
-      disabled={loading || !sdkReady}
+      disabled={loading || !sdkReady || !termsAccepted}
       className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50"
     >
       {loading ? (
@@ -168,9 +177,14 @@ function FacebookLoginButton({
 export function SocialLoginButtons({
   role = "freelancer",
   onSuccess,
+  // Defaults to true so existing call sites (login page) don't regress.
+  // Register page passes the real checkbox state so the buttons stay
+  // disabled until the user accepts the legal terms (signup-audit F1).
+  termsAccepted = true,
 }: {
   role?: "client" | "freelancer";
   onSuccess: () => void;
+  termsAccepted?: boolean;
 }) {
   if (!GOOGLE_CLIENT_ID && !FACEBOOK_APP_ID) return null;
 
@@ -178,11 +192,11 @@ export function SocialLoginButtons({
     <div className="space-y-3">
       {GOOGLE_CLIENT_ID && (
         <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-          <GoogleLoginButton role={role} onSuccess={onSuccess} />
+          <GoogleLoginButton role={role} onSuccess={onSuccess} termsAccepted={termsAccepted} />
         </GoogleOAuthProvider>
       )}
       {FACEBOOK_APP_ID && (
-        <FacebookLoginButton role={role} onSuccess={onSuccess} />
+        <FacebookLoginButton role={role} onSuccess={onSuccess} termsAccepted={termsAccepted} />
       )}
     </div>
   );

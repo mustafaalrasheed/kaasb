@@ -157,6 +157,16 @@ class User(BaseModel):
     # Incremented on logout-all to invalidate all outstanding access tokens
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
 
+    # === Legal acceptance (T&C + Privacy + Acceptable Use) ===
+    # Set once at register-time when the user ticks the legal checkbox.
+    # NULL for accounts that predate this feature (signup-audit F1). On a
+    # future terms revision, flip these back to NULL for all users and
+    # force a re-accept on next login.
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    terms_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     @property
     def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"

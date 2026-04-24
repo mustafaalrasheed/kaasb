@@ -249,6 +249,7 @@ async def social_login(
     ua, ip = _session_metadata(request)
     tokens = await service.social_login(
         data.provider, data.token, data.role,
+        terms_accepted=data.terms_accepted,
         email_service=email_service, user_agent=ua, ip_address=ip,
     )
     _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)

@@ -24,6 +24,11 @@ class UserRegister(BaseModel):
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
     primary_role: str = Field(default="client", pattern=r"^(client|freelancer)$")
+    # Must be true for the register call to succeed. The front-end already
+    # gates the submit button on this, but enforcing server-side means an
+    # API client or a tampered request cannot skip it. Persisted as
+    # ``users.terms_accepted_at`` + ``users.terms_version`` (signup-audit F1).
+    terms_accepted: bool = Field(default=False)
 
     @field_validator("password")
     @classmethod
@@ -34,6 +39,16 @@ class UserRegister(BaseModel):
             raise ValueError("Password must contain at least one digit")
         if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in v):
             raise ValueError("Password must contain at least one special character")
+        return v
+
+    @field_validator("terms_accepted")
+    @classmethod
+    def validate_terms_accepted(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError(
+                "You must accept the Terms of Service, Privacy Policy, "
+                "and Acceptable Use Policy to register."
+            )
         return v
 
 
@@ -68,6 +83,11 @@ class SocialLoginRequest(BaseModel):
     provider: str = Field(..., pattern=r"^(google|facebook)$")
     token: str = Field(..., min_length=10, description="Access token from Google or Facebook OAuth flow")
     role: str = Field(default="freelancer", pattern=r"^(client|freelancer)$", description="Role for new accounts")
+    # Required for NEW-account creation via social login — the frontend
+    # sets this to true only after the user has ticked the legal checkbox.
+    # Ignored (and safely None/false) on returning-user logins since they
+    # already have ``terms_accepted_at`` stamped from their first registration.
+    terms_accepted: bool = Field(default=False)
 
 
 # === User Profile Schemas ===
