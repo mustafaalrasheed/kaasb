@@ -104,7 +104,7 @@ interface AuthState {
     last_name: string;
     primary_role: string;
   }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   reset: () => void;
   fetchUser: () => Promise<void>;
   initialize: () => Promise<void>;
@@ -139,9 +139,19 @@ export const useAuthStore = create<AuthState>((set) => ({
     setupVisibilityRefresh();
   },
 
-  logout: () => {
+  logout: async () => {
     if (_refreshTimer) { clearTimeout(_refreshTimer); _refreshTimer = null; }
-    authApi.logout().catch(() => {});
+    // Await the backend call so httpOnly cookies are cleared server-side
+    // BEFORE we navigate. Without the await the POST is fire-and-forget
+    // and the next page's initialize() can call /auth/me while cookies
+    // are still valid → user is re-authenticated, requiring a second
+    // logout click. Network failures still proceed (catch swallowed) so a
+    // flaky connection can't strand the user logged-in in the UI.
+    try {
+      await authApi.logout();
+    } catch {
+      // Ignore — clear local state regardless.
+    }
     set({ user: null, isAuthenticated: false });
     window.location.href = "/";
   },
