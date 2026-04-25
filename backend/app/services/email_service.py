@@ -221,11 +221,29 @@ class EmailService:
         message: str,
         link_url: str | None = None,
         lang: Literal["ar", "en"] = "ar",
+        recipient_user_id: str | None = None,
     ) -> bool:
         """Generic notification email. Called from NotificationService for the
         opted-in notification types. The title/message arguments are expected
         to already be in the recipient's preferred language (the notification
-        service resolves locale before calling this)."""
+        service resolves locale before calling this).
+
+        ``recipient_user_id`` is used to mint a per-recipient signed
+        unsubscribe URL. When omitted (e.g. unauthenticated test sends),
+        the email goes out without an unsubscribe link — graceful degrade,
+        not a failure (chat-notifications-audit 3.3).
+        """
+        unsubscribe_url: str | None = None
+        if recipient_user_id:
+            from app.core.security import create_email_token
+            token = create_email_token(
+                user_id=str(recipient_user_id),
+                token_type="unsubscribe",
+                expires_minutes=60 * 24 * 30,  # 30 days
+            )
+            backend_base = self._settings.FRONTEND_URL.rstrip("/")
+            unsubscribe_url = f"{backend_base}/api/v1/users/unsubscribe?token={token}"
+
         ctx = {
             "title": title,
             "message": message,
@@ -233,6 +251,7 @@ class EmailService:
             "site_name": "Kaasb",
             "lang": lang,
             "dir": "rtl" if lang == "ar" else "ltr",
+            "unsubscribe_url": unsubscribe_url,
         }
         template = f"notification_{lang}.html"
         subject = f"{title} | Kaasb"

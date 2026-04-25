@@ -93,6 +93,7 @@ async def _send_notification_email_bg(
     message: str,
     link_url: str | None,
     lang: str,
+    recipient_user_id: str,
 ) -> None:
     """Send the notification email via Resend in the background so a slow
     provider never stalls the caller. Bumps the dispatch counter on either
@@ -106,6 +107,7 @@ async def _send_notification_email_bg(
             message=message,
             link_url=link_url,
             lang="en" if lang == "en" else "ar",  # Literal narrowing for mypy
+            recipient_user_id=recipient_user_id,
         )
         _bump_dispatch("email", "ok" if sent else "fail")
     except Exception:
@@ -248,6 +250,7 @@ class NotificationService(BaseService):
                         message=message,
                         link_url=link_url,
                         lang=locale if locale in _SUPPORTED_LOCALES else _DEFAULT_LOCALE,
+                        recipient_user_id=str(user_id),
                     )
                 )
 

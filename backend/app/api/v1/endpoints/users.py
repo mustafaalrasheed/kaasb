@@ -7,14 +7,20 @@ POST   /users/avatar               - Upload avatar
 DELETE /users/avatar               - Remove avatar
 PUT    /users/password             - Change password
 DELETE /users/account              - Deactivate account
+GET    /users/unsubscribe          - One-click email opt-out (token-signed, no login)
 """
 
+import logging
+import uuid
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
 from app.core.database import get_db
+from app.core.security import verify_email_token
 from app.models.user import User
 from app.schemas.user import (
     PasswordChange,
@@ -25,6 +31,8 @@ from app.schemas.user import (
 )
 from app.services.user_service import UserService
 from app.utils.files import delete_avatar, save_avatar
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -171,6 +179,120 @@ async def update_my_email_preferences(
     current_user.email_notifications_enabled = value
     await db.commit()
     return {"email_notifications_enabled": value}
+
+
+# Public, no-auth unsubscribe endpoint. The email's footer link points here
+# with a per-recipient signed JWT (type="unsubscribe", 30-day expiry). Hitting
+# this URL flips email_notifications_enabled=false and renders a minimal
+# bilingual confirmation page — no login required, deliverable to anyone who
+# just wants to stop the email noise (chat-notifications-audit 3.3).
+
+_UNSUBSCRIBE_OK_HTML = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unsubscribed — Kaasb</title>
+<style>
+body{{font-family:system-ui,-apple-system,Segoe UI,Tahoma,Arial,sans-serif;
+background:#f4f7f9;color:#1a1a2e;margin:0;padding:40px 20px;}}
+.card{{max-width:520px;margin:0 auto;background:#fff;border-radius:12px;
+padding:36px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.06);text-align:center;}}
+h1{{font-size:22px;margin:0 0 16px;color:#2188cb;}}
+p{{font-size:15px;line-height:1.7;color:#555;margin:0 0 12px;}}
+.ar{{direction:rtl;text-align:right;border-top:1px solid #e8ecef;
+margin-top:24px;padding-top:24px;font-family:Tahoma,Arial,sans-serif;}}
+a{{color:#2188cb;text-decoration:none;font-weight:600;}}
+</style></head><body><div class="card">
+<h1>You're unsubscribed.</h1>
+<p>You won't get email copies of in-app notifications from Kaasb anymore.
+You'll still see them in the bell icon when you sign in.</p>
+<p>Changed your mind? <a href="{frontend_url}/dashboard/settings">Re-enable
+in your settings</a>.</p>
+<div class="ar"><h1>تم إلغاء الاشتراك.</h1>
+<p>لن تتلقى نسخاً بريدية من إشعارات كاسب بعد الآن. ستبقى الإشعارات
+متاحة عبر الجرس عند تسجيل دخولك.</p>
+<p>هل غيّرت رأيك؟ <a href="{frontend_url}/dashboard/settings">أعد التفعيل
+من الإعدادات</a>.</p></div></div></body></html>
+"""
+
+_UNSUBSCRIBE_BAD_HTML = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Link expired — Kaasb</title>
+<style>
+body{{font-family:system-ui,-apple-system,Segoe UI,Tahoma,Arial,sans-serif;
+background:#f4f7f9;color:#1a1a2e;margin:0;padding:40px 20px;}}
+.card{{max-width:520px;margin:0 auto;background:#fff;border-radius:12px;
+padding:36px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.06);text-align:center;}}
+h1{{font-size:22px;margin:0 0 16px;color:#c44569;}}
+p{{font-size:15px;line-height:1.7;color:#555;margin:0 0 12px;}}
+a{{color:#2188cb;text-decoration:none;font-weight:600;}}
+</style></head><body><div class="card">
+<h1>This unsubscribe link isn't valid anymore.</h1>
+<p>It may have expired (links work for 30 days) or already been used.
+You can manage email preferences directly in your account.</p>
+<p><a href="{frontend_url}/dashboard/settings">Open settings</a></p>
+</div></body></html>
+"""
+
+
+@router.get(
+    "/unsubscribe",
+    response_class=HTMLResponse,
+    include_in_schema=False,  # not part of the public API surface
+    summary="One-click email-notification opt-out (signed token, no login)",
+)
+async def unsubscribe_via_token(
+    token: str = Query(..., min_length=10, description="Signed unsubscribe token from a notification email"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint reachable from the unsubscribe link in any
+    notification email. Verifies the JWT, flips the recipient's
+    ``email_notifications_enabled`` to false, returns a minimal bilingual
+    confirmation page.
+
+    Idempotent: re-clicking the same link silently re-applies the false
+    flag — never returns an error if the user is already opted out.
+    Bad / expired tokens render a friendly "link expired" page so the
+    user can self-serve from their settings.
+    """
+    from app.core.config import get_settings
+    settings = get_settings()
+
+    try:
+        payload = verify_email_token(token, expected_type="unsubscribe")
+    except ValueError as exc:
+        logger.info("unsubscribe: invalid token: %s", exc)
+        return HTMLResponse(
+            _UNSUBSCRIBE_BAD_HTML.format(frontend_url=settings.FRONTEND_URL),
+            status_code=400,
+        )
+
+    user_id_raw = payload.get("sub")
+    try:
+        user_id = uuid.UUID(str(user_id_raw))
+    except (TypeError, ValueError):
+        logger.info("unsubscribe: token missing/invalid sub claim")
+        return HTMLResponse(
+            _UNSUBSCRIBE_BAD_HTML.format(frontend_url=settings.FRONTEND_URL),
+            status_code=400,
+        )
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        # User deleted between email send and click — treat as success
+        # to avoid leaking account-existence info.
+        return HTMLResponse(
+            _UNSUBSCRIBE_OK_HTML.format(frontend_url=settings.FRONTEND_URL),
+        )
+
+    if user.email_notifications_enabled:
+        user.email_notifications_enabled = False
+        await db.commit()
+        logger.info("unsubscribe: opted out user=%s", user_id)
+    return HTMLResponse(
+        _UNSUBSCRIBE_OK_HTML.format(frontend_url=settings.FRONTEND_URL),
+    )
 
 
 @router.post(

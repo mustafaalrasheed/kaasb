@@ -37,6 +37,12 @@
     <div class="footer">
       <p>© 2026 Kaasb Technology. جميع الحقوق محفوظة | All rights reserved.</p>
       <p><a href="https://kaasb.com">kaasb.com</a> · <a href="https://kaasb.com/privacy">Privacy</a> · <a href="mailto:support@kaasb.com">Support</a></p>
+      {% if unsubscribe_url %}
+      <p style="margin-top:8px;font-size:11px;color:#bbb;">
+        Don't want these emails? <a href="{{ unsubscribe_url }}">Unsubscribe</a>
+        — لا تريد هذه الرسائل؟ <a href="{{ unsubscribe_url }}">إلغاء الاشتراك</a>
+      </p>
+      {% endif %}
     </div>
   </div>
 </div>
