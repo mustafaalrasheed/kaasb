@@ -23,6 +23,7 @@ from app.schemas.payment import (
     TransactionListResponse,
 )
 from app.services.payment_service import PaymentService
+from app.services.zain_cash_client import ZainCashClient, ZainCashError
 
 logger = logging.getLogger(__name__)
 
@@ -216,5 +217,75 @@ async def qi_card_cancel(
 
     return RedirectResponse(
         url=f"https://{settings.DOMAIN}/payment/result?status=cancelled&order={CartID}",
+        status_code=302,
+    )
+
+
+# === Zain Cash callbacks ============================================
+#
+# Zain Cash uses a single redirect URL (not three like Qi Card) — the buyer
+# always lands here regardless of success / failure / cancel. The actual
+# outcome lives in a JWT appended as ?token=<jwt>, signed with our merchant
+# secret. Defense in depth:
+#   * verify the JWT — proves Zain Cash sent it (only ZC + Kaasb know the
+#     merchant secret), and gives us a tamper-proof orderId + status.
+#   * verify our own sig — proves the URL was issued by us in fund_escrow,
+#     so an attacker forging a JWT with their own ZC merchant account can't
+#     replay it against an orderId we never created.
+
+@router.get(
+    "/zain-cash/callback",
+    summary="Zain Cash payment callback (single URL, JWT-signed)",
+    include_in_schema=False,
+)
+async def zain_cash_callback(
+    token: str = Query(..., description="JWT signed by our merchant secret"),
+    sig: str = Query("", description="HMAC-SHA256 signature of order_id"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Zain Cash appends ?token=<jwt> to our redirectUrl after the buyer
+    pays / fails / cancels. The JWT carries ``orderId`` + ``status``
+    (\"success\" or anything else)."""
+    settings = get_settings()
+    zc = ZainCashClient()
+    try:
+        claims = zc.verify_redirect_token(token)
+    except ZainCashError as exc:
+        logger.warning("zain_cash callback token rejected: %s", exc)
+        return RedirectResponse(
+            url=f"https://{settings.DOMAIN}/payment/result?status=error",
+            status_code=302,
+        )
+
+    order_id = str(claims.get("orderId", ""))
+    status = str(claims.get("status", "")).lower()
+    logger.info(
+        "zain_cash callback: order=%s status=%s op=%s",
+        order_id, status, claims.get("operationId"),
+    )
+
+    if not order_id:
+        return RedirectResponse(
+            url=f"https://{settings.DOMAIN}/payment/result?status=error",
+            status_code=302,
+        )
+
+    service = PaymentService(db)
+    if status == "success":
+        # confirm_qi_card_payment is gateway-agnostic at the persistence
+        # layer — it looks up the escrow by order_id, marks it FUNDED,
+        # marks the funding Transaction COMPLETED. Reusing it for
+        # Zain Cash means a single code path drives both gateways.
+        # TODO(rename): drop the qi_card prefix from these methods in a
+        # future refactor — they don't actually care which gateway sent
+        # the callback once the entry-point JWT/sig is verified.
+        ok = await service.confirm_qi_card_payment(order_id=order_id, sig=sig)
+        result_status = "success" if ok else "error"
+    else:
+        await service.handle_qi_card_payment_failed(order_id=order_id, sig=sig)
+        result_status = "failed" if status in {"failed", "failure"} else "cancelled"
+
+    return RedirectResponse(
+        url=f"https://{settings.DOMAIN}/payment/result?status={result_status}&order={order_id}",
         status_code=302,
     )

@@ -104,6 +104,31 @@ class Settings(BaseSettings):
     # Feature flag: only flip to true once the four env vars above are set
     # AND a successful UAT smoke test has been recorded.
     QI_CARD_USE_V1: bool = False
+
+    # === Zain Cash (parallel gateway) ===
+    # Iraqi mobile-money product from Zain. Real merchant API (unlike
+    # Asiacell airtime), JWT-signed init flow:
+    #   1. POST /transaction/init with a JWT signed by ZAIN_CASH_MERCHANT_SECRET,
+    #      claims include {amount, serviceType, msisdn, orderId, redirectUrl,
+    #      iat, exp}. Body = {token: <jwt>, merchantId, lang}.
+    #   2. Response carries {id} — the operation id.
+    #   3. Redirect buyer to /transaction/pay?id=<operation_id>.
+    #   4. After buyer pays / cancels, ZC redirects browser to
+    #      ZAIN_CASH_REDIRECT_URL?token=<JWT> where the JWT carries
+    #      {orderId, status: 'success'|'failed', operationId, ...}.
+    #
+    # Hosts:
+    #   sandbox   https://test.zaincash.iq
+    #   prod      https://api.zaincash.iq
+    # Auth: HS256 JWT signed with the merchant secret (no separate API key).
+    ZAIN_CASH_PRODUCTION: bool = False
+    ZAIN_CASH_SANDBOX_URL: str = "https://test.zaincash.iq"
+    ZAIN_CASH_PRODUCTION_URL: str = "https://api.zaincash.iq"
+    ZAIN_CASH_MERCHANT_ID: str = ""
+    ZAIN_CASH_MERCHANT_SECRET: str = ""
+    ZAIN_CASH_MSISDN: str = ""  # Merchant phone, e.g. 9647827124591
+    ZAIN_CASH_LANG: str = "ar"  # ar | en — passed to ZC for the hosted page
+    ZAIN_CASH_SERVICE_TYPE: str = "Kaasb"  # Free-form label shown on ZC's pay page
     # Idempotency window for create_payment — within this many seconds a repeat
     # call with the same order_id returns the cached redirect link instead of
     # creating a new Qi Card charge. Matches Qi Card's own payment-session TTL.
@@ -183,6 +208,20 @@ class Settings(BaseSettings):
                         "QI_CARD_USE_V1 is true but required v1 settings are "
                         f"missing: {', '.join(missing)}"
                     )
+            # Zain Cash: same fail-fast pattern. If the merchant credentials
+            # are partially set (e.g. someone added two of three), the
+            # client would silently 401 every payment attempt.
+            zc_set = [
+                bool(self.ZAIN_CASH_MERCHANT_ID),
+                bool(self.ZAIN_CASH_MERCHANT_SECRET),
+                bool(self.ZAIN_CASH_MSISDN),
+            ]
+            if any(zc_set) and not all(zc_set):
+                raise ValueError(
+                    "Zain Cash configuration is partial — set all of "
+                    "ZAIN_CASH_MERCHANT_ID, ZAIN_CASH_MERCHANT_SECRET, "
+                    "and ZAIN_CASH_MSISDN, or none of them."
+                )
             if not self.RESEND_API_KEY:
                 logger.warning("RESEND_API_KEY not set — transactional emails will not be sent")
             # In production: replace dev origins with production-only origins.

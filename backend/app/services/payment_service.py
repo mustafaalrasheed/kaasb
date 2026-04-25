@@ -51,6 +51,7 @@ from app.schemas.payment import (
 from app.services.base import BaseService
 from app.services.notification_service import notify
 from app.services.qi_card_client import QiCardClient, QiCardError
+from app.services.zain_cash_client import ZainCashClient, ZainCashError
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -75,6 +76,7 @@ class PaymentService(BaseService):
         super().__init__(db)
         self.platform_fee_rate = Decimal(str(settings.PLATFORM_FEE_PERCENT)) / Decimal("100")
         self.qi_card = QiCardClient()
+        self.zain_cash = ZainCashClient()
 
     # === Helpers ===
 
@@ -230,39 +232,71 @@ class PaymentService(BaseService):
 
         # Server-controlled redirect URLs — never user-supplied (SSRF protection).
         # sig = HMAC(SECRET_KEY, order_id): ties the success URL to our server so
-        # a user cannot bypass Qi Card by hitting the success URL directly with their
+        # a user cannot bypass the gateway by hitting the success URL directly with their
         # known order_id. Qi Card preserves existing query params when appending CartID.
         sig = self._sign_order_id(order_id)
         base = f"https://{settings.DOMAIN}"
-        success_url = f"{base}/api/v1/payments/qi-card/success?sig={sig}"
-        failure_url = f"{base}/api/v1/payments/qi-card/failure?sig={sig}"
-        cancel_url  = f"{base}/api/v1/payments/qi-card/cancel?sig={sig}"
 
-        # Initiate Qi Card payment (milestone.amount is already IQD).
-        # Round to the nearest whole IQD (Qi Card requires int amounts); plain
+        # Round to the nearest whole IQD (gateways require int amounts); plain
         # int() truncates toward zero and systematically underpays by up to 0.99.
         amount_iqd_int = int(
             Decimal(str(fees["amount"])).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         )
-        try:
-            qi_result = await self.qi_card.create_payment(
-                amount_iqd=amount_iqd_int,
-                order_id=order_id,
-                success_url=success_url,
-                failure_url=failure_url,
-                cancel_url=cancel_url,
-            )
-        except QiCardError as e:
-            logger.exception("Qi Card error in fund_escrow: %s", e)
-            # Explicit rollback mirrors place_order's pattern — drops any
-            # validation-time selects or partial state from the session so
-            # the outer request gets a clean slate on the error path.
-            await self.db.rollback()
-            raise ExternalServiceError("Payment gateway error. Please try again later.") from e
 
-        qi_payment_id = order_id   # Qi Card uses our orderId to identify the payment
-        amount_iqd = qi_result["amount_iqd"]
-        form_url = qi_result.get("link")
+        # Branch on which gateway the buyer chose. Each gateway gets its
+        # own callback shape (Qi Card uses 3 separate URLs for
+        # success/failure/cancel; Zain Cash uses 1 URL with a JWT token
+        # carrying the status). The escrow + transaction shape is
+        # gateway-agnostic — only the redirect URL and provider enum
+        # differ per branch.
+        provider_value = data.provider
+        if provider_value == "zain_cash":
+            redirect_url = f"{base}/api/v1/payments/zain-cash/callback?sig={sig}"
+            try:
+                zc_result = await self.zain_cash.create_payment(
+                    amount_iqd=amount_iqd_int,
+                    order_id=order_id,
+                    redirect_url=redirect_url,
+                )
+            except ZainCashError as e:
+                logger.exception("Zain Cash error in fund_escrow: %s", e)
+                await self.db.rollback()
+                raise ExternalServiceError(
+                    "Payment gateway error. Please try again later."
+                ) from e
+
+            external_transaction_id = zc_result["operation_id"]
+            amount_iqd = zc_result["amount_iqd"]
+            form_url = zc_result["redirect_url"]
+            chosen_provider = PaymentProvider.ZAIN_CASH
+            description = f"Zain Cash escrow payment for milestone: {milestone.title}"
+        else:
+            success_url = f"{base}/api/v1/payments/qi-card/success?sig={sig}"
+            failure_url = f"{base}/api/v1/payments/qi-card/failure?sig={sig}"
+            cancel_url  = f"{base}/api/v1/payments/qi-card/cancel?sig={sig}"
+            try:
+                qi_result = await self.qi_card.create_payment(
+                    amount_iqd=amount_iqd_int,
+                    order_id=order_id,
+                    success_url=success_url,
+                    failure_url=failure_url,
+                    cancel_url=cancel_url,
+                )
+            except QiCardError as e:
+                logger.exception("Qi Card error in fund_escrow: %s", e)
+                # Explicit rollback mirrors place_order's pattern — drops any
+                # validation-time selects or partial state from the session so
+                # the outer request gets a clean slate on the error path.
+                await self.db.rollback()
+                raise ExternalServiceError(
+                    "Payment gateway error. Please try again later."
+                ) from e
+
+            external_transaction_id = order_id  # Qi Card v0 uses our orderId
+            amount_iqd = qi_result["amount_iqd"]
+            form_url = qi_result.get("link")
+            chosen_provider = PaymentProvider.QI_CARD
+            description = f"Qi Card escrow payment for milestone: {milestone.title}"
 
         # Create transaction + escrow and flush them together. BaseModel.id is
         # generated client-side (uuid.uuid4 default), so transaction.id is
@@ -279,9 +313,9 @@ class PaymentService(BaseService):
             payer_id=client.id,
             contract_id=contract.id,
             milestone_id=milestone.id,
-            provider=PaymentProvider.QI_CARD,
-            external_transaction_id=qi_payment_id,
-            description=f"Qi Card escrow payment for milestone: {milestone.title}",
+            provider=chosen_provider,
+            external_transaction_id=external_transaction_id,
+            description=description,
         )
         escrow = Escrow(
             amount=fees["amount"],
@@ -307,10 +341,11 @@ class PaymentService(BaseService):
             raise
 
         logger.info(
-            "Qi Card payment initiated: milestone=%s payment_id=%s amount_iqd=%s",
-            data.milestone_id, qi_payment_id, amount_iqd,
+            "%s payment initiated: milestone=%s ext_id=%s amount_iqd=%s",
+            chosen_provider.value, data.milestone_id, external_transaction_id, amount_iqd,
         )
 
+        gateway_label = "Zain Cash" if chosen_provider == PaymentProvider.ZAIN_CASH else "Qi Card"
         return EscrowFundResponse(
             escrow_id=escrow.id,
             milestone_id=milestone.id,
@@ -319,11 +354,11 @@ class PaymentService(BaseService):
             freelancer_amount=fees["net_amount"],
             status="pending_payment",
             payment_redirect_url=form_url,
-            qi_card_payment_id=qi_payment_id,
+            qi_card_payment_id=external_transaction_id,
             message=(
-                f"Redirect client to complete Qi Card payment. "
-                f"Amount: {amount_iqd:,} IQD (${fees['amount']:.2f}). "
-                f"Freelancer receives ${fees['net_amount']:.2f} after "
+                f"Redirect client to complete {gateway_label} payment. "
+                f"Amount: {amount_iqd:,} IQD. "
+                f"Freelancer receives {fees['net_amount']:,.0f} IQD after "
                 f"{settings.PLATFORM_FEE_PERCENT}% platform fee."
             ),
         )

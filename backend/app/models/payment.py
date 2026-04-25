@@ -33,6 +33,7 @@ class PaymentProvider(str, enum.Enum):
     """Supported payment providers."""
     MANUAL = "manual"  # For admin-managed payouts
     QI_CARD = "qi_card"  # Iraqi Qi Card payment gateway
+    ZAIN_CASH = "zain_cash"  # Iraqi Zain Cash mobile-money gateway
 
 
 class PaymentAccountStatus(str, enum.Enum):

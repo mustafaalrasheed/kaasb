@@ -4,6 +4,7 @@ Kaasb Platform - Payment Schemas
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -74,8 +75,15 @@ class PaymentAccountResponse(BaseModel):
 # === Fund Escrow (Client) ===
 
 class EscrowFundRequest(BaseModel):
-    """Client funds escrow for a milestone via Qi Card."""
+    """Client funds escrow for a milestone via the chosen gateway.
+
+    ``provider`` selects which payment gateway hosts the redirect:
+    ``qi_card`` (default — backwards-compatible with existing clients),
+    or ``zain_cash`` (added 2026-04-25 for the second-gateway rollout).
+    Server-controlled callback URLs differ per gateway.
+    """
     milestone_id: uuid.UUID
+    provider: Literal["qi_card", "zain_cash"] = "qi_card"
     # callback_url and return_url are server-controlled constants — never user-supplied
 
 
