@@ -12,7 +12,7 @@
 
 import type { Metadata } from "next";
 import ServiceDetailClient from "./service-detail-client";
-import { SITE_NAME, SITE_URL, serviceDetailMeta, canonicalUrl } from "@/lib/seo";
+import { SITE_NAME, serviceDetailMeta, canonicalUrl } from "@/lib/seo";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";

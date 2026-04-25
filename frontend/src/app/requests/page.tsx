@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useLocale } from "@/providers/locale-provider";
 import { buyerRequestsApi, servicesApi } from "@/lib/api";
-import type { BuyerRequest, BuyerRequestOffer, BuyerRequestListResponse } from "@/types/buyer_request";
+import type { BuyerRequest, BuyerRequestListResponse } from "@/types/buyer_request";
 
 interface Category {
   id: string;
