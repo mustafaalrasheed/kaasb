@@ -21,6 +21,8 @@ env/
 *~
 .DS_Store
 Thumbs.db
+# Word / Excel / PowerPoint owner-lock files (created when the doc is open)
+~$*
 
 # === Environment Variables — NEVER commit real secrets ===
 .env
