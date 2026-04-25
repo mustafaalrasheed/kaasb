@@ -14,13 +14,20 @@ export default function RegisterClient() {
   const { locale } = useLocale();
   const ar = locale === "ar";
 
+  // Default everyone to "client" at signup. The marketplace mode toggle in
+  // the navbar (cookie-driven, see useEffectiveRole) lets users flip between
+  // buying and selling without changing this immutable column. The decision
+  // came from chat-audit + Iraq-market analysis: most users are dual-role
+  // (post a job one week, take one the next), and the binary signup choice
+  // was creating false friction. Server-side authz still keys off
+  // primary_role + is_superuser, so this stays a real DB column.
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
     username: "",
     email: "",
     password: "",
-    primary_role: "freelancer" as "client" | "freelancer",
+    primary_role: "client" as "client" | "freelancer",
   });
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -123,42 +130,10 @@ export default function RegisterClient() {
             </div>
           </div>
 
-          {/* Role Selection */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              {ar ? "أريد:" : "I want to:"}
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, primary_role: "freelancer" })}
-                className={`p-4 rounded-lg border-2 text-center transition-all ${
-                  formData.primary_role === "freelancer"
-                    ? "border-brand-500 bg-brand-50 text-brand-700"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                <div className="text-2xl mb-1">💼</div>
-                <div className="font-medium text-sm">
-                  {ar ? "العمل كمستقل" : "Work as Freelancer"}
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, primary_role: "client" })}
-                className={`p-4 rounded-lg border-2 text-center transition-all ${
-                  formData.primary_role === "client"
-                    ? "border-brand-500 bg-brand-50 text-brand-700"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                <div className="text-2xl mb-1">🏢</div>
-                <div className="font-medium text-sm">
-                  {ar ? "توظيف مستقلين" : "Hire Freelancers"}
-                </div>
-              </button>
-            </div>
-          </div>
+          {/* Role choice removed 2026-04-25 — Iraqi-market users tend to be dual-role.
+              The navbar "Switch to Selling/Buying" toggle handles per-session role
+              after signup, and primary_role can stay default (client) on the
+              backend without affecting what the user can see or do. */}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
