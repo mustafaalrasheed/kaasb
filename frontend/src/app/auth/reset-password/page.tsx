@@ -33,7 +33,9 @@ function ResetPasswordContent() {
     goToLogin: locale === 'ar' ? 'تسجيل الدخول' : 'Go to Login',
     noToken: locale === 'ar' ? 'رابط إعادة التعيين مفقود.' : 'Reset link is missing.',
     requestNew: locale === 'ar' ? 'طلب رابط جديد' : 'Request a new link',
-    passwordHint: locale === 'ar' ? '8 أحرف على الأقل' : 'Minimum 8 characters',
+    passwordHint: locale === 'ar'
+      ? '8 أحرف على الأقل، تشمل حرفاً كبيراً ورقماً'
+      : 'At least 8 characters, including one uppercase letter and one digit',
   };
 
   const token = searchParams.get('token');
@@ -61,11 +63,27 @@ function ResetPasswordContent() {
       setSuccess(true);
       setTimeout(() => router.push('/auth/login'), 3000);
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || '';
-      if (detail.includes('expired') || detail.includes('invalid')) {
+      // FastAPI 422 returns `detail` as an array of validation-error
+      // objects: `[{loc:[...], msg:"Value error, Password must ...", type:"..."}]`.
+      // FastAPI 4xx (e.g. 400 for expired token) returns `detail` as a
+      // plain string. Old code only handled the string case — when 422
+      // landed, React tried to render the array directly and the page
+      // crashed into the Next.js error boundary ("Something went wrong").
+      const data = (err as { response?: { data?: { detail?: unknown } } })?.response?.data;
+      const detail = data?.detail;
+      let message = '';
+      if (Array.isArray(detail)) {
+        // Take the first validation error and strip Pydantic's "Value error, "
+        // prefix so the user sees just the rule that failed.
+        const first = detail[0] as { msg?: string } | undefined;
+        message = (first?.msg ?? '').replace(/^Value error,\s*/i, '');
+      } else if (typeof detail === 'string') {
+        message = detail;
+      }
+      if (message.toLowerCase().includes('expired') || message.toLowerCase().includes('invalid token')) {
         setError(t.invalidToken);
       } else {
-        setError(detail || t.invalidToken);
+        setError(message || t.invalidToken);
       }
     } finally {
       setLoading(false);

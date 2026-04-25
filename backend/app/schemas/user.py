@@ -10,6 +10,32 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.utils.phone import normalize_iraqi_phone
 
+
+# Shared password policy. Used by UserRegister, PasswordChange, and
+# ResetPasswordRequest so a user can't downgrade strength via the reset
+# flow (previously reset accepted weaker passwords than registration).
+_PASSWORD_SYMBOLS = "!@#$%^&*()_+-=[]{}|;:,.<>?"
+
+
+def _validate_strong_password(v: str) -> str:
+    """Enforce min length 8, max 128, uppercase, digit, and symbol.
+
+    Raises ``ValueError`` (Pydantic catches and renders 422). The string
+    here ends up as the validation message in the API response, which
+    the frontend now surfaces to the user via reset-password's array-aware
+    error handler.
+    """
+    if not any(c.isupper() for c in v):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not any(c.isdigit() for c in v):
+        raise ValueError("Password must contain at least one digit")
+    if not any(c in _PASSWORD_SYMBOLS for c in v):
+        raise ValueError(
+            "Password must contain at least one special character "
+            "(!@#$%^&*()_+-=[]{}|;:,.<>?)"
+        )
+    return v
+
 # === Auth Schemas ===
 
 
@@ -33,13 +59,7 @@ class UserRegister(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in v):
-            raise ValueError("Password must contain at least one special character")
-        return v
+        return _validate_strong_password(v)
 
     @field_validator("terms_accepted")
     @classmethod
@@ -181,13 +201,7 @@ class PasswordChange(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, v: str) -> str:
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in v):
-            raise ValueError("Password must contain at least one special character")
-        return v
+        return _validate_strong_password(v)
 
 
 # === Email / Password Reset Schemas ===
@@ -204,11 +218,10 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        return v
+        # Reset must enforce the SAME policy as register/change.
+        # Previously this was laxer (no symbol required), which let a
+        # user downgrade their password strength via the reset flow.
+        return _validate_strong_password(v)
 
 
 class VerifyEmailRequest(BaseModel):

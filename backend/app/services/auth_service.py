@@ -730,6 +730,18 @@ class AuthService(BaseService):
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
+        # Block reuse of the current password. The reset flow is the
+        # primary self-service recovery path after a credential leak —
+        # accepting "set my password to the same one I had" defeats the
+        # whole point of forcing a rotation. ``change_password`` enforces
+        # the same rule via plaintext comparison; reset has only the
+        # stored hash, so verify against that.
+        if user.hashed_password and await verify_password_async(new_password, user.hashed_password):
+            raise HTTPException(
+                status_code=400,
+                detail="New password must be different from your current password.",
+            )
+
         user.hashed_password = await hash_password_async(new_password)
         # Rotate sessions: bump token_version (invalidates access tokens) AND
         # revoke all outstanding refresh tokens (otherwise an attacker with a
