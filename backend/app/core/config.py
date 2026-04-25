@@ -73,12 +73,37 @@ class Settings(BaseSettings):
     MINIMUM_PAYOUT_IQD: float = 50_000.0
 
     # === Qi Card (Iraqi Payment Gateway) ===
-    # QI_CARD_API_KEY → Authorization header value (raw key, no prefix)
+    # === QiCard v0 (legacy, being decommissioned) ===
+    # As of 2026-04-25 the production v0 host (api.pay.qi.iq) returns NXDOMAIN
+    # and live payments are broken. Phase 4 migrates to the v1 3DS API below;
+    # v0 settings are kept for rollback and for any merchant who hasn't been
+    # cut over yet. QI_CARD_API_KEY → Authorization header (raw key, no prefix).
     QI_CARD_API_KEY: str = ""
     QI_CARD_BASE_URL: str = "https://api.pay.qi.iq/api/v0/transactions/business/token"
     QI_CARD_SANDBOX_URL: str = "https://api.uat.pay.qi.iq/api/v0/transactions/business/token"
     QI_CARD_SANDBOX: bool = True  # Set to False in production
     QI_CARD_CURRENCY: str = "IQD"  # Iraqi Dinar
+
+    # === QiCard v1 3DS (Phase 4) ===
+    # The current live merchant API. Different host, different auth model.
+    # All four operations live under the same base host:
+    #   POST   /api/v1/payment                     create
+    #   GET    /api/v1/payment/{paymentId}/status  verify
+    #   POST   /api/v1/payment/{paymentId}/cancel  cancel
+    #   POST   /api/v1/payment/{paymentId}/refund  refund (full + partial)
+    # Auth is HTTP Basic (user/pass) + an X-Terminal-Id header. RSA-signed
+    # X-Signature is also accepted; we'll start with Basic for simplicity.
+    # Once these are populated AND ``QI_CARD_USE_V1`` is true, the client
+    # routes through the v1 path. Keep them empty in dev/CI so the mock
+    # path keeps working without secrets.
+    QI_CARD_V1_HOST: str = "https://3ds-api.qi.iq"
+    QI_CARD_V1_SANDBOX_HOST: str = "https://uat-sandbox-3ds-api.qi.iq"
+    QI_CARD_V1_USER: str = ""
+    QI_CARD_V1_PASS: str = ""
+    QI_CARD_V1_TERMINAL_ID: str = ""
+    # Feature flag: only flip to true once the four env vars above are set
+    # AND a successful UAT smoke test has been recorded.
+    QI_CARD_USE_V1: bool = False
     # Idempotency window for create_payment — within this many seconds a repeat
     # call with the same order_id returns the cached redirect link instead of
     # creating a new Qi Card charge. Matches Qi Card's own payment-session TTL.
@@ -138,8 +163,26 @@ class Settings(BaseSettings):
             raise ValueError("DEBUG must be False in production")
 
         if self.ENVIRONMENT == "production":
-            if not self.QI_CARD_API_KEY and not self.QI_CARD_SANDBOX:
+            if not self.QI_CARD_API_KEY and not self.QI_CARD_SANDBOX and not self.QI_CARD_USE_V1:
                 raise ValueError("QI_CARD_API_KEY must be set when QI_CARD_SANDBOX is False")
+            # If the v1 path is enabled in production, all four credential
+            # slots must be populated. Catching this at boot beats discovering
+            # a half-configured client when a customer tries to pay.
+            if self.QI_CARD_USE_V1:
+                missing = [
+                    name for name, val in (
+                        ("QI_CARD_V1_HOST", self.QI_CARD_V1_HOST),
+                        ("QI_CARD_V1_USER", self.QI_CARD_V1_USER),
+                        ("QI_CARD_V1_PASS", self.QI_CARD_V1_PASS),
+                        ("QI_CARD_V1_TERMINAL_ID", self.QI_CARD_V1_TERMINAL_ID),
+                    )
+                    if not val
+                ]
+                if missing:
+                    raise ValueError(
+                        "QI_CARD_USE_V1 is true but required v1 settings are "
+                        f"missing: {', '.join(missing)}"
+                    )
             if not self.RESEND_API_KEY:
                 logger.warning("RESEND_API_KEY not set — transactional emails will not be sent")
             # In production: replace dev origins with production-only origins.
