@@ -22,9 +22,13 @@ export default function RegisterClient() {
     password: "",
     primary_role: "freelancer" as "client" | "freelancer",
   });
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
+
+  const passwordMismatch =
+    confirmPassword.length > 0 && confirmPassword !== formData.password;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -48,6 +52,12 @@ export default function RegisterClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (confirmPassword !== formData.password) {
+      setError(ar
+        ? "كلمتا المرور غير متطابقتين."
+        : "Passwords don't match. Please re-type the confirmation.");
+      return;
+    }
     if (!legalAccepted) {
       setError(ar
         ? "يجب الموافقة على شروط الخدمة وسياسة الخصوصية قبل المتابعة."
@@ -205,6 +215,29 @@ export default function RegisterClient() {
               </p>
             </div>
 
+            <div>
+              <label htmlFor="confirm_password" className="block text-sm font-medium text-gray-700 mb-1">
+                {ar ? "تأكيد كلمة المرور" : "Confirm password"}
+              </label>
+              <input
+                id="confirm_password"
+                name="confirm_password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={`input-field ${passwordMismatch ? "border-danger-300 focus:border-danger-500 focus:ring-danger-500" : ""}`}
+                placeholder={ar ? "أعد كتابة كلمة المرور" : "Re-type your password"}
+                minLength={8}
+                required
+                aria-invalid={passwordMismatch || undefined}
+              />
+              {passwordMismatch && (
+                <p className="mt-1 text-xs text-danger-600">
+                  {ar ? "كلمتا المرور غير متطابقتين." : "Passwords don't match yet."}
+                </p>
+              )}
+            </div>
+
             <div className="flex items-start gap-2 mt-2">
               <input
                 id="legal_accepted"
@@ -253,7 +286,7 @@ export default function RegisterClient() {
 
             <button
               type="submit"
-              disabled={isLoading || !legalAccepted}
+              disabled={isLoading || !legalAccepted || passwordMismatch || confirmPassword === ""}
               className="btn-primary w-full py-3 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading

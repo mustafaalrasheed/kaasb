@@ -18,9 +18,50 @@ from app.models.service import Service, ServiceOrder, ServiceOrderStatus
 from app.models.user import User
 from app.schemas.review import ReviewCreate
 from app.services.base import BaseService
+from app.services.message_filter_service import ViolationType, detect_violations
 from app.services.notification_service import notify
 
 logger = logging.getLogger(__name__)
+
+
+def _reject_off_platform_contact(comment: str | None) -> None:
+    """Reject review comments that try to route the reader off-platform.
+
+    Reviews are public — a one-line "WhatsApp me on +964…" in a 5-star review
+    is a high-value off-platform-contact channel that bypasses every other
+    F6 protection on the site. Run the same email/phone/URL/app detector
+    used by chat moderation; reject submission outright if anything fires.
+    Reviews are one-shot, not a conversation, so we don't escalate the
+    submitter's chat_violations counter — just hand the input back.
+    """
+    if not comment:
+        return
+    violations = detect_violations(comment)
+    if not violations:
+        return
+    vtype, _matched = violations[0]
+    msg_by_type = {
+        ViolationType.EMAIL: (
+            "Reviews can't include email addresses. Please describe your "
+            "experience without sharing contact info."
+        ),
+        ViolationType.PHONE: (
+            "Reviews can't include phone numbers. Please describe your "
+            "experience without sharing contact info."
+        ),
+        ViolationType.URL: (
+            "Reviews can't include external links. Please describe your "
+            "experience without linking off-platform."
+        ),
+        ViolationType.EXTERNAL_APP: (
+            "Reviews can't reference external apps (WhatsApp, Telegram, etc). "
+            "Please describe your experience without redirecting off-platform."
+        ),
+    }
+    raise BadRequestError(msg_by_type.get(
+        vtype,
+        "Review contains content that isn't allowed.",
+    ))
 
 
 class ReviewService(BaseService):
@@ -54,6 +95,10 @@ class ReviewService(BaseService):
             reviewee_id = contract.client_id
         else:
             raise ForbiddenError("You are not part of this contract")
+
+        # F6 filter on review.comment — reviews are public and bypass the
+        # chat-only off-platform-contact protection (reviews-audit F6).
+        _reject_off_platform_contact(data.comment)
 
         existing = await self.db.execute(
             select(Review).where(
@@ -135,6 +180,9 @@ class ReviewService(BaseService):
             reviewee_id = order.client_id
         else:
             raise ForbiddenError("You are not part of this order")
+
+        # F6 filter on review.comment — see submit_review for rationale.
+        _reject_off_platform_contact(data.comment)
 
         existing = await self.db.execute(
             select(Review).where(
