@@ -680,16 +680,29 @@ class AuthService(BaseService):
         )
 
     async def request_password_reset(self, email: str, email_service) -> None:
-        """Send password reset email. Silent if user not found (anti-enumeration)."""
+        """Send password reset email. Silent (to the user) if user not found
+        — anti-enumeration. The server still logs the path it took so an
+        operator can see whether a missing email is "no such user" vs
+        "user exists but Resend failed" without leaking either to the API
+        response (emails are masked in logs)."""
         user = await self._get_user_by_email(email)
-        if not user or user.status == UserStatus.SUSPENDED:
+        masked = _mask_email(email)
+        if not user:
+            logger.info("Password reset requested for unknown email: %s", masked)
+            return
+        if user.status == UserStatus.SUSPENDED:
+            logger.info("Password reset requested for suspended user: %s", masked)
             return
         token = create_email_token(str(user.id), "password_reset", 60)
-        await email_service.send_password_reset(
+        sent = await email_service.send_password_reset(
             to_email=user.email,
             user_name=user.first_name,
             token=token,
         )
+        if sent:
+            logger.info("Password reset email dispatched for: %s", masked)
+        else:
+            logger.warning("Password reset email send returned False for: %s", masked)
 
     async def reset_password(self, token: str, new_password: str) -> None:
         """Reset password with JWT token."""
