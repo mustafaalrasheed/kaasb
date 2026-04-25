@@ -109,36 +109,59 @@ Go through one-by-one. For each, either confirm "behaves correctly" or file a fi
 
 ## Section 3 — Notifications — systematic review checklist
 
-### 3.1 Event emission
+### 3.1 Event emission — ✅ verified 2026-04-25
 
-20+ event types; check each one fires correctly on the triggering action:
+Surveyed all 30 NotificationType enum values for emit sites in
+non-model Python files. Methodology: `grep -r "NotificationType\.X\b"`
+across `backend/`, excluding `__pycache__` + the model file itself.
 
-| Event | Trigger | Expected destination |
-|-------|---------|----------------------|
-| `proposal_submitted` | Freelancer sends proposal on job | Client |
-| `proposal_accepted` | Client accepts proposal | Freelancer |
-| `contract_created` | Escrow funded on contract milestone | Both parties |
-| `milestone_submitted` | Freelancer marks milestone delivered | Client |
-| `milestone_approved` | Client approves milestone | Freelancer |
-| `payment_received` | Escrow released | Freelancer |
-| `review_received` | New review on user | Reviewed user |
-| `new_message` | Any message (maybe gated?) | Other party in conversation |
-| `service_approved` | Admin approves pending service | Freelancer |
-| `service_rejected` | Admin rejects service | Freelancer (include reason) |
-| `service_submitted` | Freelancer submits for review | All admins |
-| `dispute_opened` | Dispute raised | Other party + admins |
-| `dispute_resolved` | Admin closes dispute | Both parties |
-| `buyer_request_offer_received` | Freelancer sends offer | Client |
-| `buyer_request_offer_accepted` | Client accepts offer | Freelancer |
-| `buyer_request_offer_rejected` | Client rejects offer | Freelancer |
-| `order_requirements_submitted` | Client answers requirement questions | Freelancer |
-| `order_delivered` | Freelancer marks delivery | Client |
-| `order_auto_completed` | 3-day auto-complete fires | Freelancer |
-| `seller_level_upgraded` | Daily recalc promotes seller | Freelancer |
-| `chat_violation_warning` | First F6 violation | Violator |
-| `system_alert` | Ad-hoc | Configurable |
+**Finding F1 (P1, fixed)** — `CONTRACT_COMPLETED` had **zero** emit
+sites. When a contract reached 100% milestones-paid in
+`contract_service.approve_milestone`, the status flipped to COMPLETED
+and the user-stat updates ran, but neither party got a "your contract
+is complete" notification. Both parties also missed the prompt to
+leave a review (review-eligibility windows from this event). Fixed in
+the same commit as this audit update — both client + freelancer now
+get a `CONTRACT_COMPLETED` notification with link to the contract.
 
-Action: grep each event's emission site in backend code. Flag any that's missing (ever silently not firing).
+**Finding F2 (doc-vs-code)** — the original audit table called the
+new-proposal event `proposal_submitted`; the codebase uses
+`PROPOSAL_RECEIVED`. Same shape, just naming inconsistency. Table below
+now matches the enum.
+
+All other 28 enum values have at least one verified emit site.
+
+| Enum value | Emit site(s) | Recipient | Status |
+|---|---|---|---|
+| `PROPOSAL_RECEIVED` | proposal_service.submit_proposal | Job's client | ✅ |
+| `PROPOSAL_ACCEPTED` | proposal_service.update_status (×2 paths) | Freelancer | ✅ |
+| `PROPOSAL_REJECTED` | proposal_service.update_status | Freelancer | ✅ |
+| `PROPOSAL_SHORTLISTED` | proposal_service.update_status (×2 paths) | Freelancer | ✅ |
+| `CONTRACT_CREATED` | contract_service (×2 emits) | Both parties | ✅ |
+| `CONTRACT_COMPLETED` | contract_service.approve_milestone (×2 emits) | Both parties | ✅ FIXED |
+| `MILESTONE_FUNDED` | payment_service + contract_service (×3) | Freelancer | ✅ |
+| `MILESTONE_SUBMITTED` | contract_service (×2) | Client | ✅ |
+| `MILESTONE_APPROVED` | contract_service + payment_service (×3) | Freelancer | ✅ |
+| `MILESTONE_REVISION` | contract_service (×2) | Freelancer | ✅ |
+| `PAYMENT_RECEIVED` | payment_service (×12 — every release path) | Freelancer | ✅ |
+| `PAYOUT_COMPLETED` | payment_service.mark_payout_paid (×4) | Freelancer | ✅ |
+| `REVIEW_RECEIVED` | review_service.submit_review + submit_order_review (×3) | Reviewee | ✅ |
+| `NEW_MESSAGE` | message_subscribers (×2) | Other party | ✅ |
+| `SERVICE_APPROVED` | catalog_service.approve_service | Freelancer | ✅ |
+| `SERVICE_REJECTED` | catalog_service.reject_service | Freelancer | ✅ |
+| `SERVICE_SUBMITTED` | catalog_service.create_service | All admins | ✅ |
+| `SERVICE_NEEDS_REVISION` | catalog_service.request_revision | Freelancer | ✅ |
+| `DISPUTE_OPENED` | dispute_service + catalog_service (×5) | Other party + admins | ✅ |
+| `DISPUTE_RESOLVED` | dispute_service + catalog_service (×3) | Both parties | ✅ |
+| `BUYER_REQUEST_OFFER_RECEIVED` | buyer_request_service.create_offer | Client | ✅ |
+| `BUYER_REQUEST_OFFER_ACCEPTED` | buyer_request_service (×2) | Freelancer | ✅ |
+| `BUYER_REQUEST_OFFER_REJECTED` | buyer_request_service (×2) | Freelancer | ✅ |
+| `ORDER_REQUIREMENTS_SUBMITTED` | catalog_service.submit_requirements | Freelancer | ✅ |
+| `ORDER_DELIVERED` | catalog_service.deliver_order | Client | ✅ |
+| `ORDER_AUTO_COMPLETED` | marketplace_tasks (3-day auto-complete) | Freelancer | ✅ |
+| `SELLER_LEVEL_UPGRADED` | marketplace_tasks (daily recalc) | Freelancer | ✅ |
+| `CHAT_VIOLATION_WARNING` | message_filter_service (×3 escalation steps) | Violator | ✅ |
+| `SYSTEM_ALERT` | (ad-hoc; no fixed trigger) | configurable | ✅ |
 
 ### 3.2 In-app bell UI
 

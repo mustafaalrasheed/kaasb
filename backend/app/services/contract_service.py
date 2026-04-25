@@ -362,6 +362,35 @@ class ContractService(BaseService):
                         .values(total_spent=User.total_spent + milestone.amount)
                         .execution_options(synchronize_session=False)
                     )
+
+                    # Notify both parties — completion is a high-signal event
+                    # that prompts the post-contract review flow on both
+                    # sides. Audit-flagged in chat-notifications-audit 3.1
+                    # as the only NotificationType with zero emit sites.
+                    contract_title = full_contract.title or (job.title if job else "")
+                    for recipient_id in (full_contract.client_id, full_contract.freelancer_id):
+                        await notify(
+                            self.db,
+                            user_id=recipient_id,
+                            type=NotificationType.CONTRACT_COMPLETED,
+                            title_ar="اكتمل العقد",
+                            title_en="Contract completed",
+                            message_ar=(
+                                f"تم إكمال جميع المعالم لعقدك: {contract_title}. "
+                                f"يمكنك الآن ترك تقييم للطرف الآخر."
+                            ),
+                            message_en=(
+                                f"All milestones complete on your contract: {contract_title}. "
+                                f"You can now leave a review for the other party."
+                            ),
+                            link_type="contract",
+                            link_id=full_contract.id,
+                            actor_id=(
+                                full_contract.freelancer_id
+                                if recipient_id == full_contract.client_id
+                                else full_contract.client_id
+                            ),
+                        )
                 else:
                     # Atomic increments for partial milestone payments
                     await self.db.execute(
