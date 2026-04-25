@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { reviewsApi, servicesApi } from "@/lib/api";
 import type { ReviewSubmitBody } from "@/lib/api/reviews";
+import { useEffectiveRole } from "@/lib/use-active-mode";
 import { useAuthStore } from "@/lib/auth-store";
 import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
@@ -93,9 +94,10 @@ function getServiceRef(order: ServiceOrderItem): ServiceRef | undefined {
 }
 
 export default function ServiceOrdersPage() {
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
   const { locale } = useLocale();
   const ar = locale === "ar";
+  const effectiveRole = useEffectiveRole(user, isAuthenticated);
 
   const [tab, setTab] = useState<"selling" | "buying">("selling");
   const [orders, setOrders] = useState<ServiceOrderItem[]>([]);
@@ -107,7 +109,9 @@ export default function ServiceOrdersPage() {
   const [reviewOrder, setReviewOrder] = useState<ServiceOrderItem | null>(null);
   const [disputeOrder, setDisputeOrder] = useState<ServiceOrderItem | null>(null);
 
-  const isFreelancer = user?.primary_role === "freelancer";
+  // Selling tab visibility follows the active mode so a client who toggled
+  // to selling can see the orders they're working on as a freelancer.
+  const isFreelancer = effectiveRole === "freelancer";
   const statusLabels = ar ? STATUS_LABELS_AR : STATUS_LABELS_EN;
 
   const fetchOrders = useCallback(async () => {

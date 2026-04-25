@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
+import { useEffectiveRole } from "@/lib/use-active-mode";
 import { useLocale } from "@/providers/locale-provider";
 import { useEffect } from "react";
 import { cn, backendUrl } from "@/lib/utils";
@@ -41,6 +42,11 @@ export default function DashboardLayout({
   const router = useRouter();
   const { user, isAuthenticated, isLoading } = useAuthStore();
   const { locale } = useLocale();
+  // Effective role respects the navbar's "Switch to Selling/Buying" toggle.
+  // A client who flipped to freelancer mode now sees freelancer-side
+  // sidebar links (Create Service, My Services) instead of staying stuck
+  // on the buying-only view that the raw primary_role would force.
+  const effectiveRole = useEffectiveRole(user, isAuthenticated);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -60,13 +66,17 @@ export default function DashboardLayout({
 
   if (!isAuthenticated || !user) return null;
 
-  const role = user.is_superuser ? "admin" : user.primary_role;
+  const role = effectiveRole ?? user.primary_role;
   const filteredLinks = sidebarLinks.filter((link) => link.roles.includes(role));
 
+  // Sidebar label reflects the active *mode*, not the immutable primary_role,
+  // so a client in selling mode sees "Freelancer" beside their name and
+  // doesn't get whiplash from the toggle leaving the rest of the page
+  // confused about who they are.
   const roleLabel =
-    user.primary_role === "client"
+    role === "client"
       ? (locale === "ar" ? "عميل" : "Client")
-      : user.primary_role === "freelancer"
+      : role === "freelancer"
       ? (locale === "ar" ? "مستقل" : "Freelancer")
       : (locale === "ar" ? "مدير" : "Admin");
 

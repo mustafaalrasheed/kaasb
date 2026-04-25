@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { paymentsApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
+import { useEffectiveRole } from "@/lib/use-active-mode";
 import { useLocale } from "@/providers/locale-provider";
 import { toast } from "sonner";
 import { getApiError } from "@/lib/utils";
@@ -19,9 +20,13 @@ const TX_SIGN: Record<string, string> = {
 };
 
 export default function PaymentsPage() {
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
   const { locale } = useLocale();
   const ar = locale === "ar";
+  // Payout-account setup is gated on the active mode, not primary_role —
+  // a client who flips to selling needs the QiCard setup form to even
+  // start earning, otherwise the toggle is half-broken.
+  const effectiveRole = useEffectiveRole(user, isAuthenticated);
 
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
   const [transactions, setTransactions] = useState<TransactionDetail[]>([]);
@@ -114,7 +119,7 @@ export default function PaymentsPage() {
     );
   }
 
-  const isFreelancer = user?.primary_role === "freelancer";
+  const isFreelancer = effectiveRole === "freelancer";
   const totalPages = Math.ceil(totalTx / 10);
   const dateLocale = ar ? "ar-IQ" : "en-GB";
 

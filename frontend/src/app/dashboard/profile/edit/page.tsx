@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useAuthStore } from "@/lib/auth-store";
+import { useEffectiveRole } from "@/lib/use-active-mode";
 import { usersApi } from "@/lib/api";
 import { backendUrl, getApiError } from "@/lib/utils";
 import { useLocale } from "@/providers/locale-provider";
@@ -37,7 +38,8 @@ const COUNTRIES = [
 ];
 
 export default function EditProfilePage() {
-  const { user, fetchUser } = useAuthStore();
+  const { user, isAuthenticated, fetchUser } = useAuthStore();
+  const effectiveRole = useEffectiveRole(user, isAuthenticated);
   const { locale } = useLocale();
   const ar = locale === "ar";
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -76,7 +78,11 @@ export default function EditProfilePage() {
     }
   }, [user]);
 
-  const isFreelancer = user?.primary_role === "freelancer";
+  // Profile editor surfaces freelancer-only fields (skills, experience,
+  // portfolio) when the user is acting as a seller. Following the active
+  // mode here lets a client who flipped to selling start filling those
+  // out without first having to change their primary_role.
+  const isFreelancer = effectiveRole === "freelancer";
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>

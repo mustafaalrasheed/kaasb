@@ -1,13 +1,14 @@
 "use client";
 
 import { useAuthStore } from "@/lib/auth-store";
+import { useEffectiveRole } from "@/lib/use-active-mode";
 import { useLocale } from "@/providers/locale-provider";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
 
 export default function DashboardPage() {
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
   const { locale } = useLocale();
   const router = useRouter();
   const ar = locale === "ar";
@@ -21,7 +22,10 @@ export default function DashboardPage() {
 
   if (user?.is_superuser) return null;
 
-  const isFreelancer = user?.primary_role === "freelancer";
+  // Follow the navbar's "Switch to Selling/Buying" toggle so the
+  // overview blocks line up with the rest of the dashboard.
+  const effectiveRole = useEffectiveRole(user, isAuthenticated);
+  const isFreelancer = effectiveRole === "freelancer";
   const profileComplete = Boolean(
     user?.bio && user?.country && (isFreelancer ? user?.skills?.length : true)
   );
