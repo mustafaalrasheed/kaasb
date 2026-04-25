@@ -615,7 +615,14 @@ class CatalogService(BaseService):
         self.db.add(escrow)
 
         await self.db.commit()
-        await self.db.refresh(order)
+        # Refresh with the ``service`` relationship eagerly loaded so the
+        # endpoint can serialize \`ServiceOrderOut\` (which includes
+        # ``service: Optional[ServiceOut]``) without triggering a
+        # post-commit lazy load — that lazy load fails with
+        # MissingGreenlet because the async session has already exited
+        # the greenlet context after commit. Same fix shape as the
+        # \`refresh(review, attribute_names=[...])\` calls in review_service.
+        await self.db.refresh(order, attribute_names=["service"])
         return order, payment_url
 
     async def get_my_orders_as_client(self, client: User) -> list[ServiceOrder]:
