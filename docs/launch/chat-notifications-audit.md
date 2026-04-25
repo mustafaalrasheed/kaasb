@@ -173,10 +173,10 @@ All other 28 enum values have at least one verified emit site.
 ### 3.3 Email delivery
 
 - [x] CID-embedded logo renders correctly in Gmail + Outlook (shipped 2026-04-23 per email branding work)
-- [ ] Bilingual — emails pick the user's `locale` column, NOT the event emitter's locale
-- [ ] Resend deliverability — SPF + DKIM + DMARC configured? Verify at https://resend.com dashboard
-- [ ] Unsubscribe link at email footer → toggles `users.email_notifications_enabled` = false
-- [ ] Per-type opt-out — some notification types (proposal / payment) are transactional and can't be disabled; others (tips, nudges) are optional
+- [x] Bilingual — `notification_service._resolve_email_context` pulls the recipient's `users.locale` and passes it to the renderer; emitter locale is never consulted (verified 2026-04-25 in `notification_service.py` line ~150).
+- [ ] Resend deliverability — SPF + DKIM + DMARC configured? Verify at https://resend.com dashboard. **Action item, not code-side**: needs a 5-min DNS check by ops.
+- [x] Unsubscribe link at email footer → toggles `users.email_notifications_enabled = false`. Shipped 2026-04-25 (commit c110604): per-recipient JWT-signed link, public `GET /api/v1/users/unsubscribe?token=…` endpoint flips the flag and renders a bilingual confirmation page. Idempotent; bad/expired tokens fall back to a friendly "open settings" page.
+- [ ] Per-type opt-out — deferred. Single global toggle covers the 6 high-signal whitelisted types today; more granular control would need a `notification_preferences` table and a settings UI. Backlog.
 
 ### 3.4 Background task correctness
 
