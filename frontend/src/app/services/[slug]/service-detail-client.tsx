@@ -236,8 +236,10 @@ function OrderModal({
   locale: "ar" | "en";
 }) {
   const [requirements, setRequirements] = useState("");
+  const [provider, setProvider] = useState<"qi_card" | "zain_cash">("qi_card");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const str = t[locale];
+  const ar = locale === "ar";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -247,10 +249,11 @@ function OrderModal({
         service_id: service.id,
         package_id: packageId,
         requirements: requirements.trim() || undefined,
+        provider,
       });
       toast.success(str.orderSuccess);
       onClose();
-      // Redirect to Qi Card payment page (or mock URL in dev)
+      // Redirect to the chosen gateway's payment page (or mock URL in dev)
       const paymentUrl = (res.data as { payment_url?: string }).payment_url;
       if (paymentUrl) {
         window.location.href = paymentUrl;
@@ -265,7 +268,7 @@ function OrderModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">{str.requirements}</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -276,6 +279,36 @@ function OrderModal({
               placeholder={str.requirementsPlaceholder}
               rows={5}
             />
+
+            {/* Gateway choice — Qi Card listed first because it has the
+                bigger user base in Iraq today (per checkout decision
+                2026-04-25). */}
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-gray-700 mb-1">
+                {ar ? "اختر طريقة الدفع" : "Choose payment method"}
+              </legend>
+              <PaymentMethodOption
+                value="qi_card"
+                checked={provider === "qi_card"}
+                onSelect={() => setProvider("qi_card")}
+                title={ar ? "Qi Card" : "Qi Card"}
+                description={ar
+                  ? "ادفع ببطاقة Qi Card عبر صفحة الدفع الآمنة."
+                  : "Pay with your Qi Card on Qi's secure hosted page."}
+                ar={ar}
+              />
+              <PaymentMethodOption
+                value="zain_cash"
+                checked={provider === "zain_cash"}
+                onSelect={() => setProvider("zain_cash")}
+                title="Zain Cash"
+                description={ar
+                  ? "ادفع من محفظة Zain Cash عبر تطبيق زين."
+                  : "Pay from your Zain Cash wallet via the Zain app."}
+                ar={ar}
+              />
+            </fieldset>
+
             <div className="flex gap-3">
               <button
                 type="submit"
@@ -632,3 +665,43 @@ export default function ServiceDetailClient() {
     </div>
   );
 }
+
+function PaymentMethodOption({
+  value,
+  checked,
+  onSelect,
+  title,
+  description,
+  ar,
+}: {
+  value: "qi_card" | "zain_cash";
+  checked: boolean;
+  onSelect: () => void;
+  title: string;
+  description: string;
+  ar: boolean;
+}) {
+  return (
+    <label
+      className={`flex items-start gap-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${
+        checked
+          ? "border-brand-500 bg-brand-50"
+          : "border-gray-200 hover:border-gray-300"
+      } ${ar ? "flex-row-reverse text-right" : ""}`}
+    >
+      <input
+        type="radio"
+        name="payment_provider"
+        value={value}
+        checked={checked}
+        onChange={onSelect}
+        className="mt-1 h-4 w-4 text-brand-500 focus:ring-brand-500"
+      />
+      <span className="flex-1">
+        <span className="block text-sm font-semibold text-gray-900">{title}</span>
+        <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">{description}</span>
+      </span>
+    </label>
+  );
+}
+

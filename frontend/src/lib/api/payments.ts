@@ -20,6 +20,8 @@ export const paymentsApi = {
 
   fundEscrow: (data: {
     milestone_id: string;
+    /** Payment gateway. Defaults to qi_card on the server if omitted. */
+    provider?: "qi_card" | "zain_cash";
     payment_method_id?: string;
   }) => api.post("/payments/escrow/fund", data),
 

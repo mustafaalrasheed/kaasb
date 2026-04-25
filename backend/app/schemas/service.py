@@ -7,7 +7,7 @@ Renamed from "gig" to "service" to match Iraqi market terminology.
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -192,6 +192,10 @@ class ServiceOrderCreate(BaseModel):
     service_id: uuid.UUID
     package_id: uuid.UUID
     requirements: Optional[str] = Field(None, max_length=2000)
+    # Payment gateway. Defaults to qi_card for backwards compatibility with
+    # existing buyers' bookmarked checkout flows; clients pass "zain_cash"
+    # when the buyer picked it on the choice screen.
+    provider: Literal["qi_card", "zain_cash"] = "qi_card"
 
 
 class ServiceRequirementsSubmit(BaseModel):

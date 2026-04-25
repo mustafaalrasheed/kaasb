@@ -49,7 +49,13 @@ export const servicesApi = {
   getMine: (serviceId: string) => api.get(`/services/my/${serviceId}`),
 
   // Orders
-  placeOrder: (data: { service_id: string; package_id: string; requirements?: string }) =>
+  placeOrder: (data: {
+    service_id: string;
+    package_id: string;
+    requirements?: string;
+    /** Payment gateway choice; defaults to qi_card on the server. */
+    provider?: "qi_card" | "zain_cash";
+  }) =>
     api.post("/services/orders", data),
 
   myOrdersAsBuyer: () => api.get("/services/orders/buying"),

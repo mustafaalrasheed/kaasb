@@ -54,6 +54,7 @@ from app.schemas.service import (
 from app.services.base import BaseService
 from app.services.notification_service import notify_background
 from app.services.qi_card_client import QiCardClient, QiCardError
+from app.services.zain_cash_client import ZainCashClient, ZainCashError
 from app.utils.files import MAX_SERVICE_IMAGES, delete_service_image
 
 logger = logging.getLogger(__name__)
@@ -543,20 +544,46 @@ class CatalogService(BaseService):
         # Round to the nearest whole IQD; plain int() truncates toward zero and
         # systematically underpays by up to 0.99 IQD per order.
         amount_iqd_int = int(price_d.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-        try:
-            qi_card = QiCardClient()
-            qi_result = await qi_card.create_payment(
-                amount_iqd=amount_iqd_int,
-                order_id=order_ref,
-                success_url=f"{base}/api/v1/payments/qi-card/success?sig={sig}",
-                failure_url=f"{base}/api/v1/payments/qi-card/failure?sig={sig}",
-                cancel_url=f"{base}/api/v1/payments/qi-card/cancel?sig={sig}",
-            )
-            payment_url = qi_result.get("link")
-        except QiCardError as e:
-            logger.error("Qi Card error during service order %s: %s", order.id, e)
-            await self.db.rollback()
-            raise ExternalServiceError("Payment gateway error. Please try again later.") from e
+
+        # Branch on the gateway the buyer chose at checkout. Identical
+        # business logic on the Escrow + Transaction side — only the
+        # redirect URL shape and the persisted provider enum differ.
+        chosen_provider: PaymentProvider
+        external_id: str
+        if data.provider == "zain_cash":
+            try:
+                zc = ZainCashClient()
+                zc_result = await zc.create_payment(
+                    amount_iqd=amount_iqd_int,
+                    order_id=order_ref,
+                    redirect_url=f"{base}/api/v1/payments/zain-cash/callback?sig={sig}",
+                )
+                payment_url = zc_result["redirect_url"]
+                external_id = zc_result["operation_id"]
+            except ZainCashError as e:
+                logger.error("Zain Cash error during service order %s: %s", order.id, e)
+                await self.db.rollback()
+                raise ExternalServiceError(
+                    "Payment gateway error. Please try again later."
+                ) from e
+            chosen_provider = PaymentProvider.ZAIN_CASH
+        else:
+            try:
+                qi_card = QiCardClient()
+                qi_result = await qi_card.create_payment(
+                    amount_iqd=amount_iqd_int,
+                    order_id=order_ref,
+                    success_url=f"{base}/api/v1/payments/qi-card/success?sig={sig}",
+                    failure_url=f"{base}/api/v1/payments/qi-card/failure?sig={sig}",
+                    cancel_url=f"{base}/api/v1/payments/qi-card/cancel?sig={sig}",
+                )
+                payment_url = qi_result.get("link")
+                external_id = order_ref  # Qi Card v0 uses our orderId as the ref
+            except QiCardError as e:
+                logger.error("Qi Card error during service order %s: %s", order.id, e)
+                await self.db.rollback()
+                raise ExternalServiceError("Payment gateway error. Please try again later.") from e
+            chosen_provider = PaymentProvider.QI_CARD
 
         txn = Transaction(
             transaction_type=TransactionType.ESCROW_FUND,
@@ -567,8 +594,8 @@ class CatalogService(BaseService):
             net_amount=float(freelancer_amount_d),
             payer_id=client.id,
             payee_id=service.freelancer_id,
-            provider=PaymentProvider.QI_CARD,
-            external_transaction_id=order_ref,
+            provider=chosen_provider,
+            external_transaction_id=external_id,
             description=f"Service order: {service.title[:100]}",
         )
         self.db.add(txn)
