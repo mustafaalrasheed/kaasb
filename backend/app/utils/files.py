@@ -4,13 +4,26 @@ Handles avatar and file uploads with validation and storage.
 """
 
 import uuid
+from io import BytesIO
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
+from PIL import Image, ImageOps
 
 from app.core.config import get_settings
 
 settings = get_settings()
+
+# Bounding boxes for the resize step. Each upload is scaled to fit inside the
+# square (preserving aspect ratio) before write. Avatars render at ~32px in
+# the navbar and ~256px on the profile page; 512 covers 2x retina without
+# wasting bandwidth. Service-image displays cap around 1200px (detail card),
+# so 1600 covers 2x retina with headroom for a future zoom UI.
+AVATAR_MAX_DIM = 512
+SERVICE_IMAGE_MAX_DIM = 1600
+# Pillow JPEG/WebP quality — 85 is the standard "indistinguishable from
+# original to a human at typical viewing distances" cutoff.
+_IMAGE_QUALITY = 85
 
 
 def get_upload_dir(subfolder: str = "") -> Path:
@@ -36,6 +49,65 @@ def _detect_image_type(header: bytes) -> str | None:
                 continue
             return mime
     return None
+
+
+def _resize_and_strip_exif(
+    contents: bytes,
+    *,
+    max_dim: int,
+    quality: int = _IMAGE_QUALITY,
+) -> tuple[bytes, str]:
+    """Resize an image to fit within (max_dim x max_dim), preserving aspect ratio.
+
+    Returns ``(output_bytes, output_extension)``. EXIF metadata is stripped:
+    phone uploads bake GPS coordinates into avatars by default, which is a
+    quiet privacy leak; orientation is applied to the pixels first via
+    ``exif_transpose`` so the visual result is unchanged.
+
+    Output format:
+      * WebP in → WebP out (better compression).
+      * Anything else → JPEG (smaller than PNG for photos; universal support).
+    PNG transparency is flattened onto white when converting to JPEG.
+    """
+    try:
+        with Image.open(BytesIO(contents)) as img:
+            # Apply EXIF orientation BEFORE we re-encode, so the resulting
+            # image is already correctly rotated and we can drop EXIF.
+            img = ImageOps.exif_transpose(img)
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+            in_format = (img.format or "").upper()
+            if in_format == "WEBP":
+                out_format, out_ext = "WEBP", "webp"
+            else:
+                out_format, out_ext = "JPEG", "jpg"
+                # JPEG can't carry alpha or palette — flatten transparent
+                # PNGs onto a white background to keep the visible result
+                # what the uploader saw in their preview.
+                if img.mode in ("RGBA", "LA"):
+                    bg = Image.new("RGB", img.size, (255, 255, 255))
+                    bg.paste(img, mask=img.split()[-1])
+                    img = bg
+                elif img.mode != "RGB":
+                    img = img.convert("RGB")
+
+            buf = BytesIO()
+            img.save(
+                buf,
+                format=out_format,
+                quality=quality,
+                optimize=True,
+                # No exif= kwarg → metadata stripped on encode.
+            )
+            return buf.getvalue(), out_ext
+    except (OSError, ValueError) as exc:
+        # Pillow raises OSError on malformed image data, ValueError on
+        # unsupported modes. Magic-byte validation upstream already rejected
+        # non-image uploads, so this only fires on truncated / corrupt files.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image could not be processed — file may be corrupt.",
+        ) from exc
 
 
 async def save_avatar(file: UploadFile, user_id: str) -> str:
@@ -80,10 +152,12 @@ async def save_avatar(file: UploadFile, user_id: str) -> str:
             detail="File content does not match a supported image format",
         )
 
-    # Generate unique filename
-    ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename else "jpg"
-    if ext not in ("jpg", "jpeg", "png", "webp"):
-        ext = "jpg"
+    # Resize + strip EXIF before disk write. Phone uploads are commonly
+    # 4-5MB at 4000x3000; navbar shows ~32px, profile page ~256px. The
+    # 1:1 serve was the single biggest perceived-perf hit on Iraqi
+    # cellular networks (images-audit F1).
+    contents, ext = _resize_and_strip_exif(contents, max_dim=AVATAR_MAX_DIM)
+
     filename = f"{user_id}_{uuid.uuid4().hex[:8]}.{ext}"
 
     # Save to avatars directory
@@ -147,9 +221,11 @@ async def save_service_image(file: UploadFile, service_id: str) -> str:
             detail="File content does not match a supported image format",
         )
 
-    ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename else "jpg"
-    if ext not in ("jpg", "jpeg", "png", "webp"):
-        ext = "jpg"
+    # Resize + strip EXIF before disk write — see save_avatar for rationale.
+    # Service images cap at SERVICE_IMAGE_MAX_DIM since detail pages can
+    # show them larger than avatars.
+    contents, ext = _resize_and_strip_exif(contents, max_dim=SERVICE_IMAGE_MAX_DIM)
+
     filename = f"{service_id}_{uuid.uuid4().hex[:8]}.{ext}"
 
     service_dir = get_upload_dir("gigs")
